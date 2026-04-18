@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  @apply bg-paper-50 text-ink-950 antialiased dark:bg-ink-950 dark:text-paper-100 min-h-screen;
+}

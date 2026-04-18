@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="pl" data-theme="auto">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Benchmark muzyki · research</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --text: #0c0a09;
+      --muted: #57534e;
+      --border: #e7e5e4;
+      --accent: #0d9488;
+      --accent-hover: #0f766e;
+      --accent-soft: #ccfbf1;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+      --code-bg: #1c1917;
+      --code-text: #e7e5e4;
+      --shadow: 0 1px 3px rgba(12, 10, 9, 0.06), 0 4px 12px rgba(12, 10, 9, 0.04);
+      --radius: 14px;
+      --radius-sm: 10px;
+    }
+
+    html[data-theme="light"] {
+      color-scheme: light;
+      --bg: #fafaf9;
+      --surface: #ffffff;
+      --text: #0c0a09;
+      --muted: #57534e;
+      --border: #e7e5e4;
+      --accent: #0d9488;
+      --accent-hover: #0f766e;
+      --accent-soft: #ccfbf1;
+      --danger: #dc2626;
+      --danger-soft: #fef2f2;
+      --code-bg: #1c1917;
+      --code-text: #e7e5e4;
+      --shadow: 0 1px 3px rgba(12, 10, 9, 0.06), 0 4px 12px rgba(12, 10, 9, 0.04);
+    }
+
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0c0a09;
+      --surface: #1c1917;
+      --text: #fafaf9;
+      --muted: #a8a29e;
+      --border: #292524;
+      --accent: #14b8a6;
+      --accent-hover: #2dd4bf;
+      --accent-soft: #134e4a;
+      --danger: #f87171;
+      --danger-soft: #450a0a;
+      --code-bg: #0c0a09;
+      --code-text: #d6d3d1;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+
+    /* OLED / praca w nocy — maksymalnie ciemne tło, delikatny kontrast */
+    html[data-theme="black"] {
+      color-scheme: dark;
+      --bg: #000000;
+      --surface: #070707;
+      --text: #e5e5e5;
+      --muted: #8c8c8c;
+      --border: #1a1a1a;
+      --accent: #2dd4bf;
+      --accent-hover: #5eead4;
+      --accent-soft: #0d3d36;
+      --danger: #fca5a5;
+      --danger-soft: #1a0505;
+      --code-bg: #000000;
+      --code-text: #b8b8b8;
+      --shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      html[data-theme="auto"] {
+        color-scheme: dark;
+        --bg: #0c0a09;
+        --surface: #1c1917;
+        --text: #fafaf9;
+        --muted: #a8a29e;
+        --border: #292524;
+        --accent: #14b8a6;
+        --accent-hover: #2dd4bf;
+        --accent-soft: #134e4a;
+        --danger: #f87171;
+        --danger-soft: #450a0a;
+        --code-bg: #0c0a09;
+        --code-text: #d6d3d1;
+        --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.25);
+      }
+    }
+    @media (prefers-color-scheme: light) {
+      html[data-theme="auto"] {
+        color-scheme: light;
+      }
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      font-size: 15px;
+      line-height: 1.55;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      backdrop-filter: blur(12px);
+      background: color-mix(in srgb, var(--bg) 88%, transparent);
+      border-bottom: 1px solid var(--border);
+    }
+    .topbar-inner {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 0.85rem 1.25rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 0.1rem;
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .brand span {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .theme-toggle {
+      position: fixed;
+      top: 0.65rem;
+      right: 0.65rem;
+      z-index: 50;
+      width: 2.65rem;
+      height: 2.65rem;
+      padding: 0;
+      margin: 0;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.15s, background 0.15s, transform 0.1s;
+    }
+    .theme-toggle:hover {
+      border-color: var(--accent);
+      background: var(--surface);
+    }
+    .theme-toggle:active {
+      transform: scale(0.96);
+    }
+    .theme-toggle:focus-visible {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+    .theme-toggle .ico {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      line-height: 0;
+    }
+    .theme-toggle svg {
+      width: 1.2rem;
+      height: 1.2rem;
+      flex-shrink: 0;
+    }
+    html[data-theme="auto"] .theme-toggle .ico-auto,
+    html[data-theme="dark"] .theme-toggle .ico-dark,
+    html[data-theme="black"] .theme-toggle .ico-black,
+    html[data-theme="light"] .theme-toggle .ico-light {
+      display: flex;
+    }
+
+    .wrap {
+      max-width: 52rem;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 3rem;
+    }
+
+    .steps {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .step {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+    }
+    .step b {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.35rem;
+      height: 1.35rem;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 0.7rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 1.25rem 1.35rem;
+      margin-bottom: 1.25rem;
+    }
+    .card h2 {
+      margin: 0 0 0.2rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .card .sub {
+      margin: 0 0 1rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .field {
+      margin-bottom: 1rem;
+    }
+    .field:last-child { margin-bottom: 0; }
+    .field label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    .field input[type="text"],
+    .field input[type="number"],
+    .field select,
+    .field textarea {
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      font: inherit;
+      color: var(--text);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .field textarea { min-height: 5.5rem; resize: vertical; }
+    .field textarea.tall { min-height: 7rem; }
+    .field input:focus,
+    .field select:focus,
+    .field textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-soft);
+    }
+
+    .check {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+    .check input {
+      width: 1.1rem;
+      height: 1.1rem;
+      accent-color: var(--accent);
+    }
+
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media (max-width: 36rem) {
+      .grid2 { grid-template-columns: 1fr; }
+    }
+
+    @keyframes th-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    button.btn {
+      appearance: none;
+      font: inherit;
+      font-weight: 600;
+      font-size: 0.88rem;
+      padding: 0.65rem 1.1rem;
+      border-radius: var(--radius-sm);
+      border: none;
+      cursor: pointer;
+      transition: transform 0.1s, opacity 0.15s, background 0.15s;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+    }
+    button.btn:active:not(:disabled) { transform: scale(0.98); }
+    button.btn:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    button.btn.is-busy:disabled {
+      opacity: 1;
+      cursor: wait;
+    }
+    button.btn .btn-spinner {
+      display: none;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid rgba(255, 255, 255, 0.28);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: th-spin 0.72s linear infinite;
+      flex-shrink: 0;
+      box-sizing: border-box;
+    }
+    button.btn.is-busy .btn-spinner {
+      display: block;
+    }
+    button.btn-primary {
+      background: var(--accent);
+      color: #fff;
+    }
+    button.btn-primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+    button.btn-send {
+      background: linear-gradient(135deg, #0d9488 0%, #0f766e 100%);
+      color: #fff;
+      box-shadow: 0 2px 8px rgba(13, 148, 136, 0.35);
+    }
+    button.btn-send:hover:not(:disabled) {
+      filter: brightness(1.05);
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0.5rem 0 0;
+    }
+
+    .banner-err {
+      display: none;
+      margin: 1rem 0;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-sm);
+      background: var(--danger-soft);
+      border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+      color: var(--danger);
+      font-size: 0.85rem;
+      font-weight: 500;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .banner-err.show { display: block; }
+
+    .banner-busy {
+      display: none;
+      margin: 1rem 0;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-sm);
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--accent-soft);
+      border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+      color: var(--text);
+      font-size: 0.86rem;
+      font-weight: 500;
+      line-height: 1.45;
+    }
+    .banner-busy.show {
+      display: flex;
+    }
+    .banner-busy .busy-ring {
+      width: 1.35rem;
+      height: 1.35rem;
+      flex-shrink: 0;
+      border: 3px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: th-spin 0.75s linear infinite;
+      box-sizing: border-box;
+    }
+
+    .code-block {
+      margin: 0;
+      padding: 1rem;
+      max-height: 16rem;
+      overflow: auto;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.72rem;
+      line-height: 1.5;
+      background: var(--code-bg);
+      color: var(--code-text);
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+    textarea.json {
+      min-height: 13rem;
+      font-family: "JetBrains Mono", ui-monospace, monospace;
+      font-size: 0.75rem;
+      line-height: 1.45;
+    }
+    textarea.json:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .json-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 0.65rem;
+    }
+    .json-head h3 {
+      margin: 0;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+    .pill {
+      font-size: 0.65rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.2rem 0.5rem;
+      border-radius: 6px;
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .result-card {
+      padding: 1rem 1.1rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+      margin-bottom: 0.75rem;
+    }
+    .result-card .head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .result-card .name {
+      font-weight: 700;
+      font-size: 0.9rem;
+      text-transform: capitalize;
+    }
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.2rem 0.55rem;
+      border-radius: 6px;
+    }
+    .badge-ok { background: var(--accent-soft); color: var(--accent); }
+    .badge-fail { background: var(--danger-soft); color: var(--danger); }
+
+    .result-card audio,
+    .result-card video {
+      width: 100%;
+      max-height: 24rem;
+      margin-top: 0.35rem;
+      border-radius: 8px;
+    }
+    .link-dl {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.65rem;
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: var(--accent);
+      text-decoration: none;
+    }
+    .link-dl:hover { text-decoration: underline; }
+
+    a.dl-mp3 {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      margin-top: 0.65rem;
+      padding: 0.55rem 1rem;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: #fff !important;
+      font-weight: 600;
+      font-size: 0.85rem;
+      text-decoration: none !important;
+      box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 40%, transparent);
+      max-width: 100%;
+      word-break: break-all;
+    }
+    a.dl-mp3:hover {
+      background: var(--accent-hover);
+      text-decoration: none !important;
+    }
+
+    .model-rows { margin-top: 0.5rem; }
+    .model-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 0.65rem;
+      padding: 0.75rem 0.85rem;
+      margin-bottom: 0.65rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .model-row .mr-grow { flex: 1 1 12rem; min-width: 0; }
+    .model-row .mr-actions { flex: 0 0 auto; display: flex; gap: 0.35rem; align-items: flex-end; }
+    .model-row button.btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      font-weight: 600;
+      font-size: 0.8rem;
+      padding: 0.45rem 0.65rem;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .model-row button.btn-ghost:hover { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+  </style>
+</head>
+<body>
+  <button type="button" id="themeToggle" class="theme-toggle" aria-label="Zmiana motywu" title="">
+    <span class="ico ico-auto" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+    </span>
+    <span class="ico ico-dark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </span>
+    <span class="ico ico-black" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </span>
+    <span class="ico ico-light" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 6.34L4.93 4.93M19.07 19.07l-1.41-1.41M19.07 4.93l-1.41 1.41M6.34 17.66l-1.41 1.41"/></svg>
+    </span>
+  </button>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <h1>Benchmark dostawców muzyki</h1>
+        <span>KIE · WaveSpeed · OpenRouter (Lyria / Seedance) · ElevenLabs Music</span>
+      </div>
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="preview" aria-busy="false">
+          <span class="btn-spinner" aria-hidden="true"></span>
+          <span id="previewLabel">Przygotuj podgląd</span>
+        </button>
+        <button type="button" class="btn btn-send" id="run" disabled aria-busy="false">
+          <span class="btn-spinner" aria-hidden="true"></span>
+          <span id="runLabel">Wyślij do API</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="steps">
+      <span class="step"><b>1</b> Formularz</span>
+      <span class="step"><b>2</b> Edycja JSON</span>
+      <span class="step"><b>3</b> Zatwierdzenie</span>
+    </div>
+
+    <div id="err" class="banner-err" role="alert"></div>
+
+    <div id="apiBusyBar" class="banner-busy" role="status" aria-live="polite" aria-atomic="true">
+      <span class="busy-ring" aria-hidden="true"></span>
+      <span id="apiBusyText"></span>
+    </div>
+
+    <section class="card">
+      <h2>Wejście</h2>
+      <p class="sub">Te pola budują propozycję JSON w podglądzie — nic jeszcze nie leci do API.</p>
+      <div class="field">
+        <label for="title">Tytuł</label>
+        <input id="title" type="text" value="Lekcja liczenia" maxlength="80" autocomplete="off" />
+      </div>
+      <div class="field">
+        <label for="style">Styl</label>
+        <textarea id="style" class="tall">Educational pop for children, cheerful, classroom-friendly</textarea>
+      </div>
+      <div class="field">
+        <label for="lyrics">Słowa</label>
+        <textarea id="lyrics" class="tall">[verse]
+Liczymy razem do dziesięciu
+
+[chorus]
+Nauka to przygoda dnia!</textarea>
+      </div>
+      <label class="check field">
+        <input type="checkbox" id="instrumental" />
+        Instrumental (bez wokalu)
+      </label>
+      <div class="field">
+        <label for="durMin">Długość utworu (minuty)</label>
+        <input type="number" id="durMin" value="2" min="0.05" max="5" step="0.25" />
+        <p class="hint" style="margin-top:0.35rem;">KIE i WaveSpeed: w API nie ma jawnego pola „minuty” — dopisywana jest krótka wskazówka w stylu / promptcie (model może ją zignorować).</p>
+      </div>
+
+      <div class="field" style="margin-top: 1.1rem;">
+        <label>Modele (KIE · WaveSpeed · OpenRouter · ElevenLabs)</label>
+        <p class="hint" style="margin-top:0;">Każdy wiersz = jedno równoległe zadanie. W sekcji edycji JSON pojawiają się <strong>tylko</strong> te dostawcy, do których dodano wiersz (KIE, WaveSpeed, Lyria, Seedance, ElevenLabs) — po „Przygotuj podgląd”. <strong>KIE</strong> i <strong>WaveSpeed</strong> — katalog w UI; <strong>OpenRouter — muzyka</strong> — Lyria (max 10 z API); <strong>OpenRouter — wideo</strong> — Seedance; <strong>ElevenLabs</strong> — Music API.</p>
+        <div id="modelRowsContainer" class="model-rows"></div>
+        <button type="button" class="btn btn-primary" id="addModelRow" style="margin-top:0.5rem;">+ Dodaj model</button>
+      </div>
+
+      <p class="hint" id="runHint">Po udanym podglądzie odblokuje się wysyłka — możesz wtedy edytować JSON poniżej.</p>
+      <label class="check field" style="margin-top: 0.85rem;">
+        <input type="checkbox" id="autoDownloadMp3" checked />
+        Po sukcesie automatycznie pobierz MP3 (nazwa pliku: dostawca_model_tytuł piosenki)
+      </label>
+    </section>
+
+    <section class="card">
+      <h2>Mapowanie</h2>
+      <p class="sub">Jak pola formularza trafiają do pól API.</p>
+      <pre id="mapping" class="code-block">Kliknij „Przygotuj podgląd”, aby zobaczyć dane.</pre>
+    </section>
+
+    <section class="card">
+      <h2>URL-e żądań</h2>
+      <p class="sub">Referencja — faktyczne wywołania dopiero po „Wyślij do API”.</p>
+      <pre id="urls" class="code-block">—</pre>
+    </section>
+
+    <div id="kieJsonEditors"></div>
+
+    <div id="wsJsonEditors"></div>
+
+    <div id="orMusicEditors"></div>
+
+    <div id="elMusicEditors"></div>
+
+    <div id="seedJsonEditors"></div>
+
+    <section class="card">
+      <h2>Wynik</h2>
+      <p class="sub">Odtwarzacze i trace po zatwierdzeniu.</p>
+      <div id="out"></div>
+      <h3 style="margin:1.25rem 0 0.5rem;font-size:0.82rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;">Trace</h3>
+      <pre id="trace" class="code-block" style="max-height:28rem;">—</pre>
+    </section>
+  </main>
+
+  <script>
+    (function initTheme() {
+      const KEY = "music-benchmark-theme";
+      const allowed = new Set(["auto", "light", "dark", "black"]);
+      const cycle = ["auto", "dark", "black"];
+      const root = document.documentElement;
+      const btn = document.getElementById("themeToggle");
+      const tips = {
+        auto: "Motyw: jak system — kliknij, by włączyć ciemny",
+        dark: "Motyw: ciemny — kliknij, by włączyć noc (czarny)",
+        black: "Motyw: noc (czarny) — kliknij, by wrócić do systemu",
+        light: "Motyw: jasny — kliknij, by ustawić wg systemu",
+      };
+      function apply(theme) {
+        const t = allowed.has(theme) ? theme : "auto";
+        root.setAttribute("data-theme", t);
+        try {
+          localStorage.setItem(KEY, t);
+        } catch (_) {}
+        if (t === "light") root.style.colorScheme = "light";
+        else if (t === "dark" || t === "black") root.style.colorScheme = "dark";
+        else root.style.colorScheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+        if (btn) {
+          const tip = tips[t] || tips.auto;
+          btn.title = tip;
+          btn.setAttribute("aria-label", tip);
+        }
+      }
+      let saved = "auto";
+      try {
+        saved = localStorage.getItem(KEY) || "auto";
+      } catch (_) {}
+      apply(saved);
+      if (btn) {
+        btn.addEventListener("click", () => {
+          const cur = root.getAttribute("data-theme");
+          const i = cycle.indexOf(cur);
+          const next = cycle[(i + 1) % cycle.length];
+          apply(next);
+        });
+      }
+      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+        if (root.getAttribute("data-theme") === "auto") apply("auto");
+      });
+    })();
+
+    const $ = (id) => document.getElementById(id);
+    const errEl = $("err");
+    const apiBusyBar = $("apiBusyBar");
+    const apiBusyText = $("apiBusyText");
+    const previewBtn = $("preview");
+    const runBtn = $("run");
+    const previewLabel = $("previewLabel");
+    const runLabel = $("runLabel");
+
+    let modelCatalog = {
+      kie_music: [],
+      wavespeed_minimax: [],
+      openrouter_music: [],
+      openrouter_video: [],
+      elevenlabs_music: [],
+    };
+
+    function setBusyBar(show, text) {
+      if (!apiBusyBar || !apiBusyText) return;
+      if (show) {
+        apiBusyText.textContent = text;
+        apiBusyBar.classList.add("show");
+      } else {
+        apiBusyBar.classList.remove("show");
+        apiBusyText.textContent = "";
+      }
+    }
+
+    const headers = () => ({ "Content-Type": "application/json" });
+    const headersGet = () => ({});
+    let objectUrls = [];
+
+    function setErr(msg) {
+      if (msg) {
+        errEl.textContent = msg;
+        errEl.classList.add("show");
+      } else {
+        errEl.textContent = "";
+        errEl.classList.remove("show");
+      }
+    }
+
+    function revokeAll() {
+      objectUrls.forEach(URL.revokeObjectURL);
+      objectUrls = [];
+      $("out").innerHTML = "";
+    }
+
+    async function refreshModelCatalog() {
+      const res = await fetch("/api/model-catalog", { headers: headersGet() });
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || res.statusText);
+      modelCatalog = JSON.parse(text);
+    }
+
+    function optionsForProvider(provider) {
+      if (provider === "kie_music") return modelCatalog.kie_music || [];
+      if (provider === "wavespeed_minimax") return modelCatalog.wavespeed_minimax || [];
+      if (provider === "openrouter_music") return modelCatalog.openrouter_music || [];
+      if (provider === "openrouter_video") return modelCatalog.openrouter_video || [];
+      return modelCatalog.elevenlabs_music || [];
+    }
+
+    function fillModelSelect(sel, provider, selectedId) {
+      const opts = optionsForProvider(provider);
+      sel.innerHTML = "";
+      if (!opts.length) {
+        const o = document.createElement("option");
+        if (provider === "kie_music") o.value = "V4_5ALL";
+        else if (provider === "wavespeed_minimax") o.value = "music-2.6";
+        else if (provider === "openrouter_music") o.value = "google/lyria-3-pro-preview";
+        else if (provider === "openrouter_video") o.value = "bytedance/seedance-1-5-pro";
+        else o.value = "music_v1";
+        o.textContent = o.value + " (fallback)";
+        sel.appendChild(o);
+        return;
+      }
+      for (const m of opts) {
+        const o = document.createElement("option");
+        o.value = m.id;
+        o.textContent = m.label || m.id;
+        sel.appendChild(o);
+      }
+      if (selectedId && [...sel.options].some((x) => x.value === selectedId)) sel.value = selectedId;
+    }
+
+    function wireModelRow(row) {
+      const prov = row.querySelector(".mr-prov");
+      const mod = row.querySelector(".mr-model");
+      prov.addEventListener("change", () => {
+        const first = optionsForProvider(prov.value)[0];
+        fillModelSelect(mod, prov.value, first ? first.id : null);
+      });
+    }
+
+    function addModelRow(provider, modelId) {
+      const p = provider || "openrouter_music";
+      const wrap = $("modelRowsContainer");
+      const row = document.createElement("div");
+      row.className = "model-row";
+      row.innerHTML =
+        '<div class="field mr-grow" style="margin:0;flex:1 1 10rem;">' +
+        '<label>Provider</label>' +
+        '<select class="mr-prov">' +
+        '<option value="kie_music">KIE — Suno</option>' +
+        '<option value="wavespeed_minimax">WaveSpeed — MiniMax</option>' +
+        '<option value="openrouter_music">OpenRouter — muzyka (Lyria)</option>' +
+        '<option value="openrouter_video">OpenRouter — wideo (Seedance)</option>' +
+        '<option value="elevenlabs_music">ElevenLabs — Music API</option>' +
+        "</select></div>" +
+        '<div class="field mr-grow" style="margin:0;flex:1 1 12rem;">' +
+        '<label>Model</label><select class="mr-model"></select></div>' +
+        '<div class="mr-actions"><button type="button" class="btn-ghost mr-remove" title="Usuń wiersz">Usuń</button></div>';
+      wrap.appendChild(row);
+      row.querySelector(".mr-prov").value = p;
+      const msel = row.querySelector(".mr-model");
+      fillModelSelect(msel, p, modelId || null);
+      if (modelId && [...msel.options].some((x) => x.value === modelId)) msel.value = modelId;
+      row.querySelector(".mr-remove").addEventListener("click", () => {
+        row.remove();
+      });
+      wireModelRow(row);
+    }
+
+    function collectModelRows() {
+      const out = [];
+      document.querySelectorAll("#modelRowsContainer .model-row").forEach((row) => {
+        out.push({
+          provider: row.querySelector(".mr-prov").value,
+          model_id: row.querySelector(".mr-model").value,
+        });
+      });
+      return out;
+    }
+
+    function renderKieEditors(list) {
+      const host = $("kieJsonEditors");
+      host.innerHTML = "";
+      if (!list || !list.length) return;
+      list.forEach((obj) => {
+        const sec = document.createElement("section");
+        sec.className = "card";
+        const mid = (obj && obj.model) || "model";
+        sec.innerHTML =
+          '<div class="json-head"><h3>KIE — Suno · <code>' +
+          String(mid).replace(/</g, "") +
+          "</code></h3><span class=\"pill\">edycja</span></div>" +
+          '<p class="sub" style="margin-top:0;"><code>POST …/api/v1/generate</code></p>';
+        const ta = document.createElement("textarea");
+        ta.className = "json kie-json-editor";
+        ta.disabled = false;
+        ta.value = JSON.stringify(obj, null, 2);
+        sec.appendChild(ta);
+        host.appendChild(sec);
+      });
+    }
+
+    function renderWsEditors(jobs) {
+      const host = $("wsJsonEditors");
+      host.innerHTML = "";
+      if (!jobs || !jobs.length) return;
+      jobs.forEach((job) => {
+        const sec = document.createElement("section");
+        sec.className = "card";
+        const v = (job && job.variant) || "?";
+        sec.innerHTML =
+          '<div class="json-head"><h3>WaveSpeed MiniMax · <code>' +
+          String(v).replace(/</g, "") +
+          "</code></h3><span class=\"pill\">edycja</span></div>" +
+          '<p class="sub" style="margin-top:0;">Obiekt: <code>variant</code> + <code>wavespeed_json</code> (payload).</p>';
+        const ta = document.createElement("textarea");
+        ta.className = "json ws-json-editor";
+        ta.disabled = false;
+        ta.value = JSON.stringify(job, null, 2);
+        sec.appendChild(ta);
+        host.appendChild(sec);
+      });
+    }
+
+    function renderOpenrouterEditors(list) {
+      const host = $("orMusicEditors");
+      host.innerHTML = "";
+      if (!list || !list.length) return;
+      list.forEach((obj, i) => {
+        const sec = document.createElement("section");
+        sec.className = "card";
+        const mid = (obj && obj.model) || "model";
+        sec.innerHTML =
+          '<div class="json-head"><h3>OpenRouter — Lyria · <code>' +
+          String(mid).replace(/</g, "") +
+          "</code></h3><span class=\"pill\">edycja</span></div>" +
+          '<p class="sub" style="margin-top:0;"><code>POST …/chat/completions</code></p>';
+        const ta = document.createElement("textarea");
+        ta.className = "json or-music-json";
+        ta.disabled = false;
+        ta.value = JSON.stringify(obj, null, 2);
+        sec.appendChild(ta);
+        host.appendChild(sec);
+      });
+    }
+
+    function renderElevenlabsEditors(list) {
+      const host = $("elMusicEditors");
+      host.innerHTML = "";
+      if (!list || !list.length) return;
+      list.forEach((obj, i) => {
+        const sec = document.createElement("section");
+        sec.className = "card";
+        const mid = (obj && obj.model_id) || "music_v1";
+        sec.innerHTML =
+          '<div class="json-head"><h3>ElevenLabs Music · <code>' +
+          String(mid).replace(/</g, "") +
+          "</code></h3><span class=\"pill\">edycja</span></div>" +
+          '<p class="sub" style="margin-top:0;">Pole <code>output_format</code> trafia jako query do <code>POST /v1/music</code>.</p>';
+        const ta = document.createElement("textarea");
+        ta.className = "json el-music-json";
+        ta.disabled = false;
+        ta.value = JSON.stringify(obj, null, 2);
+        sec.appendChild(ta);
+        host.appendChild(sec);
+      });
+    }
+
+    function renderSeedanceEditors(list) {
+      const host = $("seedJsonEditors");
+      if (!host) return;
+      host.innerHTML = "";
+      if (!list || !list.length) return;
+      list.forEach((obj) => {
+        const sec = document.createElement("section");
+        sec.className = "card";
+        const mid = (obj && obj.model) || "model";
+        sec.innerHTML =
+          '<div class="json-head"><h3>OpenRouter — Seedance · <code>' +
+          String(mid).replace(/</g, "") +
+          "</code></h3><span class=\"pill\">edycja</span></div>" +
+          '<p class="sub" style="margin-top:0;"><code>POST …/videos</code> + polling (wideo z audio).</p>';
+        const ta = document.createElement("textarea");
+        ta.className = "json seedance-json-editor";
+        ta.disabled = false;
+        ta.value = JSON.stringify(obj, null, 2);
+        sec.appendChild(ta);
+        host.appendChild(sec);
+      });
+    }
+
+    (async function bootModelUi() {
+      try {
+        await refreshModelCatalog();
+      } catch (e) {
+        console.warn(e);
+      }
+    })();
+
+    $("addModelRow").onclick = () => addModelRow("openrouter_music", null);
+
+    $("preview").onclick = async () => {
+      setErr("");
+      setBusyBar(true, "Przygotowuję podgląd JSON (tylko lokalnie, bez wywołań do dostawców) — zwykle kilka sekund.");
+      previewBtn.classList.add("is-busy");
+      previewBtn.setAttribute("aria-busy", "true");
+      previewLabel.textContent = "Przygotowuję…";
+      $("trace").textContent = "…";
+      $("mapping").textContent = "Ładowanie…";
+      $("urls").textContent = "…";
+      revokeAll();
+      $("run").disabled = true;
+      $("preview").disabled = true;
+      const body = {
+        title: $("title").value.trim(),
+        style: $("style").value.trim(),
+        lyrics: $("lyrics").value.trim(),
+        instrumental: $("instrumental").checked,
+        duration_minutes: parseFloat($("durMin").value) || 2,
+        model_rows: collectModelRows(),
+      };
+      try {
+        const res = await fetch("/api/preview", { method: "POST", headers: headers(), body: JSON.stringify(body) });
+        const text = await res.text();
+        if (!res.ok) {
+          setErr(text || res.statusText);
+          return;
+        }
+        const data = JSON.parse(text);
+        $("mapping").textContent = JSON.stringify(data.mapping, null, 2);
+        $("urls").textContent = JSON.stringify(data.urls, null, 2);
+        renderKieEditors(data.kie_jsons || []);
+        renderWsEditors(data.wavespeed_jobs || []);
+        renderOpenrouterEditors(data.openrouter_music_jsons || []);
+        renderElevenlabsEditors(data.elevenlabs_jsons || []);
+        renderSeedanceEditors(data.openrouter_seedance_jsons || []);
+        $("run").disabled = false;
+        $("runHint").textContent = "JSON-y możesz edytować — potem „Wyślij do API”.";
+      } catch (e) {
+        setErr(String(e));
+      } finally {
+        $("preview").disabled = false;
+        previewBtn.classList.remove("is-busy");
+        previewBtn.setAttribute("aria-busy", "false");
+        previewLabel.textContent = "Przygotuj podgląd";
+        setBusyBar(false);
+      }
+    };
+
+    $("run").onclick = async () => {
+      setErr("");
+      $("trace").textContent = "…";
+      revokeAll();
+      const seedList = [];
+      const kieList = [];
+      const wsJobs = [];
+      const orList = [];
+      const elList = [];
+      try {
+        document.querySelectorAll("textarea.kie-json-editor").forEach((ta) => {
+          kieList.push(JSON.parse(ta.value));
+        });
+        document.querySelectorAll("textarea.ws-json-editor").forEach((ta) => {
+          wsJobs.push(JSON.parse(ta.value));
+        });
+        document.querySelectorAll("textarea.or-music-json").forEach((ta) => {
+          orList.push(JSON.parse(ta.value));
+        });
+        document.querySelectorAll("textarea.el-music-json").forEach((ta) => {
+          elList.push(JSON.parse(ta.value));
+        });
+        document.querySelectorAll("textarea.seedance-json-editor").forEach((ta) => {
+          seedList.push(JSON.parse(ta.value));
+        });
+      } catch (e) {
+        setErr("Błąd parsowania JSON: " + String(e));
+        return;
+      }
+      const exec = {
+        kie_jsons: kieList,
+        wavespeed_jobs: wsJobs,
+        openrouter_music_jsons: orList,
+        elevenlabs_jsons: elList,
+        openrouter_seedance_jsons: seedList,
+      };
+      setBusyBar(
+        true,
+        "Wysłano żądanie do API — równolegle: KIE ×" +
+          kieList.length +
+          ", WaveSpeed ×" +
+          wsJobs.length +
+          ", Lyria ×" +
+          orList.length +
+          ", Seedance ×" +
+          seedList.length +
+          ", ElevenLabs ×" +
+          elList.length +
+          ". Może to potrwać od ok. 1 do kilku minut.",
+      );
+      runBtn.classList.add("is-busy");
+      runBtn.setAttribute("aria-busy", "true");
+      runLabel.textContent = "Generowanie…";
+      $("run").disabled = true;
+      $("preview").disabled = true;
+      try {
+        const res = await fetch("/api/run", { method: "POST", headers: headers(), body: JSON.stringify(exec) });
+        const text = await res.text();
+        if (!res.ok) {
+          setErr(text || res.statusText);
+          return;
+        }
+        const data = JSON.parse(text);
+        $("trace").textContent = JSON.stringify(data.trace, null, 2);
+        const out = $("out");
+        let autoDlIndex = 0;
+        for (const a of data.artifacts || []) {
+          const div = document.createElement("div");
+          div.className = "result-card";
+          const ok = !!a.ok;
+          const head = document.createElement("div");
+          head.className = "head";
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = (a.provider || "").replace(/_/g, " ");
+          const badge = document.createElement("span");
+          badge.className = "badge " + (ok ? "badge-ok" : "badge-fail");
+          badge.textContent = ok ? "Sukces" : "Błąd";
+          head.appendChild(name);
+          head.appendChild(badge);
+          div.appendChild(head);
+          if (!ok && a.error) {
+            const p = document.createElement("p");
+            p.style.margin = "0";
+            p.style.fontSize = "0.85rem";
+            p.style.color = "var(--danger)";
+            p.textContent = a.error;
+            div.appendChild(p);
+          }
+          const mime = a.mime_type || "audio/mpeg";
+          if (ok && a.base64_mp3) {
+            const bin = Uint8Array.from(atob(a.base64_mp3), (c) => c.charCodeAt(0));
+            const blob = new Blob([bin], { type: mime });
+            const url = URL.createObjectURL(blob);
+            objectUrls.push(url);
+            if (mime.startsWith("video/")) {
+              const v = document.createElement("video");
+              v.controls = true;
+              v.src = url;
+              div.appendChild(v);
+            } else {
+              const au = document.createElement("audio");
+              au.controls = true;
+              au.src = url;
+              div.appendChild(au);
+            }
+            const dl = document.createElement("a");
+            dl.className = "dl-mp3";
+            dl.href = url;
+            dl.download = a.filename;
+            dl.textContent = "Pobierz: " + a.filename;
+            dl.title = "Zapisz plik jako " + a.filename;
+            div.appendChild(dl);
+            if ($("autoDownloadMp3").checked) {
+              const slot = autoDlIndex++;
+              setTimeout(() => {
+                try {
+                  dl.click();
+                } catch (_) {}
+              }, 200 + slot * 280);
+            }
+          } else if (ok && a.media_url) {
+            const ext = document.createElement("a");
+            ext.className = "dl-mp3";
+            ext.href = a.media_url;
+            ext.target = "_blank";
+            ext.rel = "noopener noreferrer";
+            ext.textContent = "Otwórz w przeglądarce (CDN): " + a.filename;
+            ext.title = a.media_url;
+            div.appendChild(ext);
+          }
+          out.appendChild(div);
+        }
+      } catch (e) {
+        setErr(String(e));
+      } finally {
+        $("run").disabled = false;
+        $("preview").disabled = false;
+        runBtn.classList.remove("is-busy");
+        runBtn.setAttribute("aria-busy", "false");
+        runLabel.textContent = "Wyślij do API";
+        setBusyBar(false);
+      }
+    };
+  </script>
+</body>
+</html>

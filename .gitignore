@@ -201,6 +201,14 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
+# TeacherHelper — dane lokalne
+data/
+
+# Next.js (frontend/)
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+
 # Marimo
 marimo/_static/
 marimo/_lsp/

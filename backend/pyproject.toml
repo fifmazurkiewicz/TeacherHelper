@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "teacher-helper"
+version = "0.3.0"
+description = "Asystent Nauczyciela AI — backend (FastAPI + PostgreSQL + Qdrant + Redis)"
+authors = []
+packages = [{include = "teacher_helper"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = ">=0.109.0,<1"
+uvicorn = {version = ">=0.27.0,<1", extras = ["standard"]}
+sqlalchemy = {version = ">=2.0.25,<3", extras = ["asyncio"]}
+asyncpg = ">=0.29.0,<1"
+psycopg = ">=3.1.0,<4"
+psycopg-binary = ">=3.1.0,<4"
+alembic = ">=1.13.0,<2"
+pydantic-settings = ">=2.0.0,<3"
+httpx = ">=0.26.0,<1"
+python-multipart = ">=0.0.6"
+aiofiles = ">=23.2.1"
+bcrypt = ">=4.0.0,<5"
+email-validator = ">=2.0.0,<3"
+python-jose = {version = ">=3.3.0,<4", extras = ["cryptography"]}
+langfuse = ">=2.59.0,<3"
+python-docx = ">=1.1.0,<2"
+fpdf2 = ">=2.8.0,<3"
+python-pptx = ">=1.0.0,<2"
+qdrant-client = ">=1.12.0,<2"
+redis = ">=5.0.0,<6"
+
+[tool.poetry.group.dev.dependencies]
+pytest = ">=8.0"
+pytest-asyncio = ">=0.23"
+ruff = ">=0.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
