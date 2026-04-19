@@ -102,14 +102,22 @@ def upsert_chunks(
 
 
 def delete_file_vectors(file_asset_id: UUID) -> None:
+    """Usuwa punkty po ``file_asset_id``. Przy niedostępnym Qdrancie (np. dev bez Dockera) tylko loguje — plik i tak można skasować w PG/storage."""
     s = get_settings()
-    client = get_qdrant()
-    client.delete(
-        collection_name=s.qdrant_collection,
-        points_selector=Filter(
-            must=[FieldCondition(key="file_asset_id", match=MatchValue(value=str(file_asset_id)))]
-        ),
-    )
+    try:
+        client = get_qdrant()
+        client.delete(
+            collection_name=s.qdrant_collection,
+            points_selector=Filter(
+                must=[FieldCondition(key="file_asset_id", match=MatchValue(value=str(file_asset_id)))]
+            ),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Qdrant niedostępny — pomijam usuwanie wektorów dla pliku %s: %s",
+            file_asset_id,
+            exc,
+        )
 
 
 def search_vectors(
@@ -131,13 +139,15 @@ def search_vectors(
             FieldCondition(key="topic_id", match=MatchValue(value=str(topic_id))),
         )
 
-    results = client.search(
+    # qdrant-client >= ~1.17: ``search`` usunięte na rzecz Query API
+    response = client.query_points(
         collection_name=s.qdrant_collection,
-        query_vector=query_vector,
+        query=query_vector,
         query_filter=Filter(must=must_filters),
         limit=top_k,
         with_payload=True,
     )
+    results = response.points
 
     return [
         {

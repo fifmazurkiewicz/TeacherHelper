@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { api, setToken } from "@/lib/api";
 
 export default function LoginPage() {
@@ -28,8 +29,11 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-4">
-      <h1 className="mb-6 text-2xl font-bold">Logowanie</h1>
+    <div className="relative mx-auto flex min-h-screen max-w-md flex-col justify-center px-4 pb-8 pt-14">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
+      <h1 className="mb-6 text-2xl font-bold text-ink-950 dark:text-paper-50">Logowanie</h1>
       <form onSubmit={onSubmit} className="flex flex-col gap-4 rounded-xl border border-ink-800/15 bg-white p-6 shadow-sm dark:border-paper-100/10 dark:bg-ink-900">
         <label className="flex flex-col gap-1 text-sm">
           E-mail

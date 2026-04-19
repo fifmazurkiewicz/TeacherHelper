@@ -1,27 +1,89 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import math
-from typing import Sequence
+from typing import Literal, Sequence
 
 import httpx
 
-from teacher_helper.config import get_settings
+from teacher_helper.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
 
 _OPENAI_BATCH_SIZE = 100
+# W EMBEDDINGS_BACKEND=auto po pierwszym 401 z OpenAI nie ponawiamy wywołań do OpenAI w tym procesie.
+_skip_openai_embeddings: bool = False
+
+
+def _resolve_embeddings_route(s: Settings) -> Literal["openai", "openrouter", "stub"]:
+    b = s.embeddings_backend
+    if b == "openrouter":
+        return "openrouter" if s.openrouter_api_key else "stub"
+    if b == "openai":
+        return "openai" if s.openai_api_key else "stub"
+    if s.openai_api_key:
+        return "openai"
+    if s.openrouter_api_key:
+        return "openrouter"
+    return "stub"
+
+
+def _openrouter_headers(s: Settings) -> dict[str, str]:
+    h: dict[str, str] = {
+        "Authorization": f"Bearer {s.openrouter_api_key}",
+        "Content-Type": "application/json",
+    }
+    if s.openrouter_http_referer:
+        h["HTTP-Referer"] = s.openrouter_http_referer.strip()
+    if s.app_name:
+        h["X-Title"] = s.app_name
+    return h
 
 
 async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
-    """Wygeneruj embeddingi dla listy tekstów (OpenAI → stub fallback)."""
+    """Embeddingi: OpenAI, OpenRouter (/v1/embeddings) lub deterministyczny stub."""
+    global _skip_openai_embeddings
     s = get_settings()
-    if s.openai_api_key:
+    route = _resolve_embeddings_route(s)
+    if s.embeddings_backend == "auto" and _skip_openai_embeddings:
+        route = "openrouter" if s.openrouter_api_key else "stub"
+    if route == "stub":
+        return [_stub_embedding(t, s.embedding_dim) for t in texts]
+    if route == "openrouter":
+        return await _openrouter_embed_batched(
+            texts,
+            s,
+            model=s.openrouter_embedding_model,
+            dimensions=s.embedding_dim,
+        )
+    try:
         return await _openai_embed_batched(
             texts,
-            api_key=s.openai_api_key,
+            api_key=s.openai_api_key,  # type: ignore[arg-type]
             model=s.openai_embedding_model,
             dimensions=s.embedding_dim,
         )
-    return [_stub_embedding(t, s.embedding_dim) for t in texts]
+    except RuntimeError as e:
+        err = str(e)
+        if (
+            s.embeddings_backend == "auto"
+            and s.openrouter_api_key
+            and ("401" in err or "HTTP 401" in err or "invalid_api_key" in err)
+        ):
+            logger.warning(
+                "OpenAI embeddings odrzucone (401); używam OpenRouter. "
+                "Ustaw EMBEDDINGS_BACKEND=openrouter albo popraw OPENAI_API_KEY; "
+                "do restartu procesu kolejne zapytania w auto pominą OpenAI."
+            )
+            _skip_openai_embeddings = True
+            return await _openrouter_embed_batched(
+                texts,
+                s,
+                model=s.openrouter_embedding_model,
+                dimensions=s.embedding_dim,
+            )
+        raise
 
 
 async def embed_text(text: str) -> list[float]:
@@ -70,7 +132,41 @@ async def _openai_embed(
         detail = r.text[:500] if r.text else r.reason_phrase
         raise RuntimeError(f"OpenAI Embeddings HTTP {r.status_code}: {detail}")
 
-    data = r.json()
+    return _embeddings_response_vectors(r.json())
+
+
+async def _openrouter_embed_batched(
+    texts: Sequence[str],
+    s: Settings,
+    model: str,
+    dimensions: int,
+) -> list[list[float]]:
+    if not s.openrouter_api_key:
+        raise RuntimeError("OpenRouter embeddings wymagają OPENROUTER_API_KEY")
+    all_embeddings: list[list[float]] = [[] for _ in texts]
+    base = s.openrouter_base_url.rstrip("/")
+    headers = _openrouter_headers(s)
+    for start in range(0, len(texts), _OPENAI_BATCH_SIZE):
+        batch = texts[start : start + _OPENAI_BATCH_SIZE]
+        payload: dict = {
+            "model": model,
+            "input": list(batch),
+            "encoding_format": "float",
+        }
+        if "3" in model:
+            payload["dimensions"] = dimensions
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            r = await client.post(f"{base}/embeddings", json=payload, headers=headers)
+        if r.is_error:
+            detail = r.text[:500] if r.text else r.reason_phrase
+            raise RuntimeError(f"OpenRouter Embeddings HTTP {r.status_code}: {detail}")
+        batch_vectors = _embeddings_response_vectors(r.json())
+        for i, emb in enumerate(batch_vectors):
+            all_embeddings[start + i] = emb
+    return all_embeddings
+
+
+def _embeddings_response_vectors(data: dict) -> list[list[float]]:
     items = sorted(data["data"], key=lambda x: x["index"])
     return [item["embedding"] for item in items]
 

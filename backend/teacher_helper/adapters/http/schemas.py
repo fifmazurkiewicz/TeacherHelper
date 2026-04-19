@@ -60,6 +60,13 @@ class FileResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MoveFilesRequest(BaseModel):
+    """Przeniesienie plików do innego katalogu (``project_id`` null = „Inne pliki”)."""
+
+    file_ids: list[UUID] = Field(min_length=1, max_length=500)
+    project_id: UUID | None = None
+
+
 class KieMusicImportByTaskRequest(BaseModel):
     """Pobranie MP3 z KIE po ``taskId`` (record-info + download) — z UI „Moje materiały”."""
 
@@ -150,7 +157,8 @@ class ConversationCreate(BaseModel):
 
 
 class ConversationPatch(BaseModel):
-    title: str = Field(min_length=1, max_length=500)
+    title: str | None = Field(default=None, max_length=500)
+    project_id: UUID | None = Field(default=None, description="Przypisanie rozmowy do katalogu (projektu); null = odłącz")
 
 
 class ConversationResponse(BaseModel):

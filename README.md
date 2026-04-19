@@ -210,7 +210,8 @@ TeacherHelper/
 │   └── src/                      ← React (Vite SPA)
 ├── docs/                         ← ZASADY, komponenty, analiza cen muzyki, wnioski z benchmarku
 ├── research/
-│   └── music-provider-benchmark/ ← osobna mini-aplikacja FastAPI (porównanie API muzyki)
+│   ├── music-provider-benchmark/ ← osobna mini-aplikacja FastAPI (porównanie API muzyki)
+│   └── image-provider-benchmark/ ← to samo dla grafiki (OpenAI, Stability, OpenRouter image)
 └── docker-compose.yml            ← opcjonalnie (PG przez Docker)
 ```
 
@@ -230,6 +231,10 @@ Osobny projekt **niepodłączany** do `uvicorn teacher_helper` — służy do **
 - W katalogu modeli OpenRouter (muzyka) **pomijane są identyfikatory zawierające `clip`** — porównanie skupia się na **Lyria Pro** i pokrewnych; pełna lista nadal dostępna bezpośrednio z API OpenRouter.
 
 Folder `research/` można usunąć bez wpływu na produkcyjny backend TeacherHelper.
+
+## Badania: benchmark dostawców grafiki (`research/image-provider-benchmark`)
+
+Ten sam wzorzec co muzyka: **`GET /api/model-catalog`** → **`POST /api/preview`** → edycja JSON → **`POST /api/run`**. Dostawcy w MVP: **OpenAI** (Images / DALL·E), **Stability** (Stable Image v2beta), **OpenRouter** (modele z `output_modalities=image`). Szczegóły: [research/image-provider-benchmark/README.md](research/image-provider-benchmark/README.md).
 
 ## Testy automatyczne (stan repozytorium)
 

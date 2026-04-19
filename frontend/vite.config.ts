@@ -14,6 +14,8 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "127.0.0.1",
       port: 18080,
+      // Tunel (ngrok itd.) — inaczej: „This host is not allowed”
+      allowedHosts: [".ngrok-free.app", ".ngrok.io", ".ngrok.app"],
       proxy: {
         "/th-api": {
           target: backendUrl,

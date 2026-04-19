@@ -1,0 +1,20 @@
+[project]
+name = "image-provider-benchmark"
+version = "0.1.0"
+description = "Research: OpenAI (DALL·E) + Stability (Stable Image) + OpenRouter (modele image) → trace + artefakty PNG/WebP"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.109,<1",
+  "uvicorn[standard]>=0.27,<1",
+  "httpx>=0.26,<1",
+  "pydantic>=2,<3",
+  "pydantic-settings>=2,<3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["benchmark"]

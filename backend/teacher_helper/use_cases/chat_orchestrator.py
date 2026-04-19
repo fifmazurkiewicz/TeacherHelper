@@ -30,6 +30,8 @@ from teacher_helper.infrastructure.music_kie import (
 from teacher_helper.infrastructure.db.models import FileAssetORM, FileStatus, ProjectORM
 from teacher_helper.infrastructure.storage.local import LocalStorage
 from teacher_helper.config import get_settings
+from teacher_helper.infrastructure.lyria_openrouter import OpenRouterLyriaMusicGenerator
+from teacher_helper.infrastructure.web_search import format_hits_for_llm, run_web_search
 from teacher_helper.use_cases.ports import (
     ImageGeneratorPort,
     LlmClientPort,
@@ -58,45 +60,110 @@ Jesteś Asystentem Nauczyciela AI. Pomagasz polskim nauczycielom tworzyć materi
 
 Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 
-- **ask_clarification** — gdy potrzebujesz więcej informacji od nauczyciela.
+- **ask_clarification** — gdy brakuje informacji; przy **ogólnej** prośbie o materiał **najpierw** doprecyzuj (patrz „Doprecyzowanie…” i „Przedstawienia…”).
 - **prepare_create_teacher_project** — przygotuj utworzenie folderu projektu (nazwa + opis). **Nie tworzy** projektu — użytkownik musi potwierdzić w aplikacji. Użyj, gdy użytkownik chce „zapisać paczkę”, folder z materiałami itd.
 - **prepare_delete_teacher_project** — przygotuj usunięcie projektu (**project_id** UUID albo **project_name**). **Nie usuwa** — wymaga potwierdzenia użytkownika.
-- **search_library_fragments** — wyszukaj w zindeksowanej bibliotece plików użytkownika (semantycznie). Użyj TYLKO gdy pytanie dotyczy treści z przesłanych materiałów, podręcznika, własnych notatek w systemie albo „co mam w plikach”. Nie wywołuj przy zwykłej rozmowie bez potrzeby odwołania do biblioteki.
+- **search_library_fragments** — wyszukaj w zindeksowanej bibliotece plików użytkownika (semantycznie). W bloku **„Katalogi użytkownika”** masz UUID i nazwy folderów — gdy rozmowa dotyczy tematu zgodnego z nazwą lub opisem katalogu, ogranicz wyszukiwanie przez **project_id** (preferowane) lub **project_name**. Gdy potrzebujesz przeszukać wszystko naraz — **entire_library: true**. Użyj, gdy pytanie dotyczy treści z materiałów w „Moje materiały”, albo gdy użytkownik wspomina temat powiązany z istniejącym folderem.
+- **search_web** — wyszukaj **w internecie** (Tavily). Użyj przy **opracowaniu / pogłębianiu wiedzy**, faktach aktualnych, definicjach, gdy biblioteka nie wystarcza. W jednej turze wywołaj **przed** ``generate_study``. Gdy API nie jest skonfigurowane, krótko poinformuj użytkownika i nie podawaj szczegółowych faktów z pamięci jako rzekomych wyników wyszukiwania.
+- **generate_study** — przygotuj **opracowanie edukacyjne** (markdown) na podany temat i **zapisz** je jako plik w bibliotece. Opieraj treść na bloku wyników ``search_web`` w kontekście; zamieść linki do stron z tych wyników (sekcja na końcu dokumentu). Gdy użytkownik chce materiały w **osobnym folderze**, w tej samej turze użyj **prepare_create_teacher_project** (nazwa np. „Opracowanie: …”) — po **potwierdzeniu** utworzenia folderu w UI pliki z kolejnych generacji trafią tam, jeśli rozmowa ma ustawiony aktywny katalog.
 - **export_library_file** — zapisz kopię istniejącego pliku z biblioteki jako PDF/DOCX/TXT/PPTX (podaj file_id UUID lub pomiń, by użyć pliku utworzonego w tej samej turze).
 - **generate_scenario** — scenariusz przedstawienia.
-- **generate_graphics** — grafika (plakat, ilustracja, scenografia).
+- **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
 - **generate_video** — storyboard/prompt wideo.
-- **generate_music** — KIE Suno API (``/api/v1/generate``): tekst/prompt, wymagany publiczny **callBackUrl**; w bibliotece najpierw **.txt** (taskId, JSON); przy włączonym pollingu backend może dociągnąć **.mp3** z „record-info”.
+- **generate_music** — **KIE** (Suno) + opcjonalnie **OpenRouter Lyria**: ten sam tekst idzie do obu; przy skonfigurowanych kluczach powstają **po dwa utwory** od każdego dostawcy (warianty aranżu). KIE: ``callBackUrl`` + ewentualnie **.mp3** z pollingu; Lyria: **.wav** z ``chat/completions`` (SSE).
 - **generate_poetry** — wiersz do recytacji.
 - **generate_presentation** — plan prezentacji (slajdy).
 - **reply_to_user** — odpowiedź tekstowa bez generowania materiałów.
 
+## Miejsce zapisu plików (katalog w rozmowie)
+
+W kontekście wiadomości użytkownika masz **„Katalog aktywny w tej rozmowie”** oraz blok **„Katalogi użytkownika”** (UUID + nazwy).
+
+1. Gdy **katalog aktywny: brak** i użytkownik prosi o **materiał do zapisania** (dowolne ``generate_*`` tworzące plik w bibliotece, w tym ``generate_study``) — **nie wywołuj** od razu narzędzi generujących. **Najpierw ask_clarification**: zapytaj, czy **utworzyć nowy folder** na podstawie tematu (zaproponuj nazwę), czy **dodać do istniejącego** — wymień **2–5** sensownych katalogów z listy (nazwa i UUID w apostrofach/backtickach), czy zostawić w **„Innych plikach”**. Wyjątek: użytkownik **jednoznacznie** pisze, że chce tylko „Inne pliki” / bez folderu — wtedy możesz od razu użyć ``generate_*``.
+2. Po wyborze **nowego folderu** — **prepare_create_teacher_project**; po potwierdzeniu w UI aplikacja ustawi aktywny katalog rozmowy i kolejne pliki tam trafią.
+3. Gdy **katalog aktywny jest ustawiony**, a nowa prośba **wyraźnie dotyczy innej tematyki** niż nazwa tego folderu — **ask_clarification**: czy zapisać w bieżącym folderze, czy w innym (kandydaci z listy).
+4. Przy **wielu** pasujących folderach — zawsze **ask_clarification** z listą do wyboru; nie zgaduj ``project_id`` w ciemno.
+
+## Doprecyzowanie przed generowaniem (wszystkie tematy)
+
+**Nie zgaduj w ciemno.** Gdy wiadomość jest **krótka, ogólna albo wieloznaczna**, a od tego zależy sensowny wynik — **najpierw ask_clarification**: krótki wstęp + **lista punktów** z pytaniami **dopasowanymi do typu prośby** (nie kopiuj ślepo listy z przedstawień, jeśli chodzi o coś innego).
+
+Wskazówki wg kontekstu (wybierz tylko pasujące):
+
+- **Prezentacja / plan lekcji** — klasa/przedmiot, czas, cel (wprowadzenie, powtórzenie), poziom szczegółowości, orientacyjna liczba slajdów lub „sam szkielet vs pełne notatki”.
+- **Grafika** — przeznaczenie (plakat, ilustracja, okładka), styl, grupa wiekowa, orientacja, czego unikać.
+- **Muzyka / piosenka** — wiek, nastrój, czy refren vs pełny tekst, ewentualnie tempo/gatunek.
+- **Wideo / storyboard** — długość lub format (np. krótki spot), odbiorca, klimat.
+- **Wiersz** — forma, długość, dokładniejsza tematyka niż jedno hasło.
+- **Ogólne „zrób materiały / zadania / kartkówkę”** — doprecyzuj **co konkretnie** ma powstać w ramach dostępnych narzędzi (scenariusz, prezentacja, grafika, muzyka, wiersz, wideo) albo wyjaśnij krótko ograniczenia, potem dopytaj.
+- **Opracowanie tematu / pogłębienie wiedzy / notatki do lekcji na dany temat** — jeśli prośba jest **jasna** (konkretne hasło lub temat), wywołaj **search_web** (dopasuj zapytanie: PL, kontekst szkolny) oraz **generate_study** z sensownym **material_title**. Gdy brakuje poziomu (klasa, przedmiot, czas), użyj **ask_clarification**.
+
+Możesz zaproponować **domyślne wartości w nawiasach**. Jeśli użytkownik pisze wprost: „zrób domyślnie / przyjmij standard / sama wybierz” — wtedy **możesz** od razu użyć ``generate_*`` z rozsądnymi założeniami i **krótko je wymień** w odpowiedzi.
+
+## Przedstawienia, jasełka, scenariusze
+
+Gdy użytkownik prosi o **przedstawienie / scenariusz / jasełka / widowisko / spektakl szkolny** i podaje tylko **temat lub hasło** (np. „zrób przedstawienie o Aladynie”), **nie wywołuj** od razu ``generate_scenario``, ``generate_music``, ``generate_graphics`` ani innych ``generate_*``. Najpierw **ask_clarification**: krótki, przyjazny wstęp i **czytelna lista punktów** z pytaniami doprecyzowującymi, m.in.:
+
+- **dla jakiej grupy** — klasa / przedszkole / wiek (np. klasa 3 SP, 10–12 lat);
+- **czas trwania** — orientacyjnie (np. 15, 30, 45 minut);
+- **obsada** — ilu uczniów / aktorów lub ile ról (szacunek);
+- **muzyka** — czy mają być piosenki w przedstawieniu; jeśli tak, **ile** (np. jedna refrenowa, dwie);
+- **materiały dodatkowe** — czy wygenerować też **grafikę** (plakat, ilustracja), **wideo**/storyboard, **wiersz**;
+- ewentualnie: **ton** (lżejszy / bardziej pouczający), ograniczenia (bez przemocy), **język** (tylko PL / wstawki obcojęzyczne).
+
+Możesz zaproponować **domyślne wartości w nawiasach** („jeśli nie odpiszesz, przyjmę 30 min i klasę 1–3”). Dopiero po odpowiedzi użytkownika (albo gdy **jednoznacznie** poda wszystko w jednej wiadomości) — użyj narzędzi generujących z **material_title**.
+
+## Zapis w „Moje materiały” (nie myl z czatem)
+
+- **Sam tekst** w ``reply_to_user`` **nie tworzy pliku** — użytkownik **nie zobaczy** go w „Materiały”, dopóki nie wywołasz narzędzia **zapisującego** (``generate_*`` lub ``export_library_file``) w tej turze.
+- **Nigdy** nie pisz, że plik „został zapisany w bibliotece / folderze / moich materiałach”, jeśli **nie** wywołałeś takiego narzędzia. W przeciwnym razie użytkownik straci dostęp do treści.
+- Gdy użytkownik prosi o **nowy plik**, **plik do pobrania**, **zapis w materiałach**, **„gdzie jest plik”** (bo oczekuje pliku), **nową wersję** scenariusza z rozszerzeniem (np. z piosenką) — **musisz** użyć właściwego ``generate_*`` z **nowym** ``material_title`` (dla scenariusza z tekstem piosenki nadal **generate_scenario** — cała treść w jednym pliku .txt).
+
+## Kontynuacja rozmowy (stan materiałów — krytyczne)
+
+W historii wiadomości asystenta mogą być **automatycznie doklejone** bloki w nawiasach kwadratowych, np.:
+``[W tej odpowiedzi wygenerowano moduły: …]`` oraz ``[Pliki zapisane w bibliotece: …]``.
+Traktuj je jako **fakt**: te pliki **już istnieją** w bibliotece użytkownika.
+
+- **Nie generuj ponownie** scenariusza, grafiki, muzyki, wideo itd., jeśli użytkownik **nie prosi wyraźnie** o nową wersję, poprawkę, przeróbkę lub „od zera”.
+- **Wyjątek:** słowa w stylu **„nowy plik”**, **„zapisz / wrzuć do materiałów”**, **„przygotuj plik”**, **„nowa wersja scenariusza”** oznaczają **konieczny** ponowny ``generate_*`` z nowym ``material_title`` — zasada „nie powtarzaj” **nie** dotyczy takiej prośby.
+- Gdy użytkownik pisze w stylu **„dodatkowo / jeszcze / kolejną / następną / tylko …”** i prosi np. **wyłącznie o piosenkę** — wywołaj **tylko** ``generate_music`` (z nowym ``material_title``). **Nie** wołaj ponownie ``generate_scenario``, ``generate_graphics`` ani innych ``generate_*``, chyba że w tej samej wiadomości wyraźnie je ponowi.
+- Jeśli potrzebujesz treści istniejącego scenariusza do spójnej piosenki, użyj **search_library_fragments** (zapytanie po temacie / fragmencie tytułu pliku z listy), zamiast pisać scenariusz od nowa.
+
 ## Zasady
 
-1. Gdy wiadomość jest OGÓLNA → użyj ask_clarification.
+1. Gdy wiadomość jest **ogólna** albo **niedookreślona** — użyj **ask_clarification** (wg sekcji „Doprecyzowanie…”; dla przedstawień dodatkowo „Przedstawienia…”). Nie zgaduj za użytkownika parametrów, które zmieniają mocno wynik (czas, odbiorca, zakres, liczba elementów), chyba że prosi o domyślne założenia.
 2. Gdy użytkownik chce zestaw materiałów „do zapisania” → **prepare_create_teacher_project**, potem (po potwierdzeniu przez użytkownika) narzędzia generujące; w jednej turze możesz przygotować projekt i wygenerować pliki — pliki trafią do aktywnego projektu dopiero po jego utworzeniu przez użytkownika.
 3. Przy **każdym** narzędziu ``generate_*`` ZAWSZE podaj pole **material_title**: krótki, opisowy tytuł pliku po polsku (2–12 słów), widoczny w bibliotece — bez znaku ``/``, bez rozszerzenia (np. „Scenariusz jasełka klasa 4”, „Piosenka o zimie SP”).
 4. Gdy masz wystarczające informacje → użyj odpowiedniego narzędzia generowania (z **material_title**).
-5. Możesz wywołać WIELE narzędzi jednocześnie (np. prepare_create_teacher_project + generate_scenario + generate_music).
+5. Możesz wywołać WIELE narzędzi jednocześnie (np. prepare_create_teacher_project + generate_music + generate_graphics). **generate_scenario** wywołaj **co najwyżej raz** w jednej turze (jedna odpowiedź) — nie zduplikuj scenariusza; inne ``generate_*`` mogą być wielokrotnie wg potrzeb.
 6. Eksport do PDF/DOCX: export_library_file (file_id z wcześniejszej wiadomości lub pominięty po wygenerowaniu pliku w tej samej odpowiedzi).
-7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące, żeby moduł dostał znalezione fragmenty w kontekście.
-8. Nie łącz **search_library_fragments** z **reply_to_user** w jednej turze — odpowiedź tekstowa byłaby ustalana bez wglądu w wyniki wyszukiwania. Szukaj w bibliotece osobno albo użyj samego **reply_to_user**, gdy biblioteka nie jest potrzebna.
-9. AKTYWNIE sugeruj powiązane materiały (scenariusz → piosenka, plakat).
-10. Odpowiadaj po polsku, przyjaźnie, zwięźle."""
+7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące, żeby moduł dostał znalezione fragmenty w kontekście. To samo dla **search_web** przed **generate_study**.
+8. Nie łącz **search_library_fragments** ani **search_web** z **reply_to_user** w jednej turze — odpowiedź tekstowa byłaby ustalana bez wglądu w wyniki. Szukaj osobno albo użyj samego **reply_to_user**, gdy wyszukiwanie nie jest potrzebne.
+9. **Katalogi (foldery):** Na początku wiadomości użytkownika masz listę jego katalogów. Gdy temat rozmowy pasuje do któregoś z nich — zawołaj **search_library_fragments** z odpowiednim **project_id** (albo doprecyzuj przez **ask_clarification**, jeśli pasuje kilka folderów albo niepewność).
+10. Przy **pierwszej** pełnej prośbie o przedstawienie / zestaw materiałów możesz AKTYWNIE zasugerować powiązane materiały (scenariusz → piosenka, plakat). Przy **kolejnych** wiadomościach dodawaj **tylko** to, o co użytkownik prosi w bieżącej wiadomości (patrz „Kontynuacja rozmowy”) — nie powtarzaj całego pakietu.
+11. Odpowiadaj po polsku, przyjaźnie, zwięźle.
+12. **Język materiałów** musi odpowiadać językowi użytkownika (zwykle polski): scenariusze, teksty, a także **napisy i etykiety na grafikach** (plakaty, slajdy-wizualizacje) — w tym samym języku co prośba; przy ``generate_graphics`` moduł przekazuje do Nano Banana pole ``prompt_image`` w tym języku (dokładne brzmienie tekstu na obrazie)."""
 
 TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "ask_clarification",
-        "description": "Zadaj pytanie doprecyzowujące nauczycielowi, gdy brakuje informacji.",
+        "description": (
+            "Gdy prośba jest ogólna lub wieloznaczna — zanim wywołasz generate_*: jedno pole question z krótkim wstępem i listą punktów "
+            "dopasowaną do tematu (prezentacja: klasa, czas, cel; grafika: styl, przeznaczenie; muzyka: wiek, nastrój; przedstawienie: obsada, czas, piosenki itd.)."
+        ),
         "parameters": {"type": "object", "properties": {
-            "question": {"type": "string", "description": "Pytanie do nauczyciela"},
+            "question": {"type": "string", "description": "Tekst do nauczyciela: wstęp + pytania (np. lista punktowana)"},
             "suggestions": {"type": "array", "items": {"type": "string"},
                             "description": "Sugestie dodatkowych materiałów"},
         }, "required": ["question"]},
     }},
     {"type": "function", "function": {
         "name": "reply_to_user",
-        "description": "Odpowiedz nauczycielowi tekstem (bez generowania materiałów).",
+        "description": (
+            "Odpowiedz nauczycielowi tekstem (bez generowania materiałów). "
+            "**Nie zapisuje plików** — do pliku w „Moje materiały” potrzebne jest ``generate_*`` lub ``export_library_file``."
+        ),
         "parameters": {"type": "object", "properties": {
             "message": {"type": "string", "description": "Treść odpowiedzi"},
         }, "required": ["message"]},
@@ -105,10 +172,28 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
         "name": "search_library_fragments",
         "description": (
             "Semantyczne wyszukiwanie po treści plików użytkownika w bibliotece (nie dotyczy plików przypiętych do wiadomości — te są już w kontekście). "
-            "Wywołuj tylko, gdy potrzebujesz fragmentów z zindeksowanych materiałów."
+            "Opcjonalnie ogranicz do jednego katalogu (**project_id** z bloku „Katalogi użytkownika” albo **project_name**). "
+            "**entire_library: true** — przeszukaj całą bibliotekę (wszystkie katalogi + „Inne pliki”), ignorując katalog aktywny w rozmowie. "
+            "Bez tych pól zakres domyślny to katalog aktywny w rozmowie (jeśli jest), inaczej cała biblioteka."
         ),
         "parameters": {"type": "object", "properties": {
             "query": {"type": "string", "description": "Zapytanie wyszukiwawcze po sensie (np. temat lekcji, pojęcie z notatek)"},
+            "project_id": {"type": "string", "description": "Opcjonalnie: UUID katalogu z listy w kontekście"},
+            "project_name": {"type": "string", "description": "Opcjonalnie: nazwa katalogu (dokładna lub częściowa), gdy brak UUID"},
+            "entire_library": {
+                "type": "boolean",
+                "description": "true = szukaj w całej bibliotece, pomiń domyślne ograniczenie do aktywnego katalogu",
+            },
+        }, "required": ["query"]},
+    }},
+    {"type": "function", "function": {
+        "name": "search_web",
+        "description": (
+            "Wyszukiwanie w internecie (Tavily). Użyj przed generate_study lub gdy potrzebujesz aktualnych faktów spoza biblioteki użytkownika. "
+            "Sformułuj zapytanie po polsku z kontekstem edukacyjnym."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "query": {"type": "string", "description": "Zapytanie do wyszukiwarki (np. fotosynteza lekcja biologia szkoła podstawowa)"},
         }, "required": ["query"]},
     }},
     {"type": "function", "function": {
@@ -126,6 +211,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
         "name": "prepare_delete_teacher_project",
         "description": (
             "Przygotuj usunięcie projektu użytkownika — nie usuwa od razu; wymaga potwierdzenia. "
+            "Po potwierdzeniu usuwany jest folder oraz wszystkie przypisane do niego pliki (biblioteka + indeks). "
             "Podaj project_id (UUID) albo dokładną project_name (jak na liście projektów)."
         ),
         "parameters": {"type": "object", "properties": {
@@ -143,7 +229,10 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
     }},
     {"type": "function", "function": {
         "name": "generate_scenario",
-        "description": "Wygeneruj scenariusz przedstawienia szkolnego.",
+        "description": (
+            "Wygeneruj scenariusz przedstawienia szkolnego i **zapisz jako plik .txt w bibliotece** („Moje materiały”). "
+            "Bez tego wywołania scenariusz **nie pojawi się** w materiałach. Maks. jedno wywołanie na turę (kolejne zignoruje backend)."
+        ),
         "parameters": {"type": "object", "properties": {
             "topic": {"type": "string", "description": "Temat przedstawienia"},
             "material_title": {
@@ -157,9 +246,12 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
     }},
     {"type": "function", "function": {
         "name": "generate_graphics",
-        "description": "Wygeneruj grafikę edukacyjną (plakat, ilustrację, scenografię).",
+        "description": (
+            "Wygeneruj grafikę edukacyjną (plakat, ilustrację, scenografię). "
+            "Język napisów na obrazie i opisu — taki jak użytkownika (zwykle polski)."
+        ),
         "parameters": {"type": "object", "properties": {
-            "description": {"type": "string", "description": "Szczegółowy opis grafiki po polsku"},
+            "description": {"type": "string", "description": "Szczegółowy opis grafiki w języku użytkownika (zwykle po polsku)"},
             "material_title": {
                 "type": "string",
                 "description": "Krótki tytuł pliku w bibliotece, np. Plakat bezpieczeństwo w szkole",
@@ -188,7 +280,8 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
         "name": "generate_music",
         "description": (
             "Wygeneruj prompt muzyczny i tekst piosenki; zapis w bibliotece jako .txt z metadanymi. "
-            "Przy KIE: wyślij zadanie generacji — MP3 nie wraca synchronicznie; w pliku będzie taskId / odpowiedź JSON."
+            "Przy skonfigurowanym KIE i OpenRouter: ten sam materiał trafia do obu — po kilka wariantów "
+            "audio na dostawcę (MP3 z KIE, WAV z Lyrii; liczba: MUSIC_VARIANTS_PER_PROVIDER w .env)."
         ),
         "parameters": {"type": "object", "properties": {
             "topic": {"type": "string", "description": "Temat piosenki"},
@@ -230,22 +323,45 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             "audience": {"type": "string", "description": "Odbiorcy (klasa, wiek)"},
         }, "required": ["topic", "material_title"]},
     }},
+    {"type": "function", "function": {
+        "name": "generate_study",
+        "description": (
+            "Opracowanie edukacyjne (markdown) na podany temat — zapis w bibliotece jako plik tekstowy. "
+            "W tej samej turze wywołaj wcześniej search_web, by w kontekście znalazły się materiały z sieci."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "topic": {"type": "string", "description": "Temat opracowania"},
+            "material_title": {
+                "type": "string",
+                "description": "Tytuł pliku w bibliotece, np. Opracowanie fotosynteza klasa 7",
+            },
+            "audience": {"type": "string", "description": "Odbiorcy: klasa, przedmiot, poziom"},
+            "depth": {
+                "type": "string",
+                "enum": ["zwięzły", "standard", "rozszerzony"],
+                "description": "Zakres materiału (domyślnie wybierz sensownie wg prośby)",
+            },
+        }, "required": ["topic", "material_title"]},
+    }},
 ]
 
 MODULE_SYSTEM_PROMPTS: dict[str, str] = {
     "scenario": (
         "Jesteś dramaturgiem dla dzieci i młodzieży. Napisz kompletny scenariusz "
-        "przedstawienia: postacie, dialogi, didaskalia, podział na sceny. Po polsku. "
+        "przedstawienia: postacie, dialogi, didaskalia, podział na sceny. "
+        "Język całego scenariusza = język prośby użytkownika (zwykle polski). "
         "Tytuł pliku w bibliotece został już podany w argumencie narzędzia ``material_title`` — treść scenariusza ma z nim być spójna tematycznie."
     ),
     "graphics": (
-        "Jesteś ekspertem od generowania obrazów AI. Na podstawie opisu wygeneruj WYŁĄCZNIE JSON "
-        '(bez markdown, bez ```): {"prompt_en": "<szczegółowy prompt po angielsku, '
-        'zoptymalizowany pod DALL-E 3, 1-2 zdania, dużo detali wizualnych>", '
-        '"style_notes": "<notatki o stylu po polsku>", '
-        '"description_pl": "<krótki opis po polsku co przedstawia grafika>"}\n'
-        "Prompt angielski: kolory, kompozycja, oświetlenie, perspektywa. "
-        "Dla dzieci: jasne kolory, przyjazne postacie, brak przemocy."
+        "Jesteś ekspertem od generowania obrazów AI (OpenRouter: Google Nano Banana / Gemini Image). "
+        "Język napisów na obrazie i opisu sceny = język prośby użytkownika (zwykle polski). Na podstawie opisu wygeneruj WYŁĄCZNIE JSON "
+        '(bez markdown, bez ```): {"prompt_image": "<jeden spójny prompt pod model obrazu w TYM SAMYM języku co prośba '
+        '(po polsku jeśli nauczyciel pisze po polsku); szczegóły: kompozycja, kolory, oświetlenie, styl; '
+        'jeśli na grafice ma być tekst — wpisz go dokładnie po polsku lub w języku prośby>", '
+        '"style_notes": "<notatki o stylu w języku prośby>", '
+        '"description_pl": "<krótki opis — po polsku gdy prośba po polsku>"}\n'
+        "Dzieci i młodzież: jasne kolory, przyjazne postacie, bez przemocy. "
+        'Opcjonalnie dodaj "prompt_en" — do generowania używane jest wyłącznie "prompt_image".'
     ),
     "video": (
         "Jesteś ekspertem od wideo AI. Na podstawie opisu wygeneruj WYŁĄCZNIE JSON "
@@ -265,7 +381,20 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         "Dopasuj tematykę do ``material_title`` z narzędzia."
     ),
     "poetry": "Napisz wiersz do recytacji zgodnie z prośbą. Krótki wstęp i treść wiersza.",
-    "presentation": "Napisz plan prezentacji (nagłówki slajdów + punktory). Markdown.",
+    "presentation": (
+        "Napisz plan prezentacji (nagłówki slajdów + punktory) w języku prośby użytkownika (zwykle polski). Markdown."
+    ),
+    "study": (
+        "Tworzysz **opracowanie edukacyjne** (markdown) dla nauczyciela. Język = język prośby (zwykle polski). "
+        "Struktura: krótki wstęp; **kluczowe pojęcia**; rozwinięcie merytoryczne z nagłówkami; "
+        "**ćwiczenia lub pytania sprawdzające** (opcjonalnie); **słowniczek** lub **ciekawostki** (krótko, jeśli pasuje). "
+        "Fragmenty z biblioteki i wyniki web w kontekście traktuj jako **surowiec** — syntetyzuj, nie wklejaj ich ponownie "
+        "jako cytatów z nagłówkami plików; unikaj powtarzania tych samych sekcji. "
+        "Jeśli w kontekście jest blok „Wyniki wyszukiwania w internecie”, **oprzyj się na nim** — nie kopiuj bezkrytycznie; "
+        "uogólnij i dopasuj do poziomu z parametrów. Na końcu sekcja **Źródła (web)** z listą linków (tytuł + URL) "
+        "wyłącznie z tego bloku. Gdy bloku wyszukiwania nie ma, napisz krótką notkę, że treść opiera się na ogólnej wiedzy modelu, "
+        "i unikaj podawania dat lub statystyk bez pewności."
+    ),
 }
 
 TOOL_TO_MODULE: dict[str, str] = {
@@ -275,17 +404,204 @@ TOOL_TO_MODULE: dict[str, str] = {
     "generate_music": "music",
     "generate_poetry": "poetry",
     "generate_presentation": "presentation",
+    "generate_study": "study",
 }
+
+# Moduły zapisujące długi tekst .txt — długi reply_to_user w tej samej turze zwykle duplikuje plik w czacie.
+_TEXT_FILE_MODULES = frozenset({"study", "scenario", "presentation", "poetry"})
+_REPLY_TO_USER_MAX_AFTER_TEXT_MODULE = 2800
 
 # Gdy brak wierszy w DB po zapisie (rzadkie) — bez żargonu konfiguracyjnego.
 _MODULE_REPLY_FALLBACK: dict[str, str] = {
-    "music": "Zapisano materiały w bibliotece. Otwórz „Moje materiały”, aby zobaczyć plik .txt i ewentualnie .mp3.",
+    "music": "Zapisano materiały w bibliotece. Otwórz „Moje materiały”, aby zobaczyć plik .txt oraz pliki audio (KIE: .mp3, Lyria: .wav).",
     "graphics": "Zapisano plik w „Moje materiały”.",
     "video": "Zapisano materiał wideo w „Moje materiały”.",
     "scenario": "Zapisano scenariusz w „Moje materiały”.",
     "poetry": "Zapisano wiersz w „Moje materiały”.",
     "presentation": "Zapisano plan prezentacji w „Moje materiały”.",
+    "study": "Zapisano opracowanie tematu w „Moje materiały”.",
 }
+
+_INTENT_MODULE_TO_GENERATE_TOOL: dict[str, str] = {
+    "scenario": "generate_scenario",
+    "music": "generate_music",
+    "graphics": "generate_graphics",
+    "video": "generate_video",
+    "poetry": "generate_poetry",
+    "presentation": "generate_presentation",
+    "study": "generate_study",
+}
+
+_PERSIST_FILE_TOOL_NAMES = frozenset(TOOL_TO_MODULE.keys()) | frozenset({"export_library_file"})
+
+_NON_FILE_OR_SETUP_TOOLS = frozenset({
+    "ask_clarification",
+    "reply_to_user",
+    "search_library_fragments",
+    "search_web",
+    "prepare_create_teacher_project",
+    "prepare_delete_teacher_project",
+})
+
+
+def _user_requires_library_persist(user_message: str) -> bool:
+    """Czy wiadomość wyraźnie wymaga zapisu pliku w bibliotece (nie tylko tekstu w czacie)."""
+    t = (user_message or "").lower()
+    if re.search(r"\bnowy plik\b|\bnowego pliku\b|\bnowym pliku\b", t):
+        return True
+    if any(
+        p in t
+        for p in (
+            "przygotuj plik",
+            "przygotuj nowy",
+            "zrób plik",
+            "zrob plik",
+            "plik ze scenariusz",
+            "scenariusz z piosenk",
+            "w moje materiały",
+            "w moje materialy",
+        )
+    ):
+        return True
+    if "do pobrania" in t or "pobierz plik" in t:
+        return True
+    if re.search(r"\bgdzie\b.{0,120}\bplik", t):
+        return True
+    if "zapisz" in t and any(x in t for x in ("materiał", "material", "bibliotek", "scenariusz")):
+        return True
+    if "nowa wersja" in t and "scenariusz" in t:
+        return True
+    return False
+
+
+def _should_retry_llm_for_library_persist(completion: Any, user_message: str) -> bool:
+    """Gdy user chce plik w „Moje materiały”, a model zwrócił tylko tekst / szukanie — ponów LLM.
+
+    **Nie** ponawiaj, gdy jest ``prepare_create_teacher_project`` / ``prepare_delete_teacher_project`` —
+    wtedy UI pokazuje własny przycisk potwierdzenia; druga tura LLM zastąpiłaby odpowiedź i **usunęłaby token** z JSON.
+    """
+    if not _user_requires_library_persist(user_message):
+        return False
+    if not completion.tool_calls:
+        return True
+    names = {tc.name or "" for tc in completion.tool_calls}
+    if names <= {"ask_clarification"}:
+        return False
+    if "prepare_create_teacher_project" in names or "prepare_delete_teacher_project" in names:
+        return False
+    for n in names:
+        if n in _PERSIST_FILE_TOOL_NAMES:
+            return False
+        if n not in _NON_FILE_OR_SETUP_TOOLS:
+            return False
+    return True
+
+
+def _message_suggests_followup_addition(user_message: str) -> bool:
+    t = (user_message or "").lower()
+    markers = (
+        "dodatk",
+        "jeszcze",
+        "kolejn",
+        "następn",
+        "ekstra",
+        " drug",
+        "trzeci",
+        "another",
+        "one more",
+        "poza tym",
+        "oprócz",
+        "oprocz",
+    )
+    if "tylko " in t or t.strip().startswith("tylko"):
+        return True
+    return any(m in t for m in markers)
+
+
+def _narrow_incremental_generate_intent(user_message: str) -> str | None:
+    """Jednoznaczny jeden typ materiału w prośbie — inaczej None (bez agresywnego filtra)."""
+    t = (user_message or "").lower()
+    mentions: dict[str, bool] = {
+        "scenario": any(
+            k in t
+            for k in ("scenariusz", "przedstaw", "jaseł", "jasel", "dialog", "widowisk", "dramat", "sceny")
+        ),
+        "music": any(
+            k in t
+            for k in (
+                "piosenk",
+                "muzyk",
+                "nut",
+                "refren",
+                "śpiew",
+                "spiew",
+                "utwór",
+                "utwor",
+                "suno",
+                "chór",
+            )
+        ),
+        "graphics": any(k in t for k in ("grafik", "plakat", "obraz", "ilustrac", "poster", "okład", "oklad")),
+        "video": any(k in t for k in ("wideo", "film", "storyboard", "kadr")),
+        "poetry": any(k in t for k in ("wiersz", "poezj", "haiku")),
+        "presentation": any(k in t for k in ("prezentac", "slajd", "powerpoint")),
+        "study": any(k in t for k in ("opracow", "pogłęb", "pogleb", "notatki do lekcji")),
+    }
+    true_keys = [k for k, v in mentions.items() if v]
+    if len(true_keys) != 1:
+        return None
+    return true_keys[0]
+
+
+def _history_shows_prior_generated_artifacts(history: list[tuple[str, str]]) -> bool:
+    """Czy w historii są znaczniki z backendu o już zapisanych materiałach."""
+    for role, content in history:
+        if role != "assistant":
+            continue
+        c = content or ""
+        if "[W tej odpowiedzi wygenerowano moduły:" in c or "[Pliki zapisane w bibliotece:" in c:
+            return True
+    return False
+
+
+def _filter_incremental_redundant_tool_calls(
+    user_message: str,
+    history: list[tuple[str, str]],
+    tool_calls: list[Any],
+) -> list[Any]:
+    """Gdy użytkownik dopisuje jeden typ materiału, usuń inne wywołania generate_* (oszczędność tokenów i plików)."""
+    if not tool_calls:
+        return tool_calls
+    intent_mod = _narrow_incremental_generate_intent(user_message)
+    if intent_mod is None:
+        return tool_calls
+    if not (
+        _message_suggests_followup_addition(user_message)
+        or _history_shows_prior_generated_artifacts(history)
+    ):
+        return tool_calls
+    keep_name = _INTENT_MODULE_TO_GENERATE_TOOL.get(intent_mod)
+    if not keep_name or keep_name not in TOOL_TO_MODULE:
+        return tool_calls
+    filtered: list[Any] = []
+    removed = False
+    for tc in tool_calls:
+        name = tc.name or ""
+        if name in TOOL_TO_MODULE and name != keep_name:
+            removed = True
+            logger.info(
+                "Pominięto %s — wąska prośba kontynuacyjna (zostaje %s).",
+                name,
+                keep_name,
+            )
+            continue
+        filtered.append(tc)
+    if not removed:
+        return tool_calls
+    if not any((tc.name or "") == keep_name for tc in filtered):
+        logger.info("Filtr kontynuacji cofnięty — brak wywołania %s w odpowiedzi modelu.", keep_name)
+        return tool_calls
+    return filtered
 
 
 def _brief_file_label(mime: str | None, name: str) -> str:
@@ -306,57 +622,64 @@ def _brief_file_label(mime: str | None, name: str) -> str:
 
 def _music_kie_status_note(
     extra: dict[str, Any],
-    mp3_bytes: bytes | None,
+    has_saved_audio: bool,
     result: Any,
     *,
     poll_enabled: bool,
-    music_gen_enabled: bool,
+    music_providers_configured: bool,
 ) -> str | None:
-    """Krótki komunikat dla czatu, gdy nie ma MP3 albo KIE zwróciło błąd (np. limity, timeout)."""
-    if mp3_bytes:
+    """Komunikat przy braku zapisanego audio — KIE i/lub Lyria."""
+    if has_saved_audio:
         return None
-    if not music_gen_enabled:
+    if not music_providers_configured:
         return (
-            "Generacja audio przez KIE nie jest skonfigurowana (brak klucza API) — zapisano tylko materiał tekstowy."
+            "Generacja audio nie jest skonfigurowana (ustaw **KIE_API_KEY** i/lub **OPENROUTER_API_KEY** "
+            "oraz włączoną Lyrię) — zapisano tylko materiał tekstowy."
         )
+    parts: list[str] = []
     if extra.get("kie_error"):
-        return f"KIE — problem przy uruchomieniu generacji:\n{str(extra['kie_error'])[:900]}"
+        parts.append(f"KIE — problem przy uruchomieniu generacji:\n{str(extra['kie_error'])[:900]}")
     if extra.get("kie_download_error"):
-        return f"KIE — nie udało się pobrać pliku audio:\n{str(extra['kie_download_error'])[:700]}"
+        parts.append(f"KIE — nie udało się pobrać pliku audio:\n{str(extra['kie_download_error'])[:700]}")
+    if extra.get("kie_download_errors"):
+        kde = extra["kie_download_errors"]
+        if isinstance(kde, list) and kde:
+            parts.append("KIE — błędy pobierania wariantów:\n" + "\n".join(str(x)[:350] for x in kde[:5]))
     if extra.get("kie_poll_error"):
-        return (
-            "KIE — zadanie generacji audio nie zakończyło się powodzeniem albo zwrócono błąd "
-            "(np. wyczerpane środki, odrzucona treść). Szczegóły:\n"
+        parts.append(
+            "KIE — zadanie nie zakończyło się powodzeniem albo zwrócono błąd:\n"
             f"{str(extra['kie_poll_error'])[:900]}"
         )
-    if result and getattr(result, "ok", False) and getattr(result, "task_id", None):
+    if (
+        result
+        and getattr(result, "ok", False)
+        and getattr(result, "task_id", None)
+        and extra.get("kie_submitted")
+        and not parts
+    ):
         if not poll_enabled:
-            return (
+            parts.append(
                 "Automatyczne oczekiwanie na MP3 jest wyłączone (KIE_MUSIC_POLL_TIMEOUT_SECONDS = 0). "
                 "Gdy utwór będzie gotów, użyj taskId z pliku .txt w „Moje materiały” (import z KIE)."
             )
-        st = extra.get("kie_poll_status")
-        if st == "SUCCESS" and not extra.get("kie_audio_urls"):
-            return (
-                "KIE zgłosił zakończenie zadania, ale w odpowiedzi nie było jeszcze adresu audio. "
-                "Za chwilę spróbuj ponownie pobrać MP3 po taskId w „Moje materiały”."
-            )
-        return (
-            "W ustawionym czasie nie pojawiło się jeszcze gotowe audio od KIE (generacja często trwa dłużej niż timeout). "
-            "To nie musi być błąd konta — sprawdź saldo i limity w panelu KIE oraz pole taskId w pliku .txt; "
-            "możesz ponowić import MP3 w „Moje materiały”."
-        )
+        else:
+            st = extra.get("kie_poll_status")
+            if st == "SUCCESS" and not extra.get("kie_audio_urls"):
+                parts.append(
+                    "KIE zgłosił zakończenie zadania, ale w odpowiedzi nie było jeszcze adresu audio. "
+                    "Możesz ponowić import MP3 po taskId w „Moje materiały”."
+                )
+            else:
+                parts.append(
+                    "W ustawionym czasie nie pojawiło się gotowe audio od KIE — sprawdź saldo KIE i taskId w pliku .txt; "
+                    "możesz ponowić import w „Moje materiały”."
+                )
+    ly_errs = extra.get("lyria_errors")
+    if isinstance(ly_errs, list) and ly_errs:
+        parts.append("OpenRouter Lyria:\n" + "\n".join(str(x)[:450] for x in ly_errs[:6]))
+    if parts:
+        return "\n\n".join(parts)[:2200]
     return None
-
-
-def _infer_instrumental_music(llm_text: str, tool_args: dict[str, Any], default_instrumental: bool) -> bool:
-    v = tool_args.get("instrumental")
-    if isinstance(v, bool):
-        return v
-    t = llm_text.lower()
-    if any(k in t for k in ("zwrotka", "refren", "tekst piosenki", "słowa piosenki", "lyrics:", "verse")):
-        return False
-    return default_instrumental
 
 
 def _sanitize_filename_stem(raw: str, max_len: int = 100) -> str:
@@ -403,6 +726,108 @@ async def _resolve_user_project_for_delete(
     return None, f"Wiele projektów pasuje do „{q}” — podaj **project_id** (UUID)."
 
 
+async def _resolve_search_project_scope(
+    session: AsyncSession,
+    user_id: UUID,
+    tool_args: dict[str, Any],
+    active_project_id: UUID | None,
+) -> tuple[UUID | None, str | None]:
+    """Zakres ``project_id`` dla ``semantic_search_chunks`` oraz ewentualna notka do odpowiedzi."""
+    if tool_args.get("entire_library") is True:
+        return None, None
+    pid_raw = tool_args.get("project_id")
+    if pid_raw not in (None, ""):
+        try:
+            uid = UUID(str(pid_raw).strip())
+        except (ValueError, TypeError):
+            return active_project_id, "Nieprawidłowy **project_id** w wyszukiwaniu — użyto domyślnego zakresu (aktywny katalog lub cała biblioteka)."
+        row = await session.get(ProjectORM, uid)
+        if row is None or row.user_id != user_id:
+            return active_project_id, "Wskazany katalog nie istnieje lub nie należy do użytkownika — użyto domyślnego zakresu."
+        return uid, None
+    pname_raw = tool_args.get("project_name")
+    if pname_raw is not None and str(pname_raw).strip():
+        q = str(pname_raw).strip()
+        stmt_exact = (
+            select(ProjectORM)
+            .where(ProjectORM.user_id == user_id)
+            .where(func.lower(ProjectORM.name) == q.lower())
+        )
+        rows = list((await session.scalars(stmt_exact)).all())
+        if len(rows) == 1:
+            return rows[0].id, None
+        stmt_like = (
+            select(ProjectORM)
+            .where(ProjectORM.user_id == user_id)
+            .where(ProjectORM.name.ilike(f"%{q}%"))
+        )
+        rows = list((await session.scalars(stmt_like)).all())
+        if len(rows) == 1:
+            return rows[0].id, None
+        if len(rows) == 0:
+            return None, (
+                f"Nie znaleziono katalogu pasującego do „{q}” — przeszukuję całą bibliotekę (bez „Omówienia tematu”)."
+            )
+        sample = ", ".join(f"„{r.name}”" for r in rows[:5])
+        suffix = f" (+{len(rows) - 5} więcej)" if len(rows) > 5 else ""
+        return None, (
+            f"Wiele katalogów pasuje do „{q}”: {sample}{suffix}. Podaj dokładną nazwę lub UUID z listy — przeszukuję całą bibliotekę."
+        )
+    return active_project_id, None
+
+
+async def _build_projects_catalog_block(
+    session: AsyncSession, user_id: UUID, active_project_id: UUID | None,
+) -> str:
+    """Lista katalogów użytkownika z liczbą plików — dla LLM (dopasowanie tematu do folderu)."""
+    proj_stmt = (
+        select(ProjectORM)
+        .where(ProjectORM.user_id == user_id)
+        .order_by(ProjectORM.created_at.desc())
+    )
+    projects = list((await session.scalars(proj_stmt)).all())
+    cnt_rows = (
+        await session.execute(
+            select(FileAssetORM.project_id, func.count(FileAssetORM.id))
+            .where(FileAssetORM.user_id == user_id)
+            .group_by(FileAssetORM.project_id)
+        )
+    ).all()
+    counts: dict[Any, int] = {pid: int(n) for pid, n in cnt_rows}
+    loose = int(counts.get(None, 0))
+    lines: list[str] = []
+    if projects:
+        lines.append("=== Katalogi użytkownika (foldery w „Moje materiały”) ===")
+        for p in projects:
+            desc = (p.description or "").replace("\n", " ").strip()
+            if len(desc) > 220:
+                desc = desc[:217].rstrip() + "…"
+            n_files = int(counts.get(p.id, 0))
+            tail = f" — {desc}" if desc else ""
+            lines.append(f"- **id=`{p.id}`** | **{p.name}**{tail} | plików: {n_files}")
+    lines.append(f'Pliki poza katalogami („Inne pliki”): {loose}.')
+    if active_project_id:
+        ap = next((x for x in projects if x.id == active_project_id), None)
+        if ap:
+            lines.append(
+                f'**Katalog aktywny w tej rozmowie (UI):** „{ap.name}” (`{active_project_id}`). '
+                "Nowe pliki zapisują się tu, o ile nie wskażesz inaczej."
+            )
+        else:
+            lines.append(
+                f"**Katalog aktywny w UI:** `{active_project_id}` (brak na liście — sprawdź w aplikacji)."
+            )
+    else:
+        lines.append(
+            "**Katalog aktywny w tej rozmowie:** brak — nowe pliki trafią do „Inne pliki”, chyba że użytkownik wybierze katalog."
+        )
+    lines.append(
+        "Gdy temat rozmowy pasuje do nazwy/opisu katalogu, wywołaj **search_library_fragments** z **project_id** "
+        "(lub **project_name**). Przy niepewności — **ask_clarification** z propozycjami z listy."
+    )
+    return "\n".join(lines)
+
+
 def _resolve_file_stem(module: str, tool_args: dict[str, Any] | None) -> str:
     """Tytuł pliku z argumentów narzędzia (LLM) lub sensowny fallback."""
     ta = tool_args or {}
@@ -425,6 +850,8 @@ def _resolve_file_stem(module: str, tool_args: dict[str, Any] | None) -> str:
         return _sanitize_filename_stem(str(ta.get("topic") or "wiersz")) or "wiersz"
     if module == "presentation":
         return _sanitize_filename_stem(str(ta.get("topic") or "prezentacja")) or "prezentacja"
+    if module == "study":
+        return _sanitize_filename_stem(str(ta.get("topic") or "opracowanie")) or "opracowanie"
     return _sanitize_filename_stem(module) or module
 
 
@@ -434,13 +861,15 @@ def _tool_call_sort_key(tc: Any) -> tuple[int, str]:
         return (0, tc.id or "")
     if name == "search_library_fragments":
         return (1, tc.id or "")
-    if name in TOOL_TO_MODULE:
+    if name == "search_web":
         return (2, tc.id or "")
-    if name == "export_library_file":
+    if name in TOOL_TO_MODULE:
         return (3, tc.id or "")
-    if name in ("reply_to_user", "ask_clarification"):
+    if name == "export_library_file":
         return (4, tc.id or "")
-    return (2, tc.id or "")
+    if name in ("reply_to_user", "ask_clarification"):
+        return (5, tc.id or "")
+    return (3, tc.id or "")
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +903,7 @@ class ChatOrchestratorUseCase:
         video_gen: VideoGeneratorPort | None = None,
         music_gen: MusicGeneratorPort | None = None,
         llm_modules: LlmClientPort | None = None,
+        lyria_music: OpenRouterLyriaMusicGenerator | None = None,
     ) -> None:
         self._llm = llm
         self._llm_modules = llm_modules or llm
@@ -481,6 +911,7 @@ class ChatOrchestratorUseCase:
         self._image_gen = image_gen
         self._video_gen = video_gen
         self._music_gen = music_gen
+        self._lyria_music = lyria_music
 
     # --- Główny punkt wejścia ---
 
@@ -501,8 +932,10 @@ class ChatOrchestratorUseCase:
         context_block = await self._build_context(session, user_id, message, attached_file_ids, project_id)
         logger.debug("Context block length: %d chars", len(context_block))
 
+        hist_cap = get_settings().chat_orchestrator_max_messages
+        hist_slice = history[-hist_cap:] if hist_cap > 0 else history
         api_messages: list[dict[str, Any]] = [
-            {"role": role, "content": content} for role, content in history[-20:]
+            {"role": role, "content": content} for role, content in hist_slice
         ]
         user_content = f"{context_block}\n{message.strip()}" if context_block else message.strip()
         api_messages.append({"role": "user", "content": user_content})
@@ -520,8 +953,38 @@ class ChatOrchestratorUseCase:
             completion=completion, system_text=ORCHESTRATOR_SYSTEM, user_text=user_content, dry_run=dry_run,
         )
 
+        if not dry_run and _should_retry_llm_for_library_persist(completion, message):
+            logger.info(
+                "Orchestrator: ponawiam wywołanie LLM — prośba o zapis w bibliotece bez generate_*/export_library_file.",
+            )
+            correction = (
+                "【Wymóg systemu】 Poprzednia odpowiedź nie wywołała narzędzia zapisującego plik w „Moje materiały”. "
+                "Użytkownik oczekuje pliku w bibliotece. Wywołaj teraz **generate_scenario** (scenariusz, także ze "
+                "wkomponowaną piosenką — całość w jednym pliku) lub inne właściwe **generate_*** z **nowym** "
+                "**material_title**. **reply_to_user** samo w sobie **nie tworzy pliku** — nie pisz, że plik został "
+                "zapisany, dopóki nie użyjesz narzędzia."
+            )
+            api_retry = [*api_messages, {"role": "user", "content": correction}]
+            completion = await self._llm.complete_with_tools(
+                ORCHESTRATOR_SYSTEM, api_retry, TOOL_DEFINITIONS,
+            )
+            logger.debug(
+                "LLM retry (persist): tool_calls=%d text_len=%d",
+                len(completion.tool_calls), len(completion.text or ""),
+            )
+            await record_llm_usage_event(
+                session,
+                user_id=user_id,
+                call_kind="orchestrator_retry",
+                module_name=None,
+                completion=completion,
+                system_text=ORCHESTRATOR_SYSTEM,
+                user_text=f"{user_content}\n\n[retry_persist]\n{correction}",
+                dry_run=dry_run,
+            )
+
         return await self._process_tool_calls(
-            session, user_id, project_id, message, context_block, completion, dry_run,
+            session, user_id, project_id, message, context_block, completion, dry_run, history,
         )
 
     # --- Budowanie kontekstu ---
@@ -535,6 +998,7 @@ class ChatOrchestratorUseCase:
         ctx_attached = await load_attached_context(session, user_id, attached_file_ids, message)
         if ctx_attached:
             parts.append(f"=== Załączone pliki ===\n{ctx_attached}")
+        parts.append(await _build_projects_catalog_block(session, user_id, project_id))
         return "\n".join(parts)
 
     # --- Przetwarzanie tool calls ---
@@ -542,6 +1006,7 @@ class ChatOrchestratorUseCase:
     async def _process_tool_calls(
         self, session: AsyncSession, user_id: UUID, project_id: UUID | None,
         user_message: str, context: str, completion: Any, dry_run: bool,
+        history: list[tuple[str, str]],
     ) -> ChatResult:
         if not completion.tool_calls:
             return ChatResult(
@@ -565,8 +1030,11 @@ class ChatOrchestratorUseCase:
         dynamic_context = context
         pending_project_creation: dict[str, Any] | None = None
         pending_project_deletion: dict[str, Any] | None = None
+        scenario_used_this_turn = False
 
-        sorted_calls = sorted(completion.tool_calls, key=_tool_call_sort_key)
+        tool_calls_in = list(completion.tool_calls)
+        tool_calls_eff = _filter_incremental_redundant_tool_calls(user_message, history, tool_calls_in)
+        sorted_calls = sorted(tool_calls_eff, key=_tool_call_sort_key)
         for tc in sorted_calls:
             logger.debug("Processing tool call: %s (id=%s) args_keys=%s", tc.name, tc.id, list(tc.arguments.keys()))
             if tc.name == "ask_clarification":
@@ -578,7 +1046,17 @@ class ChatOrchestratorUseCase:
                 reply_parts.append(text)
 
             elif tc.name == "reply_to_user":
-                reply_parts.append(tc.arguments.get("message", ""))
+                raw_msg = (tc.arguments.get("message") or "").strip()
+                if (
+                    len(raw_msg) > _REPLY_TO_USER_MAX_AFTER_TEXT_MODULE
+                    and _TEXT_FILE_MODULES.intersection(run_modules)
+                ):
+                    logger.info(
+                        "Pominięto długi reply_to_user — pełna treść jest w zapisanym pliku modułu (%s).",
+                        ", ".join(sorted(_TEXT_FILE_MODULES.intersection(run_modules))),
+                    )
+                else:
+                    reply_parts.append(raw_msg)
 
             elif tc.name == "search_library_fragments":
                 q = (tc.arguments.get("query") or "").strip() or user_message.strip()
@@ -586,26 +1064,59 @@ class ChatOrchestratorUseCase:
                     side_effects_skipped = True
                     reply_parts.append("[Dry-run] Wyszukiwanie w bibliotece zostało pominięte.")
                     continue
+                search_scope_id, scope_note = await _resolve_search_project_scope(
+                    session, user_id, tc.arguments, active_project_id,
+                )
+                if scope_note:
+                    reply_parts.append(scope_note)
                 try:
                     search_hits = await semantic_search_chunks(
-                        session, user_id, q, top_k=6, project_id=active_project_id,
+                        session, user_id, q, top_k=8, project_id=search_scope_id,
                     )
                 except Exception as exc:
                     logger.exception("search_library_fragments failed")
                     reply_parts.append(f"Nie udało się przeszukać biblioteki: {exc}")
                     continue
+                scope_hint = (
+                    f" (katalog: {search_scope_id})"
+                    if search_scope_id is not None
+                    else " (cała biblioteka)"
+                )
                 ctx_search = "\n\n".join(
                     f"[{c.file_asset.name}]: {c.text}"
                     for c, _ in search_hits if c.file_asset is not None
                 )
                 if ctx_search:
-                    block = f"=== Fragmenty z biblioteki (zapytanie: {q}) ===\n{ctx_search}"
-                    reply_parts.append(block)
+                    block = f"=== Fragmenty z biblioteki (zapytanie: {q}{scope_hint}) ===\n{ctx_search}"
+                    n_fr = len(search_hits)
+                    reply_parts.append(
+                        f"Przeszukałem Twoją bibliotekę ({n_fr} fragmentów) — użyłem ich przy generowaniu; "
+                        "nie powielam surowej treści tutaj, żeby czat pozostał czytelny."
+                    )
                     dynamic_context = f"{dynamic_context}\n{block}" if dynamic_context else block
                 else:
                     reply_parts.append(
                         "(Brak trafnych fragmentów w zindeksowanej bibliotece — upewnij się, że pliki są przesłane i zindeksowane.)"
                     )
+
+            elif tc.name == "search_web":
+                q = (tc.arguments.get("query") or "").strip() or user_message.strip()
+                if dry_run:
+                    side_effects_skipped = True
+                    reply_parts.append("[Dry-run] Wyszukiwanie w internecie zostało pominięte.")
+                    continue
+                hits, err = await run_web_search(q)
+                if err:
+                    reply_parts.append(err)
+                if hits:
+                    block = format_hits_for_llm(q, hits)
+                    reply_parts.append(
+                        f"Wyszukałem w internecie ({len(hits)} wyników) — przekazałem je do opracowania; "
+                        "Pełna lista źródeł będzie w zapisanym pliku (ostatnia sekcja dokumentu)."
+                    )
+                    dynamic_context = f"{dynamic_context}\n{block}" if dynamic_context else block
+                elif not err:
+                    reply_parts.append("(Brak wyników wyszukiwania w internecie dla tego zapytania.)")
 
             elif tc.name == "prepare_create_teacher_project":
                 pname = (tc.arguments.get("name") or "").strip()
@@ -646,6 +1157,12 @@ class ChatOrchestratorUseCase:
                 if err or proj_row is None:
                     reply_parts.append(err or "Nie udało się zidentyfikować projektu.")
                     continue
+                n_files = await session.scalar(
+                    select(func.count())
+                    .select_from(FileAssetORM)
+                    .where(FileAssetORM.project_id == proj_row.id)
+                )
+                nf = int(n_files or 0)
                 s = get_settings()
                 del_tok = create_resource_confirmation_token(
                     user_id=user_id,
@@ -653,16 +1170,22 @@ class ChatOrchestratorUseCase:
                     resource_type=RESOURCE_PROJECT,
                     resource_id=proj_row.id,
                 )
+                files_summary = (
+                    f" Powiązane pliki ({nf}) zostaną trwale usunięte z biblioteki i indeksu."
+                    if nf
+                    else " W folderze nie ma plików — usunięty zostanie tylko projekt."
+                )
                 pending_project_deletion = {
                     "confirmation_token": del_tok,
                     "expires_in_seconds": s.confirmation_token_expire_minutes * 60,
-                    "summary": f"Czy na pewno usunąć projekt „{proj_row.name}”? Pliki pozostaną w bibliotece bez tego folderu.",
+                    "summary": f"Czy na pewno usunąć projekt „{proj_row.name}”?{files_summary}",
                     "project_id": str(proj_row.id),
                     "project_name": proj_row.name,
                 }
                 reply_parts.append(
-                    f"Przygotowałem usunięcie projektu **„{proj_row.name}”**. Potwierdź przyciskiem pod odpowiedzią "
-                    "lub w „Moje materiały” — bez potwierdzenia projekt **nie** zostanie usunięty."
+                    f"Przygotowałem usunięcie projektu **„{proj_row.name}”**.{files_summary}"
+                    "\n\nPotwierdź przyciskiem pod odpowiedzią lub w „Moje materiały” — bez potwierdzenia projekt **nie** "
+                    "zostanie usunięty."
                 )
 
             elif tc.name == "export_library_file":
@@ -698,11 +1221,20 @@ class ChatOrchestratorUseCase:
 
             elif tc.name in TOOL_TO_MODULE:
                 module = TOOL_TO_MODULE[tc.name]
+                if tc.name == "generate_scenario":
+                    if scenario_used_this_turn:
+                        logger.info("Pominięto zduplikowane generate_scenario w tej samej turze czatu")
+                        reply_parts.append(
+                            "Pominięto dodatkowe wywołanie **generate_scenario** — w jednej odpowiedzi "
+                            "backend zapisuje co najwyżej **jeden** scenariusz."
+                        )
+                        continue
+                    scenario_used_this_turn = True
                 run_modules.append(module)
                 if dry_run:
                     side_effects_skipped = True
                     reply_parts.append(
-                        f"[Symulacja] Moduł **{module}** zostałby uruchomiony — pliki i wywołanie KIE **nie** są wykonywane."
+                        f"[Symulacja] Moduł **{module}** zostałby uruchomiony — pliki oraz wywołania KIE/Lyria **nie** są wykonywane."
                     )
                 else:
                     mod_fids, mod_note = await self._run_module(
@@ -770,12 +1302,12 @@ class ChatOrchestratorUseCase:
             has_audio = any((r.mime_type or "").lower().startswith("audio/") for r in ordered)
             if has_audio:
                 lines.append(
-                    "\nDołączono plik audio (.mp3) — pobierzesz go przyciskiem pod wiadomością albo z „Moje materiały”."
+                    "\nDołączono pliki audio (KIE: .mp3, Lyria: .wav) — pobierzesz je przyciskami pod wiadomością albo z „Moje materiały”."
                 )
             else:
                 lines.append(
                     "\nW pliku .txt jest m.in. tekst piosenki, styl oraz (jeśli KIE przyjęło zadanie) identyfikator taskId "
-                    "i odpowiedź API — tam też ewentualny komunikat błędu od KIE."
+                    "i odpowiedź API; przy Lyrii — komunikaty z OpenRouter. Sprawdź też ewentualne błędy pobierania audio."
                 )
         elif module == "graphics":
             lines.append("\nMożesz pobrać obraz przyciskiem pod wiadomością.")
@@ -802,15 +1334,23 @@ class ChatOrchestratorUseCase:
         logger.debug("Running module %r via %s", mod, type(self._llm_modules).__name__)
         mod_completion = await self._llm_modules.complete(sys_prompt, user_part)
         logger.debug(
-            "Module %r result: provider=%s model=%s text_len=%d tokens=%s",
+            "Module %r result: provider=%s model=%s text_len=%d tokens=%s finish=%s",
             mod, mod_completion.provider, mod_completion.model,
             len(mod_completion.text or ""), mod_completion.resolved_total_tokens(),
+            mod_completion.finish_reason,
         )
         await record_llm_usage_event(
             session, user_id=user_id, call_kind="module", module_name=mod,
             completion=mod_completion, system_text=sys_prompt, user_text=user_part,
         )
         content = mod_completion.text if mod_completion.text is not None else ""
+        trunc_note: str | None = None
+        if (mod_completion.finish_reason or "").lower() == "length":
+            trunc_note = (
+                "**Uwaga:** odpowiedź modelu mogła zostać ucięta na limicie długości — koniec pliku może być niepełny. "
+                "Spróbuj krótszego zakresu (np. „tylko biografia + dwa wiersze”) albo zwiększ "
+                "**OPENROUTER_MODULE_MAX_COMPLETION_TOKENS** w konfiguracji serwera."
+            )
 
         if mod == "graphics":
             return [await self._handle_graphics(session, user_id, project_id, content, tool_args)], None
@@ -824,7 +1364,7 @@ class ChatOrchestratorUseCase:
             data=body.encode("utf-8"), mime="text/plain; charset=utf-8", ext="txt",
             extra={"module": mod, "tool_args": tool_args},
         )
-        return [fid], None
+        return [fid], trunc_note
 
     # --- Grafika ---
 
@@ -833,24 +1373,41 @@ class ChatOrchestratorUseCase:
         llm_content: str, tool_args: dict[str, Any],
     ) -> UUID:
         prompt_data = _parse_media_json(llm_content)
-        prompt_en = prompt_data.get("prompt_en", tool_args.get("description", ""))
+        desc_fallback = str(tool_args.get("description", "") or "")
+        prompt_main = (
+            str(prompt_data.get("prompt_image") or "").strip()
+            or str(prompt_data.get("prompt_en") or "").strip()
+            or desc_fallback
+        )
+        prompt_en_legacy = str(prompt_data.get("prompt_en") or "").strip()
         extra: dict[str, Any] = {
-            "module": "graphics", "tool_args": tool_args, "prompt_en": prompt_en,
+            "module": "graphics",
+            "tool_args": tool_args,
+            "prompt_image": prompt_data.get("prompt_image"),
+            "prompt_en": prompt_en_legacy or None,
             "style_notes": prompt_data.get("style_notes", ""),
-            "description_pl": prompt_data.get("description_pl", tool_args.get("description", "")),
+            "description_pl": prompt_data.get("description_pl", desc_fallback),
         }
 
         if self._image_gen:
             try:
                 result = await self._image_gen.generate(
-                    prompt=prompt_en, style=tool_args.get("style"), size=tool_args.get("size", "1024x1024"),
+                    prompt=prompt_main, style=tool_args.get("style"), size=tool_args.get("size", "1024x1024"),
                 )
                 extra["revised_prompt"] = result.revised_prompt
                 extra["generator_model"] = result.model
-                index_text = f"{extra['description_pl']}\n{prompt_en}\n{result.revised_prompt or ''}".strip()
+                index_text = (
+                    f"{extra['description_pl']}\n{prompt_main}\n{result.revised_prompt or ''}".strip()
+                )
+                mime = result.mime_type or "image/png"
+                ext = "png"
+                if "jpeg" in mime or "jpg" in mime:
+                    ext = "jpg"
+                elif "webp" in mime:
+                    ext = "webp"
                 return await self._persist_file(
                     session, user_id, project_id, "graphics",
-                    data=result.image_data, mime=result.mime_type, ext="png", extra=extra,
+                    data=result.image_data, mime=mime, ext=ext, extra=extra,
                     index_override=index_text,
                 )
             except Exception as exc:
@@ -904,7 +1461,7 @@ class ChatOrchestratorUseCase:
             ext="json", extra=extra,
         )
 
-    # --- Muzyka (LLM + opcjonalnie KIE.ai) ---
+    # --- Muzyka (LLM + KIE + opcjonalnie OpenRouter Lyria) ---
 
     async def _handle_music(
         self,
@@ -937,19 +1494,27 @@ class ChatOrchestratorUseCase:
                 lines.append(lyrics_body)
             api_prompt = "\n\n".join(lines)[:8000]
         title = (topic[:80] if topic else "TeacherHelper track")[:80]
-        instrumental = _infer_instrumental_music(lyrics_body, tool_args, s.kie_music_instrumental_default)
+        style_full = (style_en or style or "Educational pop for children, cheerful, classroom-friendly")
+        n_variants = min(max(1, int(s.music_variants_per_provider)), 5)
         extra: dict[str, Any] = {
             "module": "music",
             "tool_args": tool_args,
             "kie_submitted": False,
+            "music_variants_per_provider": n_variants,
+            "openrouter_music_model": s.openrouter_music_model,
         }
         result = None
+        kie_saved = 0
+        lyria_saved = 0
+        kie_saved_files: list[tuple[int, bytes, str]] = []
+        lyria_wav_files: list[tuple[int, bytes]] = []
+
         if self._music_gen:
             req = MusicSubmitRequest(
                 prompt=api_prompt,
                 title=title,
-                style=(style_en or style or "Educational pop for children, cheerful, classroom-friendly"),
-                instrumental=instrumental,
+                style=style_full,
+                instrumental=False,
                 model=s.kie_music_model,
                 custom_mode=s.kie_music_custom_mode,
                 call_back_url=s.kie_music_callback_url,
@@ -974,7 +1539,6 @@ class ChatOrchestratorUseCase:
                 logger.error("KIE music generation failed: %s", exc)
                 extra["kie_error"] = str(exc)[:800]
 
-        mp3_bytes: bytes | None = None
         if (
             self._music_gen
             and result
@@ -996,25 +1560,77 @@ class ChatOrchestratorUseCase:
                         "KIE record-info: task=%s status=%s audio_urls=%d",
                         result.task_id, st, len(urls),
                     )
-                    # FIRST_SUCCESS często zawiera pierwszy audioUrl zanim przyjdzie pełne SUCCESS.
-                    if (
-                        urls
-                        and st in KIE_STATUSES_WITH_POSSIBLE_AUDIO
-                    ):
+                    if urls and st in KIE_STATUSES_WITH_POSSIBLE_AUDIO:
                         extra["kie_audio_urls"] = urls
-                        try:
-                            mp3_bytes = await download_audio_url(urls[0])
+                        dl_errors: list[str] = []
+                        for idx, url in enumerate(urls[:n_variants], start=1):
+                            try:
+                                mp3_b = await download_audio_url(url)
+                                extra[f"kie_audio_downloaded_from_{idx}"] = url
+                                kie_saved_files.append((idx, mp3_b, url))
+                                kie_saved += 1
+                            except Exception as dl_exc:
+                                logger.warning("KIE audio download failed #%s: %s", idx, dl_exc)
+                                dl_errors.append(f"#{idx}: {dl_exc!s:.350}")
+                        if dl_errors:
+                            extra["kie_download_errors"] = dl_errors
+                        if kie_saved == 0 and dl_errors:
+                            extra["kie_download_error"] = "; ".join(dl_errors)[:800]
+                        if urls:
                             extra["kie_audio_downloaded_from"] = urls[0]
-                        except Exception as dl_exc:
-                            logger.warning("KIE audio download failed: %s", dl_exc)
-                            extra["kie_download_error"] = str(dl_exc)[:800]
                         break
                     if st == "SUCCESS" and not urls:
-                        # Sukces wg KIE, ale jeszcze bez URL-i w odpowiedzi — dalej poll.
                         pass
                     elif st in KIE_TERMINAL_FAIL_STATUSES:
                         break
                     await asyncio.sleep(interval)
+
+        lyria_errors: list[str] = []
+        lyria_traces: list[Any] = []
+        if (
+            self._lyria_music
+            and s.openrouter_music_enabled
+            and (s.openrouter_api_key or "").strip()
+        ):
+            extra["lyria_submitted"] = True
+
+            async def _one_lyria(
+                variant_index: int,
+            ) -> tuple[int, bytes | None, str | None, list[dict[str, Any]], str | None]:
+                suffix = (
+                    f"Produce a distinct full song — arrangement variant {variant_index} of {n_variants} "
+                    "(different melody, rhythm or energy while preserving the same lyrics and title theme)."
+                )
+                audio_b, cdn_url, trace, err = await self._lyria_music.generate(
+                    title=title,
+                    style=style_full,
+                    lyrics=api_prompt,
+                    instrumental=False,
+                    variation_suffix=suffix,
+                )
+                return variant_index, audio_b, cdn_url, trace, err
+
+            raw_results = await asyncio.gather(
+                *(_one_lyria(i) for i in range(1, n_variants + 1)),
+                return_exceptions=True,
+            )
+            for item in raw_results:
+                if isinstance(item, BaseException):
+                    lyria_errors.append(f"Lyria: {item!s:.500}")
+                    continue
+                variant_index, audio_b, _cdn, trace, err = item
+                if trace:
+                    lyria_traces.append({"variant": variant_index, "trace": trace[:12]})
+                if err:
+                    lyria_errors.append(f"Lyria #{variant_index}: {err[:600]}")
+                elif audio_b:
+                    extra[f"lyria_audio_variant_{variant_index}_bytes"] = len(audio_b)
+                    lyria_wav_files.append((variant_index, audio_b))
+                    lyria_saved += 1
+            if lyria_traces:
+                extra["lyria_traces_compact"] = lyria_traces
+            if lyria_errors:
+                extra["lyria_errors"] = lyria_errors
 
         if material_md:
             doc_body = material_md
@@ -1041,8 +1657,17 @@ class ChatOrchestratorUseCase:
                 parts.append(f"\n\n**Status zadania (polling):** `{extra['kie_poll_status']}`")
             if extra.get("kie_download_error"):
                 parts.append(f"\n\n**Błąd pobierania MP3:** {extra['kie_download_error']}")
-            elif mp3_bytes:
-                parts.append("\n\n**Pobrano plik audio z KIE** i zapisano jako osobny plik `.mp3` w bibliotece.")
+            elif kie_saved:
+                parts.append(
+                    f"\n\n**Pobrano {kie_saved} plik(ów) audio z KIE** i zapisano jako `.mp3` w bibliotece."
+                )
+        if extra.get("lyria_submitted"):
+            parts.append("\n\n## OpenRouter Lyria\n\n")
+            parts.append(f"Model: `{extra.get('openrouter_music_model')}`\n")
+            if lyria_errors:
+                parts.append("\n**Komunikaty:**\n" + "\n".join(str(x) for x in lyria_errors[:10]))
+            if lyria_saved:
+                parts.append(f"\n\nZapisano **{lyria_saved}** plik(ów) `.wav` w bibliotece.")
         if extra.get("kie_error"):
             parts.append("\n\n## Błąd KIE.ai\n")
             parts.append(str(extra["kie_error"]))
@@ -1054,22 +1679,40 @@ class ChatOrchestratorUseCase:
             index_override=api_prompt[:12000],
         )
         out: list[UUID] = [txt_id]
-        if mp3_bytes:
+        for idx, mp3_b, url in kie_saved_files:
             mp3_extra: dict[str, Any] = {
                 "module": "music",
                 "tool_args": tool_args,
                 "kie_task_id": extra.get("kie_task_id"),
-                "kie_audio_url": extra.get("kie_audio_downloaded_from"),
+                "kie_audio_url": url,
+                "file_stem_suffix": f"kie_{idx}",
                 "related_txt_context": "Powiązany raport KIE w pliku .txt z tej samej generacji.",
             }
-            idx = f"{title}\n{extra.get('kie_audio_downloaded_from') or ''}\n{api_prompt[:4000]}".strip()
+            idx_text = f"{title}\n{url}\n{api_prompt[:4000]}".strip()
             mp3_id = await self._persist_file(
                 session, user_id, project_id, "music",
-                data=mp3_bytes, mime="audio/mpeg", ext="mp3",
+                data=mp3_b, mime="audio/mpeg", ext="mp3",
                 extra=mp3_extra,
-                index_override=idx,
+                index_override=idx_text,
             )
             out.append(mp3_id)
+        for variant_index, wav_b in lyria_wav_files:
+            wav_extra: dict[str, Any] = {
+                "module": "music",
+                "tool_args": tool_args,
+                "openrouter_music_model": extra.get("openrouter_music_model"),
+                "lyria_variant": variant_index,
+                "file_stem_suffix": f"lyria_{variant_index}",
+                "related_txt_context": "Powiązany raport w pliku .txt z tej samej generacji.",
+            }
+            widx = f"{title}\nLyria wariant {variant_index}\n{api_prompt[:4000]}".strip()
+            wav_id = await self._persist_file(
+                session, user_id, project_id, "music",
+                data=wav_b, mime="audio/wav", ext="wav",
+                extra=wav_extra,
+                index_override=widx,
+            )
+            out.append(wav_id)
         poll_enabled = bool(
             self._music_gen
             and result
@@ -1077,12 +1720,18 @@ class ChatOrchestratorUseCase:
             and result.task_id
             and s.kie_music_poll_timeout_seconds > 0,
         )
+        music_providers_configured = bool(self._music_gen) or bool(
+            self._lyria_music
+            and s.openrouter_music_enabled
+            and (s.openrouter_api_key or "").strip()
+        )
+        has_saved_audio = kie_saved + lyria_saved > 0
         note = _music_kie_status_note(
             extra,
-            mp3_bytes,
+            has_saved_audio,
             result,
             poll_enabled=poll_enabled,
-            music_gen_enabled=bool(self._music_gen),
+            music_providers_configured=music_providers_configured,
         )
         return out, note
 
@@ -1095,6 +1744,9 @@ class ChatOrchestratorUseCase:
     ) -> UUID:
         ta = extra.get("tool_args") if isinstance(extra.get("tool_args"), dict) else {}
         stem = _resolve_file_stem(mod, ta)
+        suf = extra.get("file_stem_suffix")
+        if isinstance(suf, str) and suf.strip():
+            stem = f"{stem}_{suf.strip().replace(' ', '_')[:48]}"
         name = f"{stem}_{uuid.uuid4().hex[:8]}.{ext}"
         key = await self._storage.put(data, prefix=f"u/{user_id}")
         row = FileAssetORM(

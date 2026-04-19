@@ -7,8 +7,6 @@ import MaterialsPage from "./pages/MaterialsPage";
 import ProfilePage from "./pages/ProfilePage";
 import AdminMonitoringPage from "./pages/AdminMonitoringPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
-import TopicStudioPage from "./pages/TopicStudioPage";
-import IntentAnalyzePage from "./pages/IntentAnalyzePage";
 
 export default function App() {
   return (
@@ -17,9 +15,7 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/assistant" element={<AssistantPage />} />
-        <Route path="/topics" element={<TopicStudioPage />} />
         <Route path="/materials" element={<MaterialsPage />} />
-        <Route path="/intent" element={<IntentAnalyzePage />} />
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/admin/monitoring" element={<AdminMonitoringPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />

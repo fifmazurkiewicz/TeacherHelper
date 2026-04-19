@@ -16,7 +16,11 @@ from teacher_helper.infrastructure.system_incidents import (
     list_recent_incidents,
     record_system_incident,
 )
-from teacher_helper.infrastructure.usage_limits import build_limit_alerts, sum_llm_total_tokens_today
+from teacher_helper.infrastructure.usage_limits import (
+    build_limit_alerts,
+    per_user_llm_token_stats,
+    sum_llm_total_tokens_today,
+)
 from teacher_helper.security import hash_password
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -38,13 +42,41 @@ class AdminUserResponse(BaseModel):
     display_name: str | None
     role: str
     rate_limit_rpm: int | None
+    llm_daily_token_limit: int | None
+    effective_llm_daily_token_limit: int | None
+    uses_site_default_llm_daily_limit: bool
     created_at: datetime
 
-    model_config = {"from_attributes": True}
+
+def _admin_user_response(u: UserORM) -> AdminUserResponse:
+    s = get_settings()
+    raw = u.llm_daily_token_limit
+    if raw is None:
+        eff: int | None = int(s.default_user_llm_daily_token_limit)
+        uses_default = True
+    elif raw == 0:
+        eff = None
+        uses_default = False
+    else:
+        eff = int(raw)
+        uses_default = False
+    return AdminUserResponse(
+        id=u.id,
+        email=u.email,
+        display_name=u.display_name,
+        role=u.role.value,
+        rate_limit_rpm=u.rate_limit_rpm,
+        llm_daily_token_limit=raw,
+        effective_llm_daily_token_limit=eff,
+        uses_site_default_llm_daily_limit=uses_default,
+        created_at=u.created_at,
+    )
 
 
 class UpdateUserRequest(BaseModel):
     rate_limit_rpm: int | None = Field(None, ge=1, le=10000)
+    # 0 = brak limitu per konto (tylko limity globalne); NULL w bazie = domyślny z DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT
+    llm_daily_token_limit: int | None = Field(None, ge=0, le=2_000_000_000)
     role: str | None = None
 
 
@@ -57,10 +89,11 @@ async def list_users(
     session: DbSession,
     user: AdminUser,
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
-) -> list[UserORM]:
+) -> list[AdminUserResponse]:
     _check_admin_key(x_admin_key)
     stmt = select(UserORM).order_by(UserORM.created_at.desc())
-    return list((await session.scalars(stmt)).all())
+    rows = list((await session.scalars(stmt)).all())
+    return [_admin_user_response(u) for u in rows]
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserResponse)
@@ -70,7 +103,7 @@ async def update_user(
     user_id: UUID,
     body: UpdateUserRequest,
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
-) -> UserORM:
+) -> AdminUserResponse:
     _check_admin_key(x_admin_key)
     target = await session.get(UserORM, user_id)
     if not target:
@@ -86,9 +119,13 @@ async def update_user(
     if body.rate_limit_rpm is not None:
         target.rate_limit_rpm = body.rate_limit_rpm
 
+    updates = body.model_dump(exclude_unset=True)
+    if "llm_daily_token_limit" in updates:
+        target.llm_daily_token_limit = updates["llm_daily_token_limit"]
+
     await session.commit()
     await session.refresh(target)
-    return target
+    return _admin_user_response(target)
 
 
 @router.delete("/users/{user_id}/rate-limit", response_model=AdminUserResponse)
@@ -97,7 +134,7 @@ async def clear_user_rate_limit(
     admin: AdminUser,
     user_id: UUID,
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
-) -> UserORM:
+) -> AdminUserResponse:
     """Przywraca globalny domyślny rate limit (usuwa indywidualny)."""
     _check_admin_key(x_admin_key)
     target = await session.get(UserORM, user_id)
@@ -106,7 +143,25 @@ async def clear_user_rate_limit(
     target.rate_limit_rpm = None
     await session.commit()
     await session.refresh(target)
-    return target
+    return _admin_user_response(target)
+
+
+@router.delete("/users/{user_id}/llm-daily-token-limit", response_model=AdminUserResponse)
+async def clear_user_llm_daily_token_limit(
+    session: DbSession,
+    admin: AdminUser,
+    user_id: UUID,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> AdminUserResponse:
+    """Usuwa indywidualny limit — obowiązuje domyślny z konfiguracji (DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT)."""
+    _check_admin_key(x_admin_key)
+    target = await session.get(UserORM, user_id)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Użytkownik nie znaleziony")
+    target.llm_daily_token_limit = None
+    await session.commit()
+    await session.refresh(target)
+    return _admin_user_response(target)
 
 
 @router.post("/users/{user_id}/reset-password")
@@ -222,6 +277,7 @@ async def admin_monitoring(
             await send_alert_webhook({"event": "llm_limit_critical", "severity": "critical", "tokens_today": tokens_today, "alerts": limit_alerts})
             await session.commit()
     incidents = await list_recent_incidents(session, limit=40)
+    per_user_tokens = await per_user_llm_token_stats(session)
 
     return {
         "application": {"users": users or 0, "files": files or 0, "ai_read_audits": audits or 0},
@@ -249,6 +305,12 @@ async def admin_monitoring(
                      else "Uzupełnij LANGFUSE_* w .env, aby duplikować zdarzenia LLM do chmurowego observability."),
         },
         "langgraph": {"role": "LangGraph — w przyszłości orchestrator można przenieść do LangGraph."},
+        "per_user_llm_tokens": per_user_tokens,
+        "per_user_llm_tokens_hint": (
+            "Tokeny bez dry-run. „Dziś” i „miesiąc” — kalendarz UTC. "
+            "Limit / dzień: własny, domyślny (DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT) lub brak (wartość 0 w bazie = tylko limity globalne). "
+            "POST /v1/chat."
+        ),
     }
 
 

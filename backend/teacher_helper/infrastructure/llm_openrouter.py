@@ -22,12 +22,14 @@ class OpenRouterLlmClient:
         base_url: str = "https://openrouter.ai/api/v1",
         http_referer: str | None = None,
         app_title: str | None = None,
+        max_completion_tokens: int | None = None,
     ) -> None:
         self._api_key = api_key
         self._model = model
         self._base = base_url.rstrip("/")
         self._referer = http_referer
         self._title = app_title
+        self._max_completion_tokens = max_completion_tokens
 
     def _headers(self) -> dict[str, str]:
         h: dict[str, str] = {
@@ -84,6 +86,8 @@ class OpenRouterLlmClient:
             "model": self._model,
             "messages": messages,
         }
+        if self._max_completion_tokens is not None and self._max_completion_tokens > 0:
+            payload["max_tokens"] = self._max_completion_tokens
         if tools:
             payload["tools"] = tools
             payload["tool_choice"] = "auto"

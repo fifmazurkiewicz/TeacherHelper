@@ -18,7 +18,7 @@ from teacher_helper.use_cases.ports import (
 # LLM
 # ---------------------------------------------------------------------------
 
-def _build_openrouter(model: str) -> LlmClientPort:
+def _build_openrouter(model: str, *, max_completion_tokens: int | None) -> LlmClientPort:
     from teacher_helper.infrastructure.llm_openrouter import OpenRouterLlmClient
 
     s = get_settings()
@@ -28,26 +28,40 @@ def _build_openrouter(model: str) -> LlmClientPort:
         base_url=s.openrouter_base_url,
         http_referer=s.openrouter_http_referer,
         app_title=s.app_name,
+        max_completion_tokens=max_completion_tokens,
     )
 
 
-def _build_llm(model_attr: str) -> LlmClientPort:
+def _build_llm(model_attr: str, *, max_completion_tokens: int | None) -> LlmClientPort:
     from teacher_helper.infrastructure.llm_stub import StubLlmClient
 
     s = get_settings()
     if s.openrouter_api_key:
-        return _build_openrouter(getattr(s, model_attr))
+        return _build_openrouter(getattr(s, model_attr), max_completion_tokens=max_completion_tokens)
     return StubLlmClient()
 
 
 def build_llm_client() -> LlmClientPort:
     """LLM do orchestracji (tani, szybki)."""
-    return _build_llm("openrouter_model")
+    s = get_settings()
+    return _build_llm("openrouter_model", max_completion_tokens=s.openrouter_max_completion_tokens)
 
 
 def build_module_llm_client() -> LlmClientPort:
     """LLM do modułów (reasoning, lepszy model)."""
-    return _build_llm("openrouter_module_model")
+    s = get_settings()
+    return _build_llm("openrouter_module_model", max_completion_tokens=s.openrouter_module_max_completion_tokens)
+
+
+def build_summary_llm_client() -> LlmClientPort:
+    """LLM do skracania historii rozmowy (podsumowanie zwijanej części wątku)."""
+    s = get_settings()
+    model = (s.openrouter_summary_model or "").strip() or s.openrouter_model
+    if s.openrouter_api_key:
+        return _build_openrouter(model, max_completion_tokens=s.openrouter_summary_max_completion_tokens)
+    from teacher_helper.infrastructure.llm_stub import StubLlmClient
+
+    return StubLlmClient()
 
 
 # ---------------------------------------------------------------------------
@@ -55,23 +69,24 @@ def build_module_llm_client() -> LlmClientPort:
 # ---------------------------------------------------------------------------
 
 def build_image_generator() -> ImageGeneratorPort | None:
-    """OpenRouter (Gemini Image) → DALL-E → None."""
+    """Grafika wyłącznie przez OpenRouter (chat/completions + modalities image)."""
     s = get_settings()
-    if s.openrouter_api_key and s.openrouter_image_model:
-        from teacher_helper.infrastructure.image_openrouter import OpenRouterImageGenerator
+    key = (s.openrouter_api_key or "").strip()
+    model = (s.openrouter_image_model or "").strip()
+    if not key or not model:
+        return None
+    from teacher_helper.infrastructure.image_openrouter import OpenRouterImageGenerator
 
-        return OpenRouterImageGenerator(
-            api_key=s.openrouter_api_key,
-            model=s.openrouter_image_model,
-            base_url=s.openrouter_base_url,
-            http_referer=s.openrouter_http_referer,
-            app_title=s.app_name,
-        )
-    if s.dalle_api_key:
-        from teacher_helper.infrastructure.image_dalle import DallEImageGenerator
-
-        return DallEImageGenerator(api_key=s.dalle_api_key, model=s.dalle_model)
-    return None
+    img_size = (s.openrouter_image_size or "").strip() or None
+    return OpenRouterImageGenerator(
+        api_key=key,
+        model=model,
+        base_url=s.openrouter_base_url,
+        http_referer=s.openrouter_http_referer,
+        app_title=s.app_name,
+        timeout=float(s.openrouter_image_timeout_seconds or 120.0),
+        image_size=img_size,
+    )
 
 
 def build_video_generator() -> VideoGeneratorPort | None:
@@ -97,4 +112,23 @@ def build_music_generator() -> MusicGeneratorPort | None:
         default_audio_weight=s.kie_music_audio_weight,
         default_persona_id=(s.kie_music_persona_id or "").strip() or None,
         default_persona_model=(s.kie_music_persona_model or "").strip() or None,
+    )
+
+
+def build_lyria_music_generator():
+    """Lyria przez OpenRouter — ``None`` gdy brak klucza lub wyłączone w konfiguracji."""
+    s = get_settings()
+    if not s.openrouter_music_enabled:
+        return None
+    if not (s.openrouter_api_key or "").strip():
+        return None
+    from teacher_helper.infrastructure.lyria_openrouter import OpenRouterLyriaMusicGenerator
+
+    return OpenRouterLyriaMusicGenerator(
+        s.openrouter_api_key.strip(),  # type: ignore[arg-type]
+        base_url=s.openrouter_base_url,
+        model=(s.openrouter_music_model or "google/lyria-3-pro-preview").strip(),
+        http_referer=s.openrouter_http_referer,
+        app_title=s.app_name,
+        timeout=float(s.openrouter_music_timeout_seconds or 300.0),
     )

@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="pl" data-theme="auto">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Benchmark grafiki · research</title>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #fafaf9; --surface: #fff; --text: #0c0a09; --muted: #57534e; --border: #e7e5e4;
+      --accent: #7c3aed; --accent-soft: #ede9fe; --danger: #dc2626; --code-bg: #1c1917; --code-text: #e7e5e4;
+      --radius: 12px; --shadow: 0 2px 8px rgba(12,10,9,.06);
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #0c0a09; --surface: #1c1917; --text: #fafaf9; --muted: #a8a29e; --border: #292524;
+      --accent: #a78bfa; --accent-soft: #2e1065; --danger: #f87171; --code-bg: #0c0a09; --code-text: #d6d3d1;
+    }
+    @media (prefers-color-scheme: dark) {
+      html[data-theme="auto"] { color-scheme: dark; --bg: #0c0a09; --surface: #1c1917; --text: #fafaf9; --muted: #a8a29e; --border: #292524; --accent: #a78bfa; --accent-soft: #2e1065; }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; font-family: "Plus Jakarta Sans", system-ui, sans-serif; font-size: 15px; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 52rem; margin: 0 auto; padding: 1.25rem; }
+    h1 { font-size: 1.15rem; margin: 0 0 0.25rem; }
+    .sub { color: var(--muted); font-size: 0.8rem; margin-bottom: 1.25rem; }
+    label { display: block; font-weight: 600; font-size: 0.8rem; margin-bottom: 0.35rem; }
+    input, select, textarea, button {
+      font: inherit; border-radius: var(--radius); border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 0.55rem 0.75rem; width: 100%;
+    }
+    textarea { font-family: "JetBrains Mono", monospace; font-size: 0.8rem; min-height: 6rem; resize: vertical; }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
+    @media (max-width: 640px) { .row2 { grid-template-columns: 1fr; } }
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem; margin-bottom: 1rem; box-shadow: var(--shadow); }
+    .btn { cursor: pointer; font-weight: 600; border: none; padding: 0.65rem 1rem; width: auto; display: inline-block; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-ghost { background: var(--accent-soft); color: var(--text); }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { border: 1px solid var(--border); padding: 0.4rem 0.5rem; text-align: left; }
+    th { background: var(--bg); }
+    .mono { font-family: "JetBrains Mono", monospace; font-size: 0.75rem; }
+    .trace { background: var(--code-bg); color: var(--code-text); padding: 0.75rem; border-radius: var(--radius); overflow: auto; max-height: 16rem; font-size: 0.72rem; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; margin-top: 1rem; }
+    .gallery figure { margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+    .gallery img { width: 100%; height: auto; display: block; }
+    .gallery figcaption { padding: 0.4rem 0.5rem; font-size: 0.72rem; color: var(--muted); word-break: break-all; }
+    .err { color: var(--danger); font-size: 0.85rem; margin-top: 0.5rem; }
+    .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div>
+        <h1>Benchmark dostawców grafiki</h1>
+        <p class="sub">Ten sam prompt → OpenAI (DALL·E) · Stability (Stable Image) · OpenRouter (modele image). Flow jak w benchmarku muzyki: katalog → podgląd JSON → run.</p>
+      </div>
+      <div>
+        <label for="theme">Motyw</label>
+        <select id="theme" style="width:auto;min-width:8rem">
+          <option value="auto">System</option>
+          <option value="light">Jasny</option>
+          <option value="dark">Ciemny</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" rows="4">Ilustracja edukacyjna: przyjazny robot pomaga dziecku uczyć się literek, styl płaski wektorowy, jasne kolory, bez tekstu na obrazie.</textarea>
+      <div class="row2" style="margin-top:0.75rem">
+        <div>
+          <label for="neg">Negative prompt (Stability)</label>
+          <input id="neg" type="text" placeholder="np. blurry, watermark" />
+        </div>
+        <div>
+          <label for="dsize">Rozmiar DALL·E</label>
+          <select id="dsize">
+            <option value="1024x1024">1024×1024</option>
+            <option value="1024x1792">1024×1792</option>
+            <option value="1792x1024">1792×1024</option>
+            <option value="512x512">512×512 (DALL·E 2)</option>
+            <option value="256x256">256×256 (DALL·E 2)</option>
+          </select>
+        </div>
+      </div>
+      <div class="row2" style="margin-top:0.75rem">
+        <div>
+          <label for="dqual">Jakość DALL·E 3</label>
+          <select id="dqual">
+            <option value="standard">standard</option>
+            <option value="hd">hd</option>
+          </select>
+        </div>
+        <div>
+          <label for="sfmt">Stability — format</label>
+          <select id="sfmt">
+            <option value="png">png</option>
+            <option value="webp">webp</option>
+            <option value="jpeg">jpeg</option>
+          </select>
+        </div>
+      </div>
+      <div class="row2" style="margin-top:0.75rem">
+        <div>
+          <label for="sar">Stability — aspect_ratio</label>
+          <input id="sar" type="text" value="1:1" />
+        </div>
+        <div>
+          <label for="oar">OpenRouter — aspect_ratio</label>
+          <input id="oar" type="text" value="1:1" />
+        </div>
+      </div>
+      <div style="margin-top:0.75rem">
+        <label for="osz">OpenRouter — image_size (np. 1K, 2K)</label>
+        <input id="osz" type="text" value="1K" />
+      </div>
+    </div>
+
+    <div class="card">
+      <strong>Wiersze modeli</strong>
+      <p class="sub" style="margin:0.35rem 0 0.75rem">Dodaj co najmniej jeden wiersz (inaczej podgląd zwróci puste listy zadań).</p>
+      <div class="actions">
+        <button type="button" class="btn btn-ghost" id="addOpenai">+ OpenAI</button>
+        <button type="button" class="btn btn-ghost" id="addStab">+ Stability</button>
+        <button type="button" class="btn btn-ghost" id="addOr">+ OpenRouter</button>
+        <button type="button" class="btn btn-ghost" id="loadCat">Odśwież katalog</button>
+      </div>
+      <table style="margin-top:0.75rem">
+        <thead><tr><th>#</th><th>Dostawca</th><th>Model / usługa</th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="actions">
+        <button type="button" class="btn btn-primary" id="previewBtn">POST /api/preview</button>
+        <button type="button" class="btn btn-primary" id="runBtn">POST /api/run</button>
+      </div>
+      <p id="msg" class="err" style="display:none"></p>
+    </div>
+
+    <div class="card">
+      <label>openai_jsons (JSON array)</label>
+      <textarea id="taOpenai" rows="6">[]</textarea>
+      <label style="margin-top:0.75rem">stability_jobs (JSON array)</label>
+      <textarea id="taStab" rows="6">[]</textarea>
+      <label style="margin-top:0.75rem">openrouter_image_jsons (JSON array)</label>
+      <textarea id="taOr" rows="8">[]</textarea>
+    </div>
+
+    <div class="card">
+      <strong>Wyniki</strong>
+      <div id="gallery" class="gallery"></div>
+      <label style="margin-top:1rem">trace</label>
+      <pre class="trace" id="traceOut">{}</pre>
+    </div>
+  </div>
+
+  <script>
+    const state = { catalog: { openai_image: [], stability_image: [], openrouter_image: [] } };
+
+    function setTheme(v) {
+      document.documentElement.setAttribute("data-theme", v);
+      localStorage.setItem("imgbench-theme", v);
+    }
+    document.getElementById("theme").value = localStorage.getItem("imgbench-theme") || "auto";
+    setTheme(document.getElementById("theme").value);
+    document.getElementById("theme").onchange = (e) => setTheme(e.target.value);
+
+    function showErr(t) {
+      const el = document.getElementById("msg");
+      el.style.display = t ? "block" : "none";
+      el.textContent = t || "";
+    }
+
+    async function loadCatalog() {
+      const r = await fetch("/api/model-catalog");
+      if (!r.ok) throw new Error(await r.text());
+      state.catalog = await r.json();
+    }
+
+    function addRow(provider) {
+      const tb = document.getElementById("rows");
+      const tr = document.createElement("tr");
+      const idx = tb.children.length + 1;
+      let options = "";
+      let defaultId = "";
+      if (provider === "openai_image") {
+        (state.catalog.openai_image || []).forEach((m) => {
+          options += `<option value="${m.id}">${m.label}</option>`;
+        });
+        defaultId = (state.catalog.openai_image[0] || {}).id || "dall-e-3";
+      } else if (provider === "stability_image") {
+        (state.catalog.stability_image || []).forEach((m) => {
+          options += `<option value="${m.id}">${m.label}</option>`;
+        });
+        defaultId = (state.catalog.stability_image[0] || {}).id || "core";
+      } else {
+        (state.catalog.openrouter_image || []).forEach((m) => {
+          options += `<option value="${m.id}">${m.label}</option>`;
+        });
+        defaultId = (state.catalog.openrouter_image[0] || {}).id || "";
+      }
+      tr.innerHTML = `<td class="mono">${idx}</td>
+        <td>${provider}</td>
+        <td><select class="mid mono" style="width:100%">${options}</select></td>
+        <td><button type="button" class="btn btn-ghost rm">Usuń</button></td>`;
+      tr.dataset.provider = provider;
+      const sel = tr.querySelector(".mid");
+      if (defaultId && sel) sel.value = defaultId;
+      tr.querySelector(".rm").onclick = () => tr.remove();
+      tb.appendChild(tr);
+    }
+
+    document.getElementById("addOpenai").onclick = () => addRow("openai_image");
+    document.getElementById("addStab").onclick = () => addRow("stability_image");
+    document.getElementById("addOr").onclick = () => addRow("openrouter_image");
+    document.getElementById("loadCat").onclick = async () => {
+      try {
+        await loadCatalog();
+        showErr("");
+        alert("Katalog załadowany.");
+      } catch (e) {
+        showErr(String(e));
+      }
+    };
+
+    function collectModelRows() {
+      const rows = [];
+      document.querySelectorAll("#rows tr").forEach((tr) => {
+        const prov = tr.dataset.provider;
+        const mid = tr.querySelector(".mid")?.value?.trim();
+        if (prov && mid) rows.push({ provider: prov, model_id: mid });
+      });
+      return rows;
+    }
+
+    document.getElementById("previewBtn").onclick = async () => {
+      showErr("");
+      const body = {
+        prompt: document.getElementById("prompt").value.trim(),
+        negative_prompt: document.getElementById("neg").value.trim(),
+        dall_e_size: document.getElementById("dsize").value,
+        dall_e_quality: document.getElementById("dqual").value,
+        stability_output_format: document.getElementById("sfmt").value,
+        stability_aspect_ratio: document.getElementById("sar").value.trim() || "1:1",
+        openrouter_aspect_ratio: document.getElementById("oar").value.trim() || null,
+        openrouter_image_size: document.getElementById("osz").value.trim() || null,
+        model_rows: collectModelRows(),
+      };
+      try {
+        const r = await fetch("/api/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        document.getElementById("taOpenai").value = JSON.stringify(data.openai_jsons, null, 2);
+        document.getElementById("taStab").value = JSON.stringify(data.stability_jobs, null, 2);
+        document.getElementById("taOr").value = JSON.stringify(data.openrouter_image_jsons, null, 2);
+        document.getElementById("traceOut").textContent = JSON.stringify({ mapping: data.mapping, urls: data.urls }, null, 2);
+      } catch (e) {
+        showErr(String(e));
+      }
+    };
+
+    document.getElementById("runBtn").onclick = async () => {
+      showErr("");
+      let openai_jsons, stability_jobs, openrouter_image_jsons;
+      try {
+        openai_jsons = JSON.parse(document.getElementById("taOpenai").value || "[]");
+        stability_jobs = JSON.parse(document.getElementById("taStab").value || "[]");
+        openrouter_image_jsons = JSON.parse(document.getElementById("taOr").value || "[]");
+      } catch (e) {
+        showErr("Błąd JSON w polach tekstowych: " + e);
+        return;
+      }
+      const body = { openai_jsons, stability_jobs, openrouter_image_jsons };
+      try {
+        const r = await fetch("/api/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) throw new Error(await r.text());
+        const data = await r.json();
+        document.getElementById("traceOut").textContent = JSON.stringify(data.trace, null, 2);
+        const gal = document.getElementById("gallery");
+        gal.innerHTML = "";
+        for (const a of data.artifacts || []) {
+          const fig = document.createElement("figure");
+          const cap = document.createElement("figcaption");
+          cap.textContent = `${a.provider} · ${a.ok ? "OK" : "błąd"} · ${a.filename}`;
+          fig.appendChild(cap);
+          if (a.ok && a.base64_image) {
+            const img = document.createElement("img");
+            img.alt = a.filename;
+            img.src = `data:${a.mime_type || "image/png"};base64,${a.base64_image}`;
+            fig.insertBefore(img, cap);
+          } else if (a.error) {
+            const p = document.createElement("p");
+            p.className = "err";
+            p.textContent = a.error;
+            fig.appendChild(p);
+          }
+          gal.appendChild(fig);
+        }
+      } catch (e) {
+        showErr(String(e));
+      }
+    };
+
+    loadCatalog().catch(() => {});
+    addRow("openai_image");
+    addRow("stability_image");
+    addRow("openrouter_image");
+  </script>
+</body>
+</html>

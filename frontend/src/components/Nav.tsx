@@ -1,12 +1,11 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api, setToken } from "@/lib/api";
+import { ThemeToggle } from "./ThemeToggle";
 
 const links = [
   { to: "/assistant", label: "Asystent" },
-  { to: "/topics", label: "Omówienie tematu" },
   { to: "/materials", label: "Moje materiały" },
-  { to: "/intent", label: "Analiza intencji" },
   { to: "/profile", label: "Profil" },
 ];
 
@@ -67,6 +66,7 @@ export function Nav() {
                 {label}
               </Link>
             ))}
+          <ThemeToggle className="ml-1 rounded-md px-3 py-1.5 text-sm text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800" />
           <button
             type="button"
             onClick={logout}

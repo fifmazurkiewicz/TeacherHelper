@@ -44,6 +44,17 @@ type Monitoring = {
   };
   langfuse: { enabled: boolean; host: string; dashboard_url: string; hint: string };
   langgraph: { role: string };
+  per_user_llm_tokens?: {
+    user_id: string;
+    email: string;
+    tokens_today_utc: number;
+    tokens_month_utc: number;
+    tokens_all_time: number;
+    llm_daily_token_limit: number | null;
+    effective_llm_daily_token_limit: number | null;
+    uses_site_default_llm_daily_limit: boolean;
+  }[];
+  per_user_llm_tokens_hint?: string;
 };
 
 export default function AdminMonitoringPage() {
@@ -128,6 +139,54 @@ export default function AdminMonitoringPage() {
               </div>
             )}
           </section>
+
+          {data.per_user_llm_tokens && (
+          <section className="rounded-xl border border-ink-800/15 bg-white p-4 dark:border-paper-100/10 dark:bg-ink-900">
+            <h2 className="mb-2 font-semibold">Tokeny LLM wg użytkownika</h2>
+            <p className="mb-3 text-xs text-ink-500">
+              {data.per_user_llm_tokens_hint ??
+                "Suma tokenów (bez dry-run): dzisiaj i bieżący miesiąc w UTC, oraz od początku. Kolumna „Limit/dzień” to indywidualny limit z panelu Użytkownicy (POST /v1/chat)."}
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-ink-800/15 dark:border-paper-100/15">
+                    <th className="py-2 pr-4 font-medium">E-mail</th>
+                    <th className="py-2 pr-4 font-medium">Dziś (UTC)</th>
+                    <th className="py-2 pr-4 font-medium">Miesiąc (UTC)</th>
+                    <th className="py-2 pr-4 font-medium">Łącznie</th>
+                    <th className="py-2 font-medium">Limit / dzień</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.per_user_llm_tokens.map((row) => (
+                    <tr key={row.user_id} className="border-b border-ink-800/10 dark:border-paper-100/10">
+                      <td className="py-2 pr-4 font-mono text-xs">{row.email}</td>
+                      <td className="py-2 pr-4">{row.tokens_today_utc.toLocaleString("pl-PL")}</td>
+                      <td className="py-2 pr-4">{row.tokens_month_utc.toLocaleString("pl-PL")}</td>
+                      <td className="py-2 pr-4">{row.tokens_all_time.toLocaleString("pl-PL")}</td>
+                      <td className="py-2">
+                        {row.effective_llm_daily_token_limit === null && !row.uses_site_default_llm_daily_limit ? (
+                          <span className="text-ink-500">Brak (konto)</span>
+                        ) : (
+                          <>
+                            <span>{(row.effective_llm_daily_token_limit ?? 0).toLocaleString("pl-PL")}</span>
+                            {row.uses_site_default_llm_daily_limit && (
+                              <span className="ml-1 text-xs text-ink-400">(domyślny)</span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {data.per_user_llm_tokens.length === 0 && (
+                <p className="text-sm text-ink-500">Brak użytkowników.</p>
+              )}
+            </div>
+          </section>
+          )}
 
           <section className="rounded-xl border border-ink-800/15 bg-white p-4 dark:border-paper-100/10 dark:bg-ink-900">
             <h2 className="mb-2 font-semibold">Alerty operacyjne</h2>
@@ -218,7 +277,7 @@ export default function AdminMonitoringPage() {
                 </tbody>
               </table>
               {data.llm_usage.by_model.length === 0 && (
-                <p className="text-sm text-ink-500">Brak zapisów — wykonaj czat lub użyj strony „Analiza intencji”.</p>
+                <p className="text-sm text-ink-500">Brak zapisów — wykonaj czat lub inną operację korzystającą z modelu.</p>
               )}
             </div>
           </section>

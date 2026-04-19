@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal, Self
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # Katalog główny repozytorium (…/TeacherHelper/.env), niezależnie od cwd przy starcie uvicorn.
@@ -34,20 +36,44 @@ class Settings(BaseSettings):
     # --- Storage plików ---
     storage_root: Path = Path("data/storage")
 
-    # --- OpenRouter (jeden klucz, trzy modele) ---
+    # --- xAI (Grok) — transkrypcja mowy STT w Asystencie (POST /v1/voice/transcribe → api.x.ai/v1/stt) ---
+    xai_api_key: str | None = None
+    xai_base_url: str = "https://api.x.ai/v1"
+
+    # --- OpenRouter: jeden OPENROUTER_API_KEY, modele wybierasz osobno (zmienne .env w nawiasach) ---
     openrouter_api_key: str | None = None
-    openrouter_model: str = "google/gemini-3.1-flash-lite-preview"
-    openrouter_module_model: str = "google/gemini-3-flash-preview"
-    openrouter_image_model: str = "google/gemini-3.1-flash-image-preview"
+    # OPENROUTER_MODEL — główny czat / orchestrator
+    openrouter_model: str = Field(default="google/gemini-3.1-flash-lite-preview")
+    # OPENROUTER_MODULE_MODEL — wywołania LLM w modułach (scenariusz, tekst piosenki itd.)
+    openrouter_module_model: str = Field(default="google/gemini-3-flash-preview")
+    # OPENROUTER_IMAGE_MODEL — generacja obrazów wyłącznie przez OpenRouter (modalities image).
+    # Domyślnie Nano Banana 2: google/gemini-3.1-flash-image-preview.
+    # Nano Banana (Gemini 2.5 Flash Image): google/gemini-2.5-flash-image
+    openrouter_image_model: str = Field(default="google/gemini-3.1-flash-image-preview")
     openrouter_base_url: str = "https://openrouter.ai/api/v1"
     openrouter_http_referer: str | None = None
+    # Limit długości uzupełnienia (max_tokens); zapobiega ucięciu długich opracowań w modułach.
+    openrouter_max_completion_tokens: int | None = Field(default=8192, ge=256)
+    openrouter_module_max_completion_tokens: int | None = Field(default=16384, ge=512)
+    # Muzyka (Lyria): OPENROUTER_MUSIC_ENABLED, OPENROUTER_MUSIC_MODEL, OPENROUTER_MUSIC_TIMEOUT_SECONDS
+    openrouter_music_enabled: bool = Field(default=True)
+    openrouter_music_model: str = Field(default="google/lyria-3-pro-preview")
+    openrouter_music_timeout_seconds: float = Field(default=300.0)
+    # Ile osobnych utworów zlecać każdemu dostawcy (KIE + Lyria) przy jednym generate_music (max 5).
+    music_variants_per_provider: int = 2
+    # Generacja obrazów (OpenRouter chat/completions + modalities); tylko gdy OPENROUTER_API_KEY.
+    openrouter_image_timeout_seconds: float = Field(default=120.0)
+    # Opcjonalnie: image_config.image_size dla modeli Gemini Image (np. 1K, 2K); puste = nie wysyłaj.
+    openrouter_image_size: str | None = Field(default="1K")
 
-    # --- Embeddingi (OpenAI) ---
+    # --- Embeddingi: OpenAI (bezpośrednio) albo OpenRouter (/v1/embeddings); patrz EMBEDDINGS_BACKEND ---
+    embeddings_backend: Literal["auto", "openai", "openrouter"] = "auto"
     openai_api_key: str | None = None
     openai_embedding_model: str = "text-embedding-3-small"
+    openrouter_embedding_model: str = "openai/text-embedding-3-small"
     embedding_dim: int = 1536
 
-    # --- DALL-E (fallback obrazów gdy brak OpenRouter) ---
+    # --- DALL-E (nieużywane — grafika wyłącznie przez OpenRouter; pola zostają dla starych .env) ---
     dalle_api_key: str | None = None
     dalle_model: str = "dall-e-3"
 
@@ -62,7 +88,6 @@ class Settings(BaseSettings):
     # Polling GET /api/v1/generate/record-info po taskId (0 = wyłączony). Max ~3 żądania/s na task wg dokumentacji.
     kie_music_poll_timeout_seconds: int = 120
     kie_music_poll_interval_seconds: float = 1.0
-    kie_music_instrumental_default: bool = True
     kie_music_negative_tags: str | None = None
     kie_music_vocal_gender: str | None = None  # "m" | "f"
     kie_music_style_weight: float | None = None
@@ -88,10 +113,28 @@ class Settings(BaseSettings):
     # --- Limity tokenów ---
     llm_daily_token_soft_limit: int | None = None
     llm_daily_token_hard_limit: int | None = None
+    # Gdy użytkownik nie ma własnego llm_daily_token_limit w bazie — stosowany limit dzienny (UTC) na czat.
+    default_user_llm_daily_token_limit: int = Field(default=25000, ge=1, le=2_000_000_000)
+
+    # --- Kontekst rozmowy (zwijanie długich wątków) ---
+    chat_summary_enabled: bool = Field(default=True)
+    # Ile ostatnich tur (para user+asystent) trzymać dosłownie w kontekście modelu.
+    chat_summary_recent_turns: int = Field(default=14, ge=2, le=80)
+    # Szacunek znaków surowej historii — powyżej próbujemy zwinąć starszą część w podsumowanie.
+    chat_context_max_chars: int = Field(default=45000, ge=8000, le=500000)
+    # Maks. liczba wiadomości (user+assistant) przekazywana do orchestratora po ewentualnym skrócie.
+    chat_orchestrator_max_messages: int = Field(default=36, ge=8, le=200)
+    # Osobne wywołanie LLM do skrótu — domyślnie ten sam model co orchestrator; można ustawić tańszy.
+    openrouter_summary_model: str | None = None
+    openrouter_summary_max_completion_tokens: int | None = Field(default=2048, ge=256)
 
     # --- Operacje destrukcyjne ---
     require_resource_confirmation: bool = True
     confirmation_token_expire_minutes: int = 15
+
+    # --- Tavily — wyszukiwanie w internecie (narzędzie search_web w asystencie) ---
+    tavily_api_key: str | None = None
+    web_search_max_results: int = Field(default=5, ge=1, le=15)
 
     # --- Opcjonalne: Langfuse ---
     langfuse_public_key: str | None = None
@@ -103,6 +146,27 @@ class Settings(BaseSettings):
 
     # --- Opcjonalne: Alerty webhook ---
     alert_webhook_url: str | None = None
+
+    @model_validator(mode="after")
+    def _strip_secret_strings(self) -> Self:
+        for name in (
+            "xai_api_key",
+            "openrouter_api_key",
+            "openai_api_key",
+            "dalle_api_key",
+            "kie_api_key",
+            "qdrant_api_key",
+            "admin_api_key",
+            "langfuse_public_key",
+            "langfuse_secret_key",
+            "kie_webhook_hmac_key",
+            "tavily_api_key",
+        ):
+            val = getattr(self, name)
+            if isinstance(val, str):
+                s = val.strip()
+                setattr(self, name, s or None)
+        return self
 
 
 @lru_cache

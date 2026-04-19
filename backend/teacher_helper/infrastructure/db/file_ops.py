@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -24,6 +24,17 @@ from teacher_helper.infrastructure.text_extract import extract_plain_text
 async def delete_chunks_for_file(session: AsyncSession, file_id: UUID) -> None:
     await session.execute(delete(FileChunkORM).where(FileChunkORM.file_asset_id == file_id))
     delete_file_vectors(file_id)
+
+
+class _StorageDeletePort(Protocol):
+    async def delete(self, key: str) -> None: ...
+
+
+async def purge_file_asset(session: AsyncSession, storage: _StorageDeletePort, row: FileAssetORM) -> None:
+    """Usuwa chunki (Postgres + Qdrant), blob storage i wiersz pliku — jedna ścieżka z ``routes_files`` i przy usuwaniu projektu."""
+    await delete_chunks_for_file(session, row.id)
+    await storage.delete(row.storage_key)
+    await session.delete(row)
 
 
 async def index_file_content(
@@ -159,6 +170,7 @@ def category_for_module(module: str) -> FileCategory:
         "music": FileCategory.music,
         "poetry": FileCategory.poetry,
         "presentation": FileCategory.presentation,
+        "study": FileCategory.other,
         "export": FileCategory.other,
     }
     return mapping.get(m, FileCategory.other)

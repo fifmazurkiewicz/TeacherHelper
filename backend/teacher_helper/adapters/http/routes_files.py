@@ -9,9 +9,9 @@ from sqlalchemy import func, select
 
 from teacher_helper.adapters.http.deps import CurrentUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
-from teacher_helper.adapters.http.schemas import FileReindexDryRunResponse, FileResponse
+from teacher_helper.adapters.http.schemas import FileReindexDryRunResponse, FileResponse, MoveFilesRequest
 from teacher_helper.config import get_settings
-from teacher_helper.infrastructure.db.file_ops import index_file_content
+from teacher_helper.infrastructure.db.file_ops import index_file_content, purge_file_asset
 from teacher_helper.infrastructure.db.models import (
     FileAssetORM,
     FileCategory,
@@ -121,6 +121,35 @@ async def list_files(
         stmt = stmt.where(FileAssetORM.topic_id == topic_id)
     stmt = stmt.order_by(FileAssetORM.created_at.desc())
     return list((await session.scalars(stmt)).all())
+
+
+@router.post("/move", response_model=list[FileResponse])
+async def move_files(session: DbSession, user: CurrentUser, body: MoveFilesRequest) -> list[FileAssetORM]:
+    check_rate_limit(user)
+    target_pid = body.project_id
+    if target_pid is not None:
+        proj = await session.get(ProjectORM, target_pid)
+        if not proj or proj.user_id != user.id:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Projekt nie znaleziony")
+
+    ids_ordered = list(dict.fromkeys(body.file_ids))
+    stmt = select(FileAssetORM).where(FileAssetORM.user_id == user.id, FileAssetORM.id.in_(ids_ordered))
+    found = list((await session.scalars(stmt)).all())
+    if len(found) != len(ids_ordered):
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail="Niektóre pliki nie istnieją lub nie należą do Ciebie.",
+        )
+    by_id = {r.id: r for r in found}
+    ordered = [by_id[fid] for fid in ids_ordered]
+    for row in ordered:
+        if row.project_id != target_pid:
+            row.project_id = target_pid
+            row.topic_id = None
+    await session.commit()
+    for row in ordered:
+        await session.refresh(row)
+    return ordered
 
 
 @router.get("/{file_id}/delete-impact")
@@ -276,8 +305,7 @@ async def delete_file(
                     "message": "Potwierdź usunięcie — POST /v1/files/{id}/prepare-delete, potem DELETE z nagłówkiem X-Resource-Confirmation.",
                 },
             )
-    await _storage.delete(row.storage_key)
-    await session.delete(row)
+    await purge_file_asset(session, _storage, row)
     await session.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

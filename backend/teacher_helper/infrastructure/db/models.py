@@ -42,6 +42,8 @@ class UserORM(Base):
     )
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     rate_limit_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # NULL = domyślny limit z konfiguracji; 0 = brak limitu per konto (tylko limity globalne); >0 = własny sufit.
+    llm_daily_token_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     projects: Mapped[list[ProjectORM]] = relationship(back_populates="owner", cascade="all, delete-orphan")
@@ -79,6 +81,7 @@ class ConversationORM(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     owner: Mapped[UserORM] = relationship(back_populates="conversations")
     project: Mapped[ProjectORM | None] = relationship(back_populates="conversations")

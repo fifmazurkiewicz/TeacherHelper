@@ -18,6 +18,7 @@ from teacher_helper.adapters.http.routes_kie import router as kie_webhook_router
 from teacher_helper.adapters.http.routes_music_kie import router as music_kie_router
 from teacher_helper.adapters.http.routes_projects import router as projects_router
 from teacher_helper.adapters.http.routes_topics import router as topics_router
+from teacher_helper.adapters.http.routes_voice import router as voice_router
 from teacher_helper.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -29,7 +30,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(self), geolocation=()"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         # HSTS tylko przy HTTPS — na http://127.0.0.1 nie wysyłaj (unikniesz dziwnych zachowań w dev)
         if request.url.scheme == "https" and not get_settings().debug:
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(topics_router)
     app.include_router(files_router)
     app.include_router(chat_router)
+    app.include_router(voice_router)
     app.include_router(admin_router)
     app.include_router(intent_router)
 

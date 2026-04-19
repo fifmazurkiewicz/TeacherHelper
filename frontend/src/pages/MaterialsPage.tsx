@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   api,
   createProjectConfirmed,
   deleteFileConfirmed,
   deleteProjectConfirmed,
   downloadFileBlob,
+  downloadProjectArchive,
   exportFile,
   fileDeleteImpact,
   getProject,
-  importKieMusicByTask,
+  moveFilesToProject,
   prepareFileDelete,
   prepareFileReindex,
   prepareProjectCreate,
@@ -22,16 +23,27 @@ import {
 } from "@/lib/api";
 import type { ApiFile } from "@/lib/api";
 
+/** Widok „pliki bez przypisanego katalogu” — nie jest to UUID projektu. */
+const LOOSE_FOLDER_ID = "__bez_projektu__";
+
 type Project = { id: string; name: string; description: string | null; created_at: string };
 
-type PendingConfirm = {
-  kind: "project_delete" | "project_create" | "file_delete" | "file_reindex";
-  id: string;
-  label: string;
-  summary: string;
-  token: string;
-  impactNote?: string;
-};
+type PendingConfirm =
+  | {
+      kind: "project_delete" | "project_create" | "file_delete" | "file_reindex";
+      id: string;
+      label: string;
+      summary: string;
+      token: string;
+      impactNote?: string;
+    }
+  | {
+      kind: "files_delete_bulk";
+      label: string;
+      summary: string;
+      impactNote?: string;
+      items: { id: string; label: string; token: string }[];
+    };
 
 type ResourceInfo =
   | { kind: "project"; project: ProjectResponse; impact: ProjectDeleteImpact }
@@ -62,6 +74,16 @@ function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10 * 1024 ? 1 : 0)} KB`;
   return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Odmiana:1 plik, 2–4 pliki (22 pliki), 5–21 plików, 12–14 plików. */
+function plikiLabel(n: number): string {
+  if (n === 1) return "plik";
+  const mod100 = n % 100;
+  if (mod100 >= 12 && mod100 <= 14) return "plików";
+  const mod10 = n % 10;
+  if (mod10 >= 2 && mod10 <= 4) return "pliki";
+  return "plików";
 }
 
 function fileIcon(name: string): string {
@@ -135,11 +157,13 @@ export default function MaterialsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [folderZipBusy, setFolderZipBusy] = useState(false);
   const [pending, setPending] = useState<PendingConfirm | null>(null);
   const [resourceInfo, setResourceInfo] = useState<ResourceInfo | null>(null);
-  const [kieOpen, setKieOpen] = useState(false);
-  const [kieTaskId, setKieTaskId] = useState("");
-  const [kieTargetProject, setKieTargetProject] = useState("");
+  const [showUploadPanel, setShowUploadPanel] = useState(false);
+  const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(() => new Set());
+  const [bulkMoveTarget, setBulkMoveTarget] = useState("");
+  const selectAllFilteredRef = useRef<HTMLInputElement>(null);
 
   const refreshProjects = useCallback(async () => {
     const list = await api<Project[]>("/v1/projects");
@@ -147,28 +171,103 @@ export default function MaterialsPage() {
   }, []);
 
   const refreshFiles = useCallback(async () => {
-    const q = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
-    const list = await api<ApiFile[]>(`/v1/files${q}`);
+    const list = await api<ApiFile[]>(`/v1/files`);
     setFiles(list);
-  }, [projectId]);
+  }, []);
 
   useEffect(() => {
-    refreshProjects().catch(() => setError("Nie udało się wczytać projektów"));
+    refreshProjects().catch((err) =>
+      setError(err instanceof Error ? err.message : "Nie udało się wczytać projektów"),
+    );
   }, [refreshProjects]);
 
   useEffect(() => {
-    refreshFiles().catch(() => setError("Nie udało się wczytać plików"));
+    refreshFiles().catch((err) =>
+      setError(err instanceof Error ? err.message : "Nie udało się wczytać plików"),
+    );
   }, [refreshFiles]);
 
+  useEffect(() => {
+    setSelectedFileIds(new Set());
+    setShowUploadPanel(false);
+    setBulkMoveTarget("");
+  }, [projectId]);
+
+  useEffect(() => {
+    setSelectedFileIds((prev) => {
+      const next = new Set([...prev].filter((id) => files.some((f) => f.id === id)));
+      if (next.size === prev.size && [...prev].every((id) => next.has(id))) return prev;
+      return next;
+    });
+  }, [files]);
+
+  const filesInFolder = useMemo(() => {
+    if (!projectId) return [];
+    if (projectId === LOOSE_FOLDER_ID) return files.filter((f) => !f.project_id);
+    return files.filter((f) => f.project_id === projectId);
+  }, [files, projectId]);
+
   const filteredFiles = useMemo(() => {
-    let list = files;
+    let list = filesInFolder;
     const q = searchQuery.trim().toLowerCase();
     if (q) list = list.filter((f) => f.name.toLowerCase().includes(q));
     if (listFilterCategory) list = list.filter((f) => f.category === listFilterCategory);
     return list;
-  }, [files, searchQuery, listFilterCategory]);
+  }, [filesInFolder, searchQuery, listFilterCategory]);
 
-  const activeProject = projectId ? projects.find((p) => p.id === projectId) : null;
+  const filteredProjects = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return projects;
+    return projects.filter((p) => p.name.toLowerCase().includes(q));
+  }, [projects, searchQuery]);
+
+  const looseCount = useMemo(() => files.filter((f) => !f.project_id).length, [files]);
+
+  const activeProject =
+    projectId && projectId !== LOOSE_FOLDER_ID ? projects.find((p) => p.id === projectId) ?? null : null;
+  const folderTitle =
+    projectId === LOOSE_FOLDER_ID ? "Inne pliki" : activeProject?.name ?? "Katalog";
+
+  const selectedIdsInFiles = useMemo(
+    () => [...selectedFileIds].filter((id) => files.some((f) => f.id === id)),
+    [selectedFileIds, files],
+  );
+
+  const filteredIds = useMemo(() => filteredFiles.map((f) => f.id), [filteredFiles]);
+  const selectedInFilteredCount = useMemo(
+    () => filteredIds.filter((id) => selectedFileIds.has(id)).length,
+    [filteredIds, selectedFileIds],
+  );
+  const allFilteredSelected =
+    filteredFiles.length > 0 && selectedInFilteredCount === filteredFiles.length;
+  const someFilteredSelected =
+    selectedInFilteredCount > 0 && selectedInFilteredCount < filteredFiles.length;
+
+  useEffect(() => {
+    const el = selectAllFilteredRef.current;
+    if (el) el.indeterminate = someFilteredSelected;
+  }, [someFilteredSelected]);
+
+  function toggleSelectAllFiltered(checked: boolean) {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (checked) {
+        filteredIds.forEach((id) => next.add(id));
+      } else {
+        filteredIds.forEach((id) => next.delete(id));
+      }
+      return next;
+    });
+  }
+
+  function toggleFileSelected(fileId: string, checked: boolean) {
+    setSelectedFileIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(fileId);
+      else next.delete(fileId);
+      return next;
+    });
+  }
 
   async function createProject(e: React.FormEvent) {
     e.preventDefault();
@@ -202,7 +301,7 @@ export default function MaterialsPage() {
     setBusy(true);
     try {
       await uploadFile(f, {
-        projectId: projectId || undefined,
+        projectId: projectId && projectId !== LOOSE_FOLDER_ID ? projectId : undefined,
         category: uploadCategory || undefined,
       });
       await refreshFiles();
@@ -292,6 +391,68 @@ export default function MaterialsPage() {
     }
   }
 
+  async function onBulkMoveFiles() {
+    const ids = selectedIdsInFiles;
+    if (ids.length === 0 || !bulkMoveTarget || !projectId) return;
+    if (bulkMoveTarget === projectId) {
+      setError("Wybierz inny katalog niż bieżący.");
+      return;
+    }
+    setError(null);
+    setBusy(true);
+    try {
+      const targetProjectId = bulkMoveTarget === LOOSE_FOLDER_ID ? null : bulkMoveTarget;
+      await moveFilesToProject(ids, targetProjectId);
+      setSelectedFileIds(new Set());
+      setBulkMoveTarget("");
+      await refreshFiles();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nie udało się przenieść plików");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function startBulkDeleteFiles() {
+    const ids = selectedIdsInFiles;
+    if (ids.length === 0) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const prepared = await Promise.all(
+        ids.map(async (id) => {
+          const f = files.find((x) => x.id === id);
+          const [prep, impact] = await Promise.all([prepareFileDelete(id), fileDeleteImpact(id)]);
+          return {
+            id,
+            label: f?.name ?? id,
+            token: prep.confirmation_token,
+            chunks: impact.indexed_chunks,
+          };
+        }),
+      );
+      const totalChunks = prepared.reduce((a, x) => a + x.chunks, 0);
+      const n = prepared.length;
+      const namesPreview = prepared
+        .slice(0, 8)
+        .map((x) => x.label)
+        .join(", ");
+      const more = n > 8 ? ` (+${n - 8} więcej)` : "";
+      const bulkImpactNote = `Łącznie ${totalChunks} fragmentów w indeksie. Wybrane: ${namesPreview}${more}`;
+      setPending({
+        kind: "files_delete_bulk",
+        label: `${n} ${plikiLabel(n)}`,
+        summary: `Trwale usunąć ${n} ${plikiLabel(n)} z biblioteki i indeksu?`,
+        impactNote: bulkImpactNote,
+        items: prepared.map(({ id, label, token }) => ({ id, label, token })),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nie udało się przygotować zbiorczego usunięcia");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onExport(id: string, format: "pdf" | "docx" | "txt") {
     setError(null);
     try {
@@ -345,6 +506,12 @@ export default function MaterialsPage() {
       } else if (pending.kind === "file_delete") {
         await deleteFileConfirmed(pending.id, pending.token);
         await refreshFiles();
+      } else if (pending.kind === "files_delete_bulk") {
+        for (const it of pending.items) {
+          await deleteFileConfirmed(it.id, it.token);
+        }
+        setSelectedFileIds(new Set());
+        await refreshFiles();
       } else {
         await reindexFileConfirmed(pending.id, pending.token);
         await refreshFiles();
@@ -358,15 +525,15 @@ export default function MaterialsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8 px-4 pb-16 pt-2">
+    <div className="mx-auto max-w-6xl space-y-8 px-4 pb-16 pt-2">
       <header className="space-y-2">
         <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-paper-50 sm:text-3xl">
           Moje materiały
         </h1>
         <p className="max-w-2xl text-sm leading-relaxed text-ink-600 dark:text-paper-400">
-          Tutaj są pliki z asystenta i Twoje uploady. Ułóż je w{" "}
-          <strong className="font-medium text-ink-800 dark:text-paper-200">projekty</strong>, żeby uporządkować pliki
-          — albo przeglądaj wszystko naraz. Usuwanie i reindeksacja wymagają krótkiego potwierdzenia w oknie dialogowym.
+          <strong className="font-medium text-ink-800 dark:text-paper-200">Katalog</strong> to folder na materiały (np.
+          przedstawienie o Kopciuszku). W Asystencie wybierz ten sam katalog — pliki z czatu trafią tutaj. Usunięcie
+          katalogu usuwa też jego pliki. Pojedyncze pliki i reindeksacja wymagają krótkiego potwierdzenia.
         </p>
       </header>
 
@@ -386,269 +553,263 @@ export default function MaterialsPage() {
         </div>
       )}
 
-      {kieOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-[2px]">
-          <div className={`w-full max-w-md ${cardBase} p-6 shadow-xl`}>
-            <h3 className="text-lg font-semibold text-ink-900 dark:text-paper-50">Pobierz utwór z KIE</h3>
-            <p className="mt-2 text-xs leading-relaxed text-ink-500 dark:text-paper-500">
-              Wklej <strong>taskId</strong> z pliku .txt po generacji w czacie. W konfiguracji serwera potrzebny jest m.in.{" "}
-              <code className="rounded-md bg-paper-200/80 px-1.5 py-0.5 font-mono text-[0.7rem] dark:bg-ink-800">
-                KIE_MUSIC_POLL_TIMEOUT_SECONDS &gt; 0
-              </code>
-              .
-            </p>
-            <label className="mt-4 flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
-              Task ID
-              <input
-                value={kieTaskId}
-                onChange={(e) => setKieTaskId(e.target.value)}
-                placeholder="np. a73adec4d76825c0…"
-                className={`${inputBase} font-mono text-xs`}
-                autoFocus
-              />
-            </label>
-            <label className="mt-4 flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
-              Zapisz w projekcie
-              <select
-                value={kieTargetProject}
-                onChange={(e) => setKieTargetProject(e.target.value)}
-                className={inputBase}
-              >
-                <option value="">Bez projektu (tylko biblioteka)</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div className="mt-6 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setKieOpen(false)}
-                className="rounded-xl border border-ink-800/20 px-4 py-2.5 text-sm font-medium dark:border-paper-100/20"
-              >
-                Anuluj
-              </button>
-              <button
-                type="button"
-                disabled={busy || !kieTaskId.trim()}
-                onClick={() => {
-                  void (async () => {
-                    setError(null);
-                    setBusy(true);
-                    try {
-                      await importKieMusicByTask({
-                        task_id: kieTaskId.trim(),
-                        project_id: kieTargetProject.trim() || null,
-                      });
-                      setKieOpen(false);
-                      await refreshFiles();
-                    } catch (err) {
-                      setError(err instanceof Error ? err.message : "Import KIE nie powiódł się");
-                    } finally {
-                      setBusy(false);
-                    }
-                  })();
-                }}
-                className="rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-dim disabled:opacity-50"
-              >
-                {busy ? "Pobieranie…" : "Pobierz MP3"}
-              </button>
+      {!projectId ? (
+        <div className="space-y-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-semibold text-ink-900 dark:text-paper-50">Twoje pliki</h2>
+              <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">
+                Kliknij folder. W Asystencie wybierz ten sam katalog — materiały z czatu zapiszą się tutaj.
+              </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setShowNewProject((v) => !v)}
+              className="shrink-0 rounded-xl border border-accent/40 bg-accent/10 px-4 py-2.5 text-sm font-semibold text-accent hover:bg-accent/15 dark:text-accent-muted"
+            >
+              {showNewProject ? "Zwiń formularz" : "+ Nowy katalog"}
+            </button>
           </div>
-        </div>
-      )}
 
-      <div className="grid gap-6 lg:grid-cols-12 lg:gap-8">
-        {/* Lewa kolumna: projekty + upload */}
-        <div className="space-y-4 lg:col-span-5">
-          <section className={`${cardBase} p-5`}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500 dark:text-paper-500">
-              Projekt / folder
-            </h2>
-            <p className="mt-1 text-xs text-ink-500 dark:text-paper-500">
-              Wybierz, które pliki widzisz na liście obok. „Wszystkie” — cała biblioteka.
+          {showNewProject && (
+            <form
+              onSubmit={createProject}
+              className="mt-4 space-y-3 rounded-xl border border-ink-800/10 bg-paper-50/40 p-4 dark:border-paper-100/10 dark:bg-ink-950/40"
+            >
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
+                Nazwa katalogu
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="np. Przedstawienie o Kopciuszku"
+                  className={inputBase}
+                />
+              </label>
+              <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
+                Opis (opcjonalnie)
+                <input value={newDesc} onChange={(e) => setNewDesc(e.target.value)} className={inputBase} />
+              </label>
+              <button
+                type="submit"
+                disabled={busy}
+                className="w-full rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-dim disabled:opacity-50"
+              >
+                Przygotuj utworzenie
+              </button>
+            </form>
+          )}
+
+          <div className="mt-6 max-w-md">
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Szukaj katalogu po nazwie…"
+              className={inputBase}
+              aria-label="Szukaj katalogów"
+            />
+          </div>
+
+          <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+            <button
+              type="button"
+              onClick={() => setProjectId(LOOSE_FOLDER_ID)}
+              className="flex flex-col items-center rounded-2xl border border-ink-800/12 bg-paper-50/40 p-4 text-center transition hover:border-accent/40 hover:bg-accent/5 dark:border-paper-100/10 dark:bg-ink-950/40"
+            >
+              <span className="text-4xl leading-none" aria-hidden>
+                {String.fromCodePoint(0x1f4c1)}
+              </span>
+              <span className="mt-2 text-sm font-semibold text-ink-900 dark:text-paper-50">Inne pliki</span>
+              <span className="mt-1 text-xs text-ink-500 dark:text-paper-500">
+                {looseCount} {plikiLabel(looseCount)}
+              </span>
+            </button>
+            {filteredProjects.map((p) => {
+              const cnt = files.filter((f) => f.project_id === p.id).length;
+              return (
+                <div
+                  key={p.id}
+                  className="group relative flex flex-col rounded-2xl border border-ink-800/12 bg-paper-50/40 dark:border-paper-100/10 dark:bg-ink-950/40"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setProjectId(p.id)}
+                    className="flex flex-1 flex-col items-center p-4 text-center transition hover:bg-accent/5"
+                  >
+                    <span className="text-4xl leading-none" aria-hidden>
+                      {String.fromCodePoint(0x1f4c2)}
+                    </span>
+                    <span className="mt-2 line-clamp-2 min-h-10 text-sm font-semibold text-ink-900 dark:text-paper-50">
+                      {p.name}
+                    </span>
+                    <span className="mt-1 text-xs text-ink-500 dark:text-paper-500">
+                      {cnt} {plikiLabel(cnt)}
+                    </span>
+                  </button>
+                  <div className="absolute right-1 top-1 flex gap-0.5 rounded-md bg-white/90 p-0.5 opacity-0 shadow-sm transition group-hover:opacity-100 dark:bg-ink-900/90">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void openProjectInfo(p.id);
+                      }}
+                      disabled={busy}
+                      className="rounded px-1.5 py-0.5 text-[0.65rem] font-medium text-ink-600 hover:bg-paper-100 dark:text-paper-400 dark:hover:bg-ink-800"
+                    >
+                      Info
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void startDeleteProject(p.id);
+                      }}
+                      disabled={busy}
+                      className="rounded px-1.5 py-0.5 text-[0.65rem] font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/50"
+                    >
+                      Usuń
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {projects.length > 0 && filteredProjects.length === 0 && (
+            <p className="mt-6 text-center text-sm text-ink-500 dark:text-paper-500">
+              Brak katalogów pasujących do wyszukiwania.
             </p>
-
-            <div className="mt-4 space-y-2">
+          )}
+          {projects.length === 0 && (
+            <p className="mt-6 rounded-xl border border-dashed border-ink-800/20 px-4 py-8 text-center text-sm text-ink-500 dark:border-paper-100/15 dark:text-paper-500">
+              Nie masz jeszcze własnych katalogów — dodaj pierwszy przyciskiem „+ Nowy katalog” albo korzystaj z folderu{" "}
+              <strong className="font-medium text-ink-700 dark:text-paper-300">Inne pliki</strong>.
+            </p>
+          )}
+        </div>
+      ) : (
+        <section className={`${cardBase} overflow-hidden`}>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-ink-800/10 px-4 py-3 dark:border-paper-100/10">
+            <button
+              type="button"
+              onClick={() => setProjectId("")}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+            >
+              ← Twoje pliki
+            </button>
+            <span className="text-ink-300 dark:text-paper-600">/</span>
+            <h2 className="text-base font-semibold text-ink-900 dark:text-paper-50">{folderTitle}</h2>
+            {activeProject?.description && (
+              <p className="w-full text-xs text-ink-500 sm:ml-auto sm:w-auto dark:text-paper-500">
+                {activeProject.description}
+              </p>
+            )}
+          </div>
+          <div className="space-y-6 p-5">
+            <div>
               <button
                 type="button"
-                onClick={() => setProjectId("")}
-                className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left text-sm font-medium transition ${
-                  !projectId
-                    ? "border-accent/50 bg-accent/10 text-accent dark:text-accent-muted"
-                    : "border-ink-800/12 hover:border-ink-800/25 dark:border-paper-100/10 dark:hover:border-paper-100/20"
+                onClick={() => setShowUploadPanel((v) => !v)}
+                className="rounded-xl border border-accent/40 bg-accent/10 px-4 py-2.5 text-sm font-semibold text-accent hover:bg-accent/15 dark:text-accent-muted"
+                aria-expanded={showUploadPanel}
+              >
+                {showUploadPanel ? "Zwiń dodawanie pliku" : "Dodaj plik"}
+              </button>
+              <div
+                className={`grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none ${
+                  showUploadPanel ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
                 }`}
               >
-                <span>Wszystkie materiały</span>
-                <span className="text-xs font-normal text-ink-500 dark:text-paper-500">{files.length} w widoku</span>
-              </button>
-
-              <ul className="max-h-[min(40vh,22rem)] space-y-2 overflow-y-auto pr-1">
-                {projects.map((p) => {
-                  const sel = projectId === p.id;
-                  return (
-                    <li
-                      key={p.id}
-                      className={`rounded-xl border transition ${
-                        sel
-                          ? "border-accent/50 bg-accent/5 ring-1 ring-accent/20"
-                          : "border-ink-800/10 dark:border-paper-100/10"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2 px-3 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setProjectId(sel ? "" : p.id)}
-                          className="min-w-0 flex-1 text-left"
+                <div className="overflow-hidden">
+                  <div className="mt-4 rounded-xl border border-ink-800/10 bg-paper-50/30 p-4 dark:border-paper-100/10 dark:bg-ink-950/30">
+                    <h3 className="text-sm font-semibold text-ink-800 dark:text-paper-200">
+                      Przesyłanie pliku
+                    </h3>
+                    <p className="mt-1 text-xs text-ink-500 dark:text-paper-500">
+                      {projectId === LOOSE_FOLDER_ID
+                        ? "Plik trafi do biblioteki bez przypisanego katalogu."
+                        : `Plik trafi do katalogu „${folderTitle}”.`}
+                    </p>
+                    <div className="mt-4 space-y-3">
+                      <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
+                        Kategoria w bibliotece
+                        <select
+                          value={uploadCategory}
+                          onChange={(e) => setUploadCategory(e.target.value)}
+                          className={inputBase}
                         >
-                          <span className={`block truncate text-sm font-medium ${sel ? "text-accent dark:text-accent-muted" : ""}`}>
-                            {p.name}
-                          </span>
-                          {p.description && (
-                            <span className="mt-0.5 line-clamp-2 text-xs text-ink-500 dark:text-paper-500">{p.description}</span>
-                          )}
-                        </button>
-                        <div className="flex shrink-0 flex-col gap-1">
-                          <button
-                            type="button"
-                            onClick={() => void openProjectInfo(p.id)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1 text-[0.65rem] font-medium text-ink-600 hover:bg-paper-100 dark:text-paper-400 dark:hover:bg-ink-800"
-                          >
-                            Info
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void startDeleteProject(p.id)}
-                            disabled={busy}
-                            className="rounded-lg px-2 py-1 text-[0.65rem] font-medium text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40"
-                          >
-                            Usuń
-                          </button>
-                        </div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ul>
-
-              {projects.length === 0 && (
-                <p className="rounded-xl border border-dashed border-ink-800/20 px-4 py-6 text-center text-sm text-ink-500 dark:border-paper-100/15 dark:text-paper-500">
-                  Nie masz jeszcze projektów. Utwórz pierwszy poniżej — to tylko etykieta grupująca pliki.
-                </p>
-              )}
-
-              <div className="border-t border-ink-800/10 pt-4 dark:border-paper-100/10">
-                <button
-                  type="button"
-                  onClick={() => setShowNewProject((v) => !v)}
-                  className="flex w-full items-center justify-between rounded-xl border border-ink-800/15 px-4 py-3 text-left text-sm font-medium hover:bg-paper-50 dark:border-paper-100/15 dark:hover:bg-ink-800/50"
-                >
-                  <span>Nowy projekt</span>
-                  <span className="text-ink-400">{showNewProject ? "−" : "+"}</span>
-                </button>
-                {showNewProject && (
-                  <form onSubmit={createProject} className="mt-3 space-y-3">
-                    <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
-                      Nazwa
-                      <input
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        placeholder="np. Jasełka 2025"
-                        className={inputBase}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
-                      Opis (opcjonalnie)
-                      <input
-                        value={newDesc}
-                        onChange={(e) => setNewDesc(e.target.value)}
-                        className={inputBase}
-                      />
-                    </label>
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="w-full rounded-xl bg-accent py-2.5 text-sm font-semibold text-white hover:bg-accent-dim disabled:opacity-50"
-                    >
-                      Przygotuj utworzenie
-                    </button>
-                  </form>
-                )}
+                          {uploadCategories.map((c) => (
+                            <option key={c.value || "other"} value={c.value}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label
+                        className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-ink-800/20 bg-paper-50/50 px-4 py-8 text-center transition hover:border-accent/40 hover:bg-accent/5 dark:border-paper-100/15 dark:bg-ink-950/50`}
+                      >
+                        <span className="text-2xl" aria-hidden>
+                          {String.fromCodePoint(0x1f4e4)}
+                        </span>
+                        <span className="mt-2 text-sm font-medium text-ink-800 dark:text-paper-200">
+                          {busy ? "Przetwarzanie…" : "Wybierz plik z dysku"}
+                        </span>
+                        <span className="mt-1 text-xs text-ink-500">Maks. 50 MB</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          onChange={(e) => void onUpload(e)}
+                          disabled={busy}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
-          </section>
 
-          <section className={`${cardBase} p-5`}>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-ink-500 dark:text-paper-500">
-              Dodaj plik
-            </h2>
-            <p className="mt-1 text-xs text-ink-500 dark:text-paper-500">
-              Plik trafi do {activeProject ? `projektu „${activeProject.name}”` : "biblioteki (bez projektu)"}.
-            </p>
-            <div className="mt-4 space-y-3">
-              <label className="flex flex-col gap-1.5 text-sm font-medium text-ink-800 dark:text-paper-200">
-                Kategoria w bibliotece
-                <select
-                  value={uploadCategory}
-                  onChange={(e) => setUploadCategory(e.target.value)}
-                  className={inputBase}
-                >
-                  {uploadCategories.map((c) => (
-                    <option key={c.value || "other"} value={c.value}>
-                      {c.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label
-                className={`flex cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-ink-800/20 bg-paper-50/50 px-4 py-8 text-center transition hover:border-accent/40 hover:bg-accent/5 dark:border-paper-100/15 dark:bg-ink-950/50`}
-              >
-                <span className="text-2xl" aria-hidden>
-                  {String.fromCodePoint(0x1f4e4)}
-                </span>
-                <span className="mt-2 text-sm font-medium text-ink-800 dark:text-paper-200">
-                  {busy ? "Przetwarzanie…" : "Wybierz plik z dysku"}
-                </span>
-                <span className="mt-1 text-xs text-ink-500">Maks. 50 MB</span>
-                <input type="file" className="hidden" onChange={(e) => void onUpload(e)} disabled={busy} />
-              </label>
-            </div>
-
-            <details className="mt-4 rounded-xl border border-ink-800/10 px-3 py-2 text-xs dark:border-paper-100/10">
-              <summary className="cursor-pointer font-medium text-ink-700 dark:text-paper-300">Import audio z KIE (Suno)</summary>
-              <p className="mt-2 leading-relaxed text-ink-500 dark:text-paper-500">
-                Jeśli masz <strong>taskId</strong> z raportu po generacji w czacie, możesz dociągnąć MP3 bez webhooka.
-              </p>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => {
-                  setKieTaskId("");
-                  setKieTargetProject(projectId || "");
-                  setKieOpen(true);
-                }}
-                className="mt-2 w-full rounded-lg border border-accent/35 bg-accent/10 py-2 text-xs font-semibold text-accent hover:bg-accent/15 disabled:opacity-50 dark:text-accent-muted"
-              >
-                Otwórz formularz importu
-              </button>
-            </details>
-          </section>
-        </div>
-
-        {/* Prawa kolumna: lista plików */}
-        <div className="lg:col-span-7">
-          <section className={`${cardBase} min-h-[12rem] p-5`}>
+            <section className={`${cardBase} min-h-[12rem] p-5`}>
             <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-ink-900 dark:text-paper-50">Twoje pliki</h2>
                 <p className="mt-0.5 text-xs text-ink-500 dark:text-paper-500">
-                  {activeProject ? `Projekt: ${activeProject.name}` : "Wszystkie projekty"} · {filteredFiles.length}{" "}
+                  {folderTitle} · {filteredFiles.length}{" "}
                   {filteredFiles.length === 1 ? "plik" : "plików"}
                   {listFilterCategory || searchQuery ? " (po filtrze)" : ""}
                 </p>
+                {projectId !== LOOSE_FOLDER_ID && filesInFolder.length > 0 ? (
+                  <button
+                    type="button"
+                    disabled={folderZipBusy || busy}
+                    onClick={() => {
+                      void (async () => {
+                        if (!projectId || projectId === LOOSE_FOLDER_ID) return;
+                        setError(null);
+                        setFolderZipBusy(true);
+                        try {
+                          const { blob, filename } = await downloadProjectArchive(projectId);
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement("a");
+                          a.href = url;
+                          a.download = filename;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        } catch (e) {
+                          setError(
+                            e instanceof Error
+                              ? e.message
+                              : "Nie udało się pobrać archiwum katalogu",
+                          );
+                        } finally {
+                          setFolderZipBusy(false);
+                        }
+                      })();
+                    }}
+                    className="mt-3 w-full rounded-lg border border-ink-800/20 bg-paper-50 px-3 py-2 text-left text-xs font-semibold text-ink-800 hover:bg-paper-100 disabled:opacity-50 dark:border-paper-100/20 dark:bg-ink-950 dark:text-paper-200 dark:hover:bg-ink-800 sm:w-auto"
+                  >
+                    {folderZipBusy ? "Pakowanie archiwum…" : "Pobierz cały katalog (ZIP)"}
+                  </button>
+                ) : null}
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[200px]">
                 <input
@@ -680,11 +841,13 @@ export default function MaterialsPage() {
             {filteredFiles.length === 0 ? (
               <div className="mt-10 rounded-2xl border border-dashed border-ink-800/15 bg-paper-50/30 px-6 py-12 text-center dark:border-paper-100/10 dark:bg-ink-950/30">
                 <p className="text-sm font-medium text-ink-700 dark:text-paper-300">
-                  {files.length === 0 ? "Brak plików w tym widoku" : "Nic nie pasuje do wyszukiwania ani filtra"}
+                  {filesInFolder.length === 0
+                    ? "Brak plików w tym katalogu"
+                    : "Nic nie pasuje do wyszukiwania ani filtra"}
                 </p>
                 <p className="mx-auto mt-2 max-w-sm text-xs leading-relaxed text-ink-500 dark:text-paper-500">
-                  {files.length === 0
-                    ? "Wygeneruj materiał w Asystencie albo prześlij plik — pojawi się tutaj."
+                  {filesInFolder.length === 0
+                    ? "Wygeneruj materiał w Asystencie (z wybranym katalogiem) albo prześlij plik powyżej."
                     : "Zmień filtr lub wyczyść pole szukania."}
                 </p>
                 {(searchQuery || listFilterCategory) && (
@@ -701,7 +864,74 @@ export default function MaterialsPage() {
                 )}
               </div>
             ) : (
-              <ul className="mt-6 space-y-3">
+              <>
+                <div className="mt-4 flex flex-col gap-3 rounded-xl border border-ink-800/10 bg-paper-50/50 px-3 py-3 dark:border-paper-100/10 dark:bg-ink-950/50 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink-800 dark:text-paper-200">
+                    <input
+                      ref={selectAllFilteredRef}
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={(e) => toggleSelectAllFiltered(e.target.checked)}
+                      disabled={busy}
+                      className="size-4 rounded border-ink-800/30 text-accent focus:ring-accent/40 dark:border-paper-100/30"
+                      aria-label="Zaznacz wszystkie widoczne pliki"
+                    />
+                    <span>
+                      Zaznacz widoczne ({selectedInFilteredCount}/{filteredFiles.length})
+                    </span>
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                    {selectedIdsInFiles.length > 0 && (
+                      <span className="text-xs text-ink-500 dark:text-paper-500">
+                        Zaznaczono: {selectedIdsInFiles.length} {plikiLabel(selectedIdsInFiles.length)}
+                      </span>
+                    )}
+                    <label className="flex items-center gap-2 text-xs text-ink-600 dark:text-paper-400">
+                      <span className="sr-only sm:not-sr-only sm:inline">Do katalogu</span>
+                      <select
+                        value={bulkMoveTarget}
+                        onChange={(e) => setBulkMoveTarget(e.target.value)}
+                        disabled={busy || selectedIdsInFiles.length === 0}
+                        className={`${inputBase} max-w-[200px] py-2 text-xs`}
+                        aria-label="Katalog docelowy dla przeniesienia"
+                      >
+                        <option value="">Przenieś do…</option>
+                        {projectId !== LOOSE_FOLDER_ID && (
+                          <option value={LOOSE_FOLDER_ID}>Inne pliki</option>
+                        )}
+                        {projects
+                          .filter((p) => p.id !== projectId)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={
+                        busy ||
+                        selectedIdsInFiles.length === 0 ||
+                        !bulkMoveTarget ||
+                        bulkMoveTarget === projectId
+                      }
+                      onClick={() => void onBulkMoveFiles()}
+                      className="rounded-xl border border-accent/50 bg-accent/10 px-4 py-2 text-xs font-semibold text-accent hover:bg-accent/15 disabled:opacity-50 dark:text-accent-muted"
+                    >
+                      Przenieś
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || selectedIdsInFiles.length === 0}
+                      onClick={() => void startBulkDeleteFiles()}
+                      className="rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-red-700 disabled:opacity-50"
+                    >
+                      Usuń zaznaczone
+                    </button>
+                  </div>
+                </div>
+                <ul className="mt-6 space-y-3">
                 {filteredFiles.map((f) => {
                   const cat = CATEGORY_LABELS[f.category] ?? f.category;
                   const created = formatFileDate((f as ApiFile & { created_at?: string }).created_at);
@@ -711,6 +941,14 @@ export default function MaterialsPage() {
                       className="flex flex-col gap-4 rounded-2xl border border-ink-800/10 bg-paper-50/40 p-4 dark:border-paper-100/10 dark:bg-ink-950/40 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="flex min-w-0 flex-1 items-start gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedFileIds.has(f.id)}
+                          onChange={(e) => toggleFileSelected(f.id, e.target.checked)}
+                          disabled={busy}
+                          className="mt-3 size-4 shrink-0 rounded border-ink-800/30 text-accent focus:ring-accent/40 dark:border-paper-100/30"
+                          aria-label={`Zaznacz plik ${f.name}`}
+                        />
                         <div
                           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-lg"
                           aria-hidden
@@ -782,11 +1020,13 @@ export default function MaterialsPage() {
                     </li>
                   );
                 })}
-              </ul>
+                </ul>
+              </>
             )}
           </section>
         </div>
-      </div>
+      </section>
+      )}
 
       {resourceInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-[2px]">
@@ -857,6 +1097,7 @@ export default function MaterialsPage() {
               {pending.kind === "project_create" && "Potwierdź utworzenie projektu"}
               {pending.kind === "project_delete" && "Potwierdź usunięcie projektu"}
               {pending.kind === "file_delete" && "Potwierdź usunięcie pliku"}
+              {pending.kind === "files_delete_bulk" && "Potwierdź usunięcie plików"}
               {pending.kind === "file_reindex" && "Potwierdź modyfikację indeksu"}
             </h3>
             <p className="mt-3 text-sm text-ink-700 dark:text-paper-300">

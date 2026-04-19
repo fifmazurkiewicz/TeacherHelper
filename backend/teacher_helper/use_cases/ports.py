@@ -86,7 +86,7 @@ class VideoResult:
 
 @runtime_checkable
 class ImageGeneratorPort(Protocol):
-    """Port generowania obrazów — wymienne adaptery (DALL-E, Stability, Midjourney)."""
+    """Port generowania obrazów — produkcyjnie OpenRouter (modele z wyjściem image)."""
 
     async def generate(
         self,
