@@ -7,7 +7,7 @@ Instrukcja krok po kroku dla wdrożenia produkcyjnego. Czas wykonania: ~30-60 mi
 - Konto na [hetzner.com](https://hetzner.com)
 - Konto na GitHub z dostępem do tego repozytorium
 - Klucz SSH wygenerowany lokalnie (`ssh-keygen -t ed25519`)
-- Domena (opcjonalnie, ale zalecana)
+- Konto na [duckdns.org](https://duckdns.org) (darmowa subdomena)
 
 ---
 
@@ -122,12 +122,14 @@ Panel Coolify → **Settings → Source → GitHub**:
 
 ---
 
-## Krok 7: Skonfiguruj domenę (opcjonalnie)
+## Krok 7: Skonfiguruj darmową domenę DuckDNS
 
-1. Skieruj rekord DNS `A` na IP serwera Hetzner
-2. Poczekaj na propagację DNS (~5-30 min)
+1. Wejdź na [duckdns.org](https://duckdns.org) i zaloguj się przez GitHub/Google
+2. W polu **sub domain** wpisz wybraną nazwę (np. `teacherhelper`) → kliknij **add domain**
+3. W polu **current ip** wpisz IP serwera Hetzner → kliknij **update ip**
+4. Twoja domena to: `https://teacherhelper.duckdns.org`
 
-Bez domeny możesz używać `http://TWOJE_IP` — SSL nie będzie działał.
+Propagacja DuckDNS jest natychmiastowa — możesz od razu przejść do kolejnego kroku.
 
 ---
 
@@ -165,12 +167,12 @@ JWT_SECRET=WYGENERUJ_LOSOWY_STRING
 OPENROUTER_API_KEY=sk-or-...
 
 # Konto admina (tworzone automatycznie przy pierwszym uruchomieniu)
-ADMIN_SEED_EMAIL=admin@twoja-domena.pl
+ADMIN_SEED_EMAIL=admin@teacherhelper.duckdns.org
 ADMIN_SEED_PASSWORD=SilneHasloAdmin123!
 
 # Produkcja
 OPENAPI_DOCS=false
-CORS_ORIGINS=https://twoja-domena.pl
+CORS_ORIGINS=https://teacherhelper.duckdns.org
 
 # Przechowywanie plików
 STORAGE_ROOT=/app/data/storage
@@ -199,7 +201,7 @@ Panel Coolify → **Resources → New Resource → Application → GitHub**:
 | Dockerfile path | `frontend/Dockerfile` |
 | Build context | `/` |
 | Port | `80` |
-| Domain | `https://twoja-domena.pl` |
+| Domain | `https://teacherhelper.duckdns.org` |
 
 - Zaznacz **Generate SSL Certificate** (Let's Encrypt — automatyczny)
 - Kliknij **Deploy**
@@ -210,12 +212,12 @@ Panel Coolify → **Resources → New Resource → Application → GitHub**:
 
 ```bash
 # Health check
-curl https://twoja-domena.pl/th-api/health
+curl https://teacherhelper.duckdns.org/th-api/health
 # Oczekiwane: {"status": "ok"}
 ```
 
 Checklist:
-- [ ] Otwórz `https://twoja-domena.pl` w przeglądarce
+- [ ] Otwórz `https://teacherhelper.duckdns.org` w przeglądarce
 - [ ] Zaloguj się na konto admina (`ADMIN_SEED_EMAIL` / `ADMIN_SEED_PASSWORD`)
 - [ ] Utwórz projekt i przetestuj chat
 - [ ] Wgraj plik i sprawdź wyszukiwanie semantyczne
@@ -227,7 +229,7 @@ Checklist:
 
 1. Zarejestruj się na [uptimerobot.com](https://uptimerobot.com)
 2. **New Monitor → HTTP(s)**
-   - URL: `https://twoja-domena.pl/th-api/health`
+   - URL: `https://teacherhelper.duckdns.org/th-api/health`
    - Monitoring Interval: `5 minutes`
    - Alert contacts: Twój e-mail
 3. Dostaniesz alert e-mail jeśli aplikacja przestanie odpowiadać
@@ -285,11 +287,11 @@ Coolify przechowuje zmienne środowiskowe zaszyfrowane. Klucze API wpisujesz prz
 | Element | Koszt |
 |---|---|
 | Hetzner CX32 | €8.29/mies. |
-| Domena | ~€1-2/mies. |
+| Domena (DuckDNS) | **Darmowa** |
 | SSL (Let's Encrypt) | Darmowy |
 | UptimeRobot | Darmowy |
 | OpenRouter API (5 users) | ~$1-5/mies. |
-| **Łącznie** | **~€10-15/mies.** |
+| **Łącznie** | **~€8-10/mies.** |
 
 ---
 
