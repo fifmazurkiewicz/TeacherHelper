@@ -53,44 +53,82 @@ Kliknij **Create**.
 
 ## Krok 2: Zarezerwuj statyczne IP
 
-Domyślne IP w GCP jest tymczasowe — zmienia się po restarcie VM.
+Domyślne IP w GCP jest tymczasowe — zmienia się po każdym restarcie VM. Musisz je zarezerwować zanim skonfigurujesz DuckDNS.
 
-**VPC Network → IP Addresses → Reserve Static Address:**
-- Typ: `External`
-- Przypisz do `teacherhelper-vm`
+1. W lewym menu GCP Console kliknij **≡ (hamburger menu)**
+2. Przewiń do sekcji **Networking** → kliknij **VPC Network**
+3. W menu po lewej kliknij **IP addresses**
+4. Na górze strony kliknij **+ RESERVE EXTERNAL STATIC ADDRESS**
+5. Wypełnij formularz:
 
-Zapisz IP — będzie potrzebne do DuckDNS i SSH.
+| Pole | Wartość |
+|---|---|
+| Name | `teacherhelper-ip` |
+| Network Service Tier | `Standard` (taniej) lub `Premium` |
+| IP version | `IPv4` |
+| Type | `Regional` |
+| Region | ten sam co VM (np. `europe-west3`) |
+| Attached to | `teacherhelper-vm` |
+
+6. Kliknij **RESERVE**
+7. Skopiuj przypisany adres IP (kolumna **External Address**) — to jest Twoje stałe IP
 
 ---
 
 ## Krok 3: Otwórz port 8000 (panel Coolify)
 
-**VPC Network → Firewall → Create Firewall Rule:**
+Port 8000 jest potrzebny tylko do pierwszej konfiguracji Coolify przez przeglądarkę. Możesz go zamknąć po zakończeniu ustawień.
+
+1. W lewym menu kliknij **≡ → VPC Network → Firewall**
+2. Kliknij **+ CREATE FIREWALL RULE** (górny przycisk)
+3. Wypełnij formularz:
 
 | Pole | Wartość |
 |---|---|
 | Name | `allow-coolify-panel` |
-| Direction | Ingress |
-| Targets | All instances in the network |
-| Source IP | `0.0.0.0/0` |
-| Ports | TCP `8000` |
+| Description | Coolify web UI - can be deleted after setup |
+| Logs | Off |
+| Network | `default` |
+| Priority | `1000` |
+| Direction of traffic | `Ingress` |
+| Action on match | `Allow` |
+| Targets | `All instances in the network` |
+| Source filter | `IPv4 ranges` |
+| Source IPv4 ranges | `0.0.0.0/0` |
+| Protocols and ports | ✓ `TCP` → wpisz `8000` |
 
-> Po skonfigurowaniu Coolify możesz usunąć tę regułę — panel będzie dostępny przez HTTPS.
+4. Kliknij **CREATE**
+
+> **Po zakończeniu konfiguracji Coolify** wróć tutaj i usuń tę regułę (Actions → Delete). Panel Coolify będzie wtedy dostępny tylko przez HTTPS na porcie 443.
 
 ---
 
-## Krok 4: Dodaj klucz SSH
+## Krok 4: Połącz się z serwerem przez SSH
 
-**Compute Engine → Metadata → SSH Keys → Add SSH Key:**
+**Opcja A — przez przeglądarkę (najprostsza, bez konfiguracji):**
 
-Wklej zawartość `~/.ssh/id_ed25519.pub` (lub wygeneruj: `ssh-keygen -t ed25519`).
+1. GCP Console → **Compute Engine → VM Instances**
+2. W wierszu `teacherhelper-vm` kliknij **SSH** (przycisk po prawej)
+3. Otworzy się terminal w nowej karcie — gotowe
 
-Połącz się:
+**Opcja B — przez terminal lokalny:**
+
 ```bash
-ssh TWOJ_USER@TWOJE_IP
+# Wygeneruj klucz SSH jeśli jeszcze nie masz:
+ssh-keygen -t ed25519 -C "teacherhelper"
+# Klucze są w: ~/.ssh/id_ed25519 (prywatny) i ~/.ssh/id_ed25519.pub (publiczny)
 ```
 
-> Alternatywnie: GCP Console → VM Instances → SSH (przeglądarka).
+Dodaj klucz publiczny do GCP:
+1. GCP Console → **Compute Engine → Metadata**
+2. Zakładka **SSH KEYS** → kliknij **+ ADD SSH KEY**
+3. Wklej zawartość `~/.ssh/id_ed25519.pub`
+4. Kliknij **SAVE**
+
+Połącz się (zamień `TWOJ_USER` na nazwę z klucza, np. `jan`):
+```bash
+ssh TWOJ_USER@TWOJE_STATYCZNE_IP
+```
 
 ---
 
