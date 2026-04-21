@@ -43,7 +43,7 @@ Czas wykonania: ~45-60 minut
 | Name | `teacherhelper-vm` |
 | Region | `europe-west3` (Frankfurt) lub `us-central1` |
 | Machine type | `e2-standard-2` (2 vCPU, 8 GB RAM) |
-| OS | Ubuntu 22.04 LTS |
+| OS | Debian 12 (Bookworm) — domyślny w GCP |
 | Boot disk | 50 GB SSD |
 | Firewall | ✓ Allow HTTP traffic, ✓ Allow HTTPS traffic |
 
