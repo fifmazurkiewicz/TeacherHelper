@@ -153,3 +153,30 @@ class MusicGeneratorPort(Protocol):
     """Port zgłoszenia generacji utworu do zewnętrznego API (np. KIE.ai)."""
 
     async def submit(self, request: MusicSubmitRequest) -> MusicSubmitResult: ...
+
+
+# ---------------------------------------------------------------------------
+# Dźwięki / efekty audio (Replicate)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class SoundResult:
+    """Wynik generowania krótkiego efektu dźwiękowego."""
+
+    audio_data: bytes
+    mime_type: str
+    prompt_used: str
+    model: str
+    duration_seconds: int
+
+
+@runtime_checkable
+class SoundGeneratorPort(Protocol):
+    """Port generowania krótkich efektów dźwiękowych (np. trzask ognia, deszcz)."""
+
+    async def generate(
+        self,
+        prompt: str,
+        duration_seconds: int = 30,
+    ) -> SoundResult: ...

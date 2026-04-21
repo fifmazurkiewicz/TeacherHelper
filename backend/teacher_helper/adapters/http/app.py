@@ -16,6 +16,7 @@ from teacher_helper.adapters.http.routes_files import router as files_router
 from teacher_helper.adapters.http.routes_intent import router as intent_router
 from teacher_helper.adapters.http.routes_kie import router as kie_webhook_router
 from teacher_helper.adapters.http.routes_music_kie import router as music_kie_router
+from teacher_helper.adapters.http.routes_sound import router as sound_router
 from teacher_helper.adapters.http.routes_projects import router as projects_router
 from teacher_helper.adapters.http.routes_topics import router as topics_router
 from teacher_helper.adapters.http.routes_voice import router as voice_router
@@ -72,6 +73,7 @@ def create_app() -> FastAPI:
 
     app.include_router(kie_webhook_router)
     app.include_router(music_kie_router)
+    app.include_router(sound_router)
     app.include_router(auth_router)
     app.include_router(conversations_router)
     app.include_router(projects_router)

@@ -68,10 +68,18 @@ class MoveFilesRequest(BaseModel):
 
 
 class KieMusicImportByTaskRequest(BaseModel):
-    """Pobranie MP3 z KIE po ``taskId`` (record-info + download) — z UI „Moje materiały”."""
+    “””Pobranie MP3 z KIE po ``taskId`` (record-info + download) — z UI „Moje materiały”.”””
 
-    task_id: str = Field(min_length=4, max_length=200, description="Identyfikator zadania z odpowiedzi generate / pliku .txt")
-    project_id: UUID | None = Field(default=None, description="Opcjonalny projekt docelowy")
+    task_id: str = Field(min_length=4, max_length=200, description=”Identyfikator zadania z odpowiedzi generate / pliku .txt”)
+    project_id: UUID | None = Field(default=None, description=”Opcjonalny projekt docelowy”)
+
+
+class SoundGenerateRequest(BaseModel):
+    “””Generowanie krótkiego efektu dźwiękowego przez Replicate (meta/musicgen).”””
+
+    prompt: str = Field(min_length=3, max_length=500, description=”Opis dźwięku, np. 'crackling campfire'”)
+    duration_seconds: int = Field(default=15, ge=1, le=30, description=”Długość nagrania w sekundach (max 30)”)
+    project_id: UUID | None = Field(default=None, description=”Opcjonalny projekt docelowy”)
 
 
 class TopicCreate(BaseModel):

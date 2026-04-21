@@ -144,6 +144,18 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_origins: str = "*"
 
+    # --- Replicate — generowanie efektów dźwiękowych (POST /v1/sound/generate) ---
+    replicate_api_key: str | None = None
+    # Model w formacie "owner/name" (np. meta/musicgen); musi obsługiwać parametry musicgen.
+    replicate_sound_model: str = "meta/musicgen"
+    # Wariant modelu musicgen: stereo-large | large | melody | stereo-melody-large
+    replicate_sound_musicgen_version: str = "stereo-large"
+    # Format wyjściowy: mp3 | wav
+    replicate_sound_output_format: str = "mp3"
+    # Czas oczekiwania na zakończenie predykcji (polling).
+    replicate_sound_timeout_seconds: float = Field(default=120.0)
+    replicate_sound_poll_interval_seconds: float = Field(default=2.0)
+
     # --- Opcjonalne: Alerty webhook ---
     alert_webhook_url: str | None = None
 
@@ -161,6 +173,7 @@ class Settings(BaseSettings):
             "langfuse_secret_key",
             "kie_webhook_hmac_key",
             "tavily_api_key",
+            "replicate_api_key",
         ):
             val = getattr(self, name)
             if isinstance(val, str):
