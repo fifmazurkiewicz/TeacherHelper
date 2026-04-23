@@ -1,4 +1,12 @@
-# --- Wariant 2: HTTPS (DNS A → IP VM; podmień domenę) — CORS_ORIGINS=https://... ---
+# Przykład dla Caddy na hoście VM (wcięcia w blokach — tabulatory). Skopiuj jeden aktywny blok
+# do /etc/caddy/Caddyfile — szczegóły: docs/GCP_KROK_PO_KROKU.md (ETAP 5).
+#
+# --- Wariant 1: tylko HTTP (np. http://ZEWNETRZNE_IP) — CORS_ORIGINS=http://... ---
+# :80 {
+# 	reverse_proxy 127.0.0.1:8080
+# }
+#
+# --- Wariant 2: HTTPS (DNS A → IP VM; Let's Encrypt) — CORS_ORIGINS=https://... ---
 teacherhelper.duckdns.org {
 	reverse_proxy 127.0.0.1:8080
 }

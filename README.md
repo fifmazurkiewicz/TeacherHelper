@@ -16,9 +16,24 @@ frontend/  → React 18 + Vite, Tailwind CSS
 - Moduły (generowanie treści): `gemini-3-flash` — reasoning
 - Grafika: `gemini-3.1-flash-image` — generowanie obrazów
 
+### Mechanizmy AI i integracje (skrót)
+
+- **Agentowe / orkiestracja:** jeden model steruje rozmową przez **function calling** (narzędzia: scenariusz, grafika, muzyka, wideo, wiersz, prezentacja, eksport, biblioteka, wyszukiwanie, „omówienie tematu” itd.) — backend wykonuje narzędzia i zwraca wynik do kolejnej tury LLM (`chat_orchestrator`).
+- **RAG / pamięć plików:** embeddingi tekstu (**OpenAI** lub **OpenRouter**), wektory w **Qdrant**, wyszukiwanie semantyczne po fragmentach zuploadowanych materiałów.
+- **Muzyka:** **KIE.ai** (API w stylu Suno, callback / polling) oraz opcjonalnie **Lyria** przez **OpenRouter** (audio z `chat/completions` + SSE).
+- **Krótkie efekty dźwiękowe (SFX):** **Replicate** — osobny endpoint (do ~10 s), nie pełne „piosenki”.
+- **Grafika:** wyłącznie **OpenRouter** (modele z wyjściem obrazu / `modalities`).
+- **Wideo:** narzędzie w orchestratorze przygotowuje storyboard / prompt; **brak** podłączonego zewnętrznego API wideo w fabryce — wynik to głównie treść od LLM (integracja pod przyszły adapter).
+- **Narzędzia pomocnicze:** wyszukiwanie w sieci (**Tavily**), opcjonalnie transkrypcja głosu (**xAI** STT), tokeny potwierdzające destrukcyjne akcje (JWT).
+- **Obserwowalność:** opcjonalnie **Langfuse** (trace zużycia LLM, embeddingów, generacji mediów tam gdzie zaimplementowano).
+
 ## Wdrożenie (Google Cloud)
 
-Instrukcja krok po kroku: [docs/GCP_KROK_PO_KROKU.md](docs/GCP_KROK_PO_KROKU.md) — Cloud SQL, Compute Engine, Docker Compose w `deploy/gcp/`, Caddy na hoście; w dokumencie jest też **szybkie wdrożenie po zmianach na branchu**.
+**Stack:** zarządzany **PostgreSQL (Cloud SQL)**, **Compute Engine** (Ubuntu), w kontenerach **Redis + backend + wektorowy frontend (nginx)** z [`deploy/gcp/docker-compose.yml`](deploy/gcp/docker-compose.yml); **Qdrant** w **Qdrant Cloud** (URL + klucz w `.env`); **Caddy** (lub inny reverse proxy) na hoście VM → `http://127.0.0.1:8080`.
+
+Instrukcja krok po kroku: [docs/GCP_KROK_PO_KROKU.md](docs/GCP_KROK_PO_KROKU.md) — m.in. firewall, `DATABASE_URL`, `CORS_ORIGINS`, pierwszy start Compose oraz **szybkie wdrożenie po zmianach na branchu**. Szablon zmiennych: [`deploy/gcp/.env.example`](deploy/gcp/.env.example) (pliku `.env` **nie commituj**).
+
+**Sekrety:** prawdziwych kluczy API i haseł nie umieszczaj w repozytorium. Lokalnie hasła `teacher` / `ChangeMeAdmin123!` (PostgreSQL, seed admina z migracji) są wyłącznie do developmentu — na produkcji ustaw silne wartości i zmienne zgodnie z przewodnikiem GCP.
 
 ## Uruchomienie lokalne — krok po kroku
 
@@ -41,7 +56,7 @@ sudo apt install postgresql postgresql-contrib -y
 sudo service postgresql start
 ```
 
-Utwórz bazę i użytkownika:
+Utwórz bazę i użytkownika (poniżej **przykładowe** dane wyłącznie na komputer deweloperski — na produkcji użyj silnego hasła):
 
 ```bash
 sudo -u postgres psql
@@ -55,7 +70,7 @@ CREATE DATABASE teacherhelper OWNER teacher;
 \q
 ```
 
-Baza działa na `localhost:5432`. W DBeaver połączysz się: host `localhost`, port `5432`, database `teacherhelper`, user `teacher`, password `teacher`.
+Baza działa na `localhost:5432`. W DBeaver połączysz się: host `localhost`, port `5432`, database `teacherhelper`, user `teacher`, password `teacher` (zgodnie z powyższym przykładem).
 
 ---
 
@@ -110,6 +125,8 @@ JWT_SECRET=wygeneruj-losowy-ciag-min-32-znaki
 
 Reszta ma sensowne domyślne wartości.
 
+**Uwaga:** `Settings` w backendzie domyślnie wczytuje także plik **`.env` w katalogu głównym repozytorium** (`TeacherHelper/.env`). Jeśli coś „nie widzi” kluczy przy `alembic` lub innym uruchomieniu z innego katalogu, skopiuj te same wpisy do root `.env` albo ustaw zmienne w środowisku procesu.
+
 ---
 
 ### Krok 6: Backend — migracje bazy danych
@@ -122,6 +139,8 @@ poetry run alembic upgrade head
 Bez Poetry (venv + `pip install -r requirements.txt`): `python -m alembic upgrade head` — katalog migracji nazywa się `migrations/`, żeby nie kolidował z paczką `alembic`.
 
 To stworzy wszystkie tabele (users, projects, file_assets, file_chunks, conversations, messages, llm_usage_log, system_incidents).
+
+**Migracja `007` (opcjonalny użytkownik admin):** przed `upgrade head` ustaw **`ADMIN_SEED_EMAIL`** i **`ADMIN_SEED_PASSWORD`** w procesie (eksport w shellu / zmienne w CI). Plik **`.env` ładowany przez `get_settings()`** to **`.env` w katalogu głównym repozytorium** (`TeacherHelper/.env`, patrz `teacher_helper/config.py`) — nie myl go z `backend/.env` z instrukcji powyżej; możesz dopisać tam seed albo zexportować zmienne ręcznie przed Alembic. Jeśli ich nie ustawisz, migracja użyje **tylko-dev** fallbacku z kodu (`ChangeMeAdmin123!`) — **nie na produkcji**; możesz pominąć seed: `SKIP_ADMIN_SEED=1`. W bazie trafia wyłącznie **hash** hasła.
 
 ---
 

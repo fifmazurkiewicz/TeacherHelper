@@ -4,6 +4,12 @@ Ten plik opisuje **domyślne wdrożenie**: **zarządzany PostgreSQL (Cloud SQL)*
 
 **Pliki:** katalog **`deploy/gcp/`** — **`docker-compose.yml`**, **`.env`** (wzór **`.env.example`**), **`Caddyfile.host.example`** (proxy na hoście). Pliku **`.env` nie commituj**.
 
+### Bezpieczeństwo: sekrety, repozytorium, migracje
+
+- **Nie commituj** plików z prawdziwymi wartościami: `deploy/gcp/.env`, `backend/.env`, `frontend/.env.local`. W repozytorium są wyłącznie **placeholdery** (`sk-or-v1-...`, `TWOJE_HASLO`, itd.) — przed `git push` warto uruchomić wyszukiwanie po własnym fragmencie klucza, jeśli kiedykolwiek wklejałeś go do pliku śledzonego przez Git.
+- **Pierwszy start backendu w Dockerze** uruchamia `alembic upgrade head` (patrz `backend/entrypoint.sh`). Migracja **`007`** może utworzyć konto administratora z **`ADMIN_SEED_EMAIL`** / **`ADMIN_SEED_PASSWORD`** ze środowiska kontenera (czyli z `deploy/gcp/.env` przekazanego jako `env_file`). **Ustaw silne hasło zanim** wykonasz pierwszy `docker compose ... up -d`. Gdy zmiennych brakuje, w kodzie migracji jest **wyłącznie deweloperski** fallback hasła — nie używaj tego na produkcji; alternatywnie **`SKIP_ADMIN_SEED=1`** (wartości `1` / `true` / `yes`) pomija wstawienie rekordu.
+- W migracjach **nie ma** zahardkodowanych haseł do bazy ani kluczy API — poza **`007`** jedynie **hash** hasła seed admina, wyliczany z env w czasie migracji.
+
 ### Redis — czy coś klikać w GCP?
 
 **Nie.** W Ścieżce A Redis jest **kontenerem Dockera** z pliku **`deploy/gcp/docker-compose.yml`** (obraz `redis:7-alpine`). Uruchamia się **razem** z backendem i frontendem po:
@@ -228,7 +234,8 @@ Jeśli wolisz coś prostszego, często jest już **`nano`** (`nano .env`, zapis:
    - `JWT_SECRET`, `OPENROUTER_API_KEY`, `OPENAPI_DOCS=false`,
    - **`CORS_ORIGINS`** — zgodnie z sekcją na początku dokumentu,
    - `STORAGE_ROOT=/app/data/storage`,
-   - `ADMIN_SEED_EMAIL`, `ADMIN_SEED_PASSWORD`.
+   - **`ADMIN_SEED_EMAIL`**, **`ADMIN_SEED_PASSWORD`** — **przed pierwszym** `up -d`, bo start kontenera backendu odpala migracje (w tym seed admina z migracji `007`); patrz sekcja *Bezpieczeństwo* powyżej,
+   - opcjonalnie wg potrzeb: `OPENAI_API_KEY` / `EMBEDDINGS_BACKEND`, **KIE** / **Replicate** (SFX), **Langfuse** (`LANGFUSE_*`) — pełna lista komentarzy w `deploy/gcp/.env.example`.
 4. `chmod 600 .env`
 5. Uruchomienie:
 

@@ -20,7 +20,7 @@ from teacher_helper.infrastructure.db.file_ops import (
     persist_export_as_new_file,
     semantic_search_chunks,
 )
-from teacher_helper.infrastructure.db.llm_usage import record_llm_usage_event
+from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync, record_llm_usage_event
 from teacher_helper.infrastructure.music_kie import (
     KIE_STATUSES_WITH_POSSIBLE_AUDIO,
     KIE_TERMINAL_FAIL_STATUSES,
@@ -37,6 +37,7 @@ from teacher_helper.use_cases.ports import (
     LlmClientPort,
     MusicGeneratorPort,
     MusicSubmitRequest,
+    SoundGeneratorPort,
     ToolDefinition,
     VideoGeneratorPort,
 )
@@ -70,7 +71,8 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **generate_scenario** — scenariusz przedstawienia.
 - **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
 - **generate_video** — storyboard/prompt wideo.
-- **generate_music** — **KIE** (Suno) + opcjonalnie **OpenRouter Lyria**: ten sam tekst idzie do obu; przy skonfigurowanych kluczach powstają **po dwa utwory** od każdego dostawcy (warianty aranżu). KIE: ``callBackUrl`` + ewentualnie **.mp3** z pollingu; Lyria: **.wav** z ``chat/completions`` (SSE).
+- **generate_music** — **pełna piosenka** (tekst + wokal/refren): **KIE** (Suno) + opcjonalnie **OpenRouter Lyria**. **Nie** używaj do samych krótkich szumów / plusków / SFX bez utworu — wtedy **generate_sound_effect**.
+- **generate_sound_effect** — **krótki efekt dźwiękowy** (woda, deszcz, klik…) do **10 s** przez **Replicate**; **nie** piosenka. Wymaga ``REPLICATE_API_KEY``.
 - **generate_poetry** — wiersz do recytacji.
 - **generate_presentation** — plan prezentacji (slajdy).
 - **reply_to_user** — odpowiedź tekstowa bez generowania materiałów.
@@ -163,7 +165,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
         "name": "ask_clarification",
         "description": (
             "Gdy prośba jest ogólna lub wieloznaczna — zanim wywołasz generate_*: jedno pole question z krótkim wstępem i listą punktów "
-            "dopasowaną do tematu (prezentacja: klasa, czas, cel; grafika: styl, przeznaczenie; muzyka: wiek, nastrój; przedstawienie: obsada, czas, piosenki itd.)."
+            "dopasowaną do tematu (prezentacja: klasa, czas, cel; grafika: styl, przeznaczenie; muzyka: wiek, nastrój; krótki dźwięk/SFX: jaki hałas, długość; przedstawienie: obsada, czas, piosenki itd.)."
         ),
         "parameters": {"type": "object", "properties": {
             "question": {"type": "string", "description": "Tekst do nauczyciela: wstęp + pytania (np. lista punktowana)"},
@@ -299,9 +301,10 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "generate_music",
         "description": (
-            "Wygeneruj prompt muzyczny i tekst piosenki; zapis w bibliotece jako .txt z metadanymi. "
+            "**Piosenka / utwór z wokalem lub instrumental** — prompt muzyczny i tekst piosenki; zapis w bibliotece jako .txt z metadanymi. "
             "Przy skonfigurowanym KIE i OpenRouter: ten sam materiał trafia do obu — po kilka wariantów "
-            "audio na dostawcę (MP3 z KIE, WAV z Lyrii; liczba: MUSIC_VARIANTS_PER_PROVIDER w .env)."
+            "audio na dostawcę (MP3 z KIE, WAV z Lyrii). "
+            "**Nie** wołaj tego dla krótkiego szumu, plusku wody, jednorazowego SFX — użyj **generate_sound_effect**."
         ),
         "parameters": {"type": "object", "properties": {
             "topic": {"type": "string", "description": "Temat piosenki"},
@@ -317,6 +320,29 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             },
             **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["topic", "material_title"]},
+    }},
+    {"type": "function", "function": {
+        "name": "generate_sound_effect",
+        "description": (
+            "**Krótki efekt dźwiękowy** (SFX / foley / ambient: plusk wody, deszcz, wiatr, klik) — **do 10 s**, "
+            "**bez** refrenu i piosenki. Gdy użytkownik chce **utwór, piosenkę, śpiew** — użyj **generate_music**. "
+            "Wymaga ``REPLICATE_API_KEY`` na serwerze."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "description": {
+                "type": "string",
+                "description": "Co słychać (np. delikatny plusk i szum wody, basen, ~5 s)",
+            },
+            "material_title": {
+                "type": "string",
+                "description": "Tytuł pliku w bibliotece, np. SFX woda spokojna",
+            },
+            "duration_seconds": {
+                "type": "integer",
+                "description": "Długość 1–10 s (domyślnie 8)",
+            },
+            **_SAVE_PROJECT_ID_PROPERTY,
+        }, "required": ["description", "material_title"]},
     }},
     {"type": "function", "function": {
         "name": "generate_poetry",
@@ -426,6 +452,7 @@ TOOL_TO_MODULE: dict[str, str] = {
     "generate_graphics": "graphics",
     "generate_video": "video",
     "generate_music": "music",
+    "generate_sound_effect": "sound",
     "generate_poetry": "poetry",
     "generate_presentation": "presentation",
     "generate_study": "study",
@@ -437,6 +464,7 @@ _REPLY_TO_USER_MAX_AFTER_TEXT_MODULE = 2800
 
 # Gdy brak wierszy w DB po zapisie (rzadkie) — bez żargonu konfiguracyjnego.
 _MODULE_REPLY_FALLBACK: dict[str, str] = {
+    "sound": "Zapisano krótki efekt dźwiękowy (SFX) w „Moje materiały”.",
     "music": "Zapisano materiały w bibliotece. Otwórz „Moje materiały”, aby zobaczyć plik .txt oraz pliki audio (KIE: .mp3, Lyria: .wav).",
     "graphics": "Zapisano plik w „Moje materiały”.",
     "video": "Zapisano materiał wideo w „Moje materiały”.",
@@ -449,6 +477,7 @@ _MODULE_REPLY_FALLBACK: dict[str, str] = {
 _INTENT_MODULE_TO_GENERATE_TOOL: dict[str, str] = {
     "scenario": "generate_scenario",
     "music": "generate_music",
+    "sound": "generate_sound_effect",
     "graphics": "generate_graphics",
     "video": "generate_video",
     "poetry": "generate_poetry",
@@ -549,6 +578,24 @@ def _narrow_incremental_generate_intent(user_message: str) -> str | None:
         "scenario": any(
             k in t
             for k in ("scenariusz", "przedstaw", "jaseł", "jasel", "dialog", "widowisk", "dramat", "sceny")
+        ),
+        "sound": any(
+            phrase in t
+            for phrase in (
+                "krótki dźwięk",
+                "krotki dzwiek",
+                "efekt dźwiękowy",
+                "efekt dzwiekowy",
+                "dźwięk wody",
+                "dzwiek wody",
+                "plusk wod",
+                "szum wod",
+                "generuj dźwięk",
+                "wygeneruj dźwięk",
+                "przygotuj dźwięk",
+                " sfx",
+                "foley",
+            )
         ),
         "music": any(
             k in t
@@ -894,6 +941,9 @@ def _resolve_file_stem(module: str, tool_args: dict[str, Any] | None) -> str:
     if module == "graphics":
         d = str(ta.get("description") or "grafika")[:140]
         return _sanitize_filename_stem(d) or "grafika"
+    if module == "sound":
+        d = str(ta.get("description") or ta.get("material_title") or "sfx")[:140]
+        return _sanitize_filename_stem(d) or "sfx"
     if module == "video":
         d = str(ta.get("description") or "wideo")[:140]
         return _sanitize_filename_stem(d) or "wideo"
@@ -953,6 +1003,7 @@ class ChatOrchestratorUseCase:
         image_gen: ImageGeneratorPort | None = None,
         video_gen: VideoGeneratorPort | None = None,
         music_gen: MusicGeneratorPort | None = None,
+        sound_gen: SoundGeneratorPort | None = None,
         llm_modules: LlmClientPort | None = None,
         lyria_music: OpenRouterLyriaMusicGenerator | None = None,
     ) -> None:
@@ -962,6 +1013,7 @@ class ChatOrchestratorUseCase:
         self._image_gen = image_gen
         self._video_gen = video_gen
         self._music_gen = music_gen
+        self._sound_gen = sound_gen
         self._lyria_music = lyria_music
 
     # --- Główny punkt wejścia ---
@@ -1372,6 +1424,8 @@ class ChatOrchestratorUseCase:
                 )
         elif module == "graphics":
             lines.append("\nMożesz pobrać obraz przyciskiem pod wiadomością.")
+        elif module == "sound":
+            lines.append("\nTo krótki efekt dźwiękowy (SFX z Replicate) — pobierzesz go przyciskiem pod wiadomością.")
         elif module == "video":
             lines.append("\nJeśli to wideo MP4, pobierzesz je przyciskiem pod wiadomością.")
         else:
@@ -1385,6 +1439,8 @@ class ChatOrchestratorUseCase:
         module: str, user_message: str, context: str, tool_args: dict[str, Any],
     ) -> tuple[list[UUID], str | None]:
         mod = module.lower().strip()
+        if mod == "sound":
+            return await self._handle_sound_effect(session, user_id, project_id, tool_args)
         sys_prompt = MODULE_SYSTEM_PROMPTS.get(mod)
         if not sys_prompt:
             logger.warning("No system prompt for module %r — skipping", mod)
@@ -1428,6 +1484,71 @@ class ChatOrchestratorUseCase:
             extra={"module": mod, "tool_args": tool_args},
         )
         return [fid], trunc_note
+
+    async def _handle_sound_effect(
+        self,
+        session: AsyncSession,
+        user_id: UUID,
+        project_id: UUID | None,
+        tool_args: dict[str, Any],
+    ) -> tuple[list[UUID], str | None]:
+        gen = self._sound_gen
+        if gen is None:
+            return [], (
+                "Krótkie efekty dźwiękowe wymagają **REPLICATE_API_KEY** w konfiguracji serwera. "
+                "Możesz też wywołać **POST /v1/sound/generate** z API."
+            )
+        desc = (tool_args.get("description") or "").strip()
+        if not desc:
+            return [], "Brak **description** efektu (np. plusk wody, deszcz)."
+        dur_raw = tool_args.get("duration_seconds", 8)
+        try:
+            dur = int(dur_raw)
+        except (TypeError, ValueError):
+            dur = 8
+        dur = max(1, min(10, dur))
+        try:
+            result = await gen.generate(desc, duration_seconds=dur)
+        except TimeoutError as exc:
+            logger.warning("Replicate SFX timeout user=%s: %s", user_id, exc)
+            return [], f"Timeout generowania dźwięku: {exc!s:.200}"
+        except Exception as exc:
+            logger.error("Replicate SFX error user=%s: %s", user_id, exc)
+            return [], f"Błąd Replicate: {exc!s:.300}"
+
+        await asyncio.to_thread(
+            record_langfuse_model_call_sync,
+            observation_name="replicate:sound_effect",
+            model=result.model,
+            provider="replicate",
+            input_data={"prompt": desc, "duration_seconds": dur, "source": "orchestrator"},
+            output_text=f"audio bytes={len(result.audio_data)} mime={result.mime_type}",
+            user_id=user_id,
+            metadata={"call_kind": "sound_effect", "module": "sound"},
+            usage=None,
+        )
+        ext = "mp3" if result.mime_type == "audio/mpeg" else "wav"
+        extra: dict[str, Any] = {
+            "module": "sound",
+            "kind": "sfx",
+            "tool_args": tool_args,
+            "prompt": desc,
+            "duration_seconds": result.duration_seconds,
+            "replicate_model": result.model,
+        }
+        index_txt = f"Krótki efekt dźwiękowy (SFX, nie piosenka): {desc}"
+        fid = await self._persist_file(
+            session,
+            user_id,
+            project_id,
+            "sound",
+            data=result.audio_data,
+            mime=result.mime_type,
+            ext=ext,
+            extra=extra,
+            index_override=index_txt,
+        )
+        return [fid], None
 
     # --- Grafika ---
 

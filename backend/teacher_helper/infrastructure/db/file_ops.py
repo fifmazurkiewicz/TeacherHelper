@@ -171,6 +171,7 @@ def category_for_module(module: str) -> FileCategory:
         "poetry": FileCategory.poetry,
         "presentation": FileCategory.presentation,
         "study": FileCategory.other,
+        "sound": FileCategory.other,
         "export": FileCategory.other,
     }
     return mapping.get(m, FileCategory.other)
