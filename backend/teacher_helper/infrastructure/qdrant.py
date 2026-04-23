@@ -35,8 +35,8 @@ def get_qdrant() -> QdrantClient:
 
 
 def _ensure_payload_indexes(client: QdrantClient, collection_name: str) -> None:
-    """Indeksy keyword na polach filtrowanych (user_id, topic_id)."""
-    for field_name in ("user_id", "topic_id"):
+    """Indeksy keyword na polach używanych w filtrach (Qdrant wymaga ich przy delete/query)."""
+    for field_name in ("user_id", "topic_id", "file_asset_id"):
         try:
             client.create_payload_index(
                 collection_name=collection_name,
