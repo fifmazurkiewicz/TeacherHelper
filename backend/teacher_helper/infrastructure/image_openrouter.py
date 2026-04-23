@@ -46,6 +46,27 @@ def _first_image_url(images: list[Any]) -> str | None:
     return None
 
 
+def _first_image_url_from_message_content(content: Any) -> str | None:
+    """Obraz w ``message.content`` jako lista części (OpenRouter / Gemini multimodal)."""
+    if not isinstance(content, list):
+        return None
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        if part.get("type") in ("image_url", "image"):
+            iu = part.get("image_url")
+            if isinstance(iu, dict) and isinstance(iu.get("url"), str):
+                u = iu["url"].strip()
+                if u:
+                    return u
+            if isinstance(iu, str) and iu.strip():
+                return iu.strip()
+        url = part.get("url")
+        if isinstance(url, str) and url.strip().startswith(("http://", "https://", "data:")):
+            return url.strip()
+    return None
+
+
 class OpenRouterImageGenerator:
     """Generowanie obrazów: POST ``/chat/completions`` z ``modalities`` (dokumentacja OpenRouter)."""
 
@@ -164,7 +185,7 @@ class OpenRouterImageGenerator:
             image_ref = _first_image_url(images_raw)
 
         if not image_ref:
-            content = msg.get("content", "")
+            content = msg.get("content")
             image_data = self._extract_inline_base64(content)
             if image_data:
                 text_parts = ""
@@ -177,10 +198,13 @@ class OpenRouterImageGenerator:
                     model=self._model,
                     revised_prompt=text_parts[:500] if text_parts else None,
                 )
-            raise RuntimeError(
-                "OpenRouter Image: brak obrazów w odpowiedzi (sprawdź OPENROUTER_IMAGE_MODEL i modalities). "
-                f"Fragment treści: {str(content)[:300]}"
-            )
+            image_ref = _first_image_url_from_message_content(content)
+            if not image_ref:
+                preview = repr(content)[:400] if content is not None else "None"
+                raise RuntimeError(
+                    "OpenRouter Image: brak obrazów w odpowiedzi (sprawdź OPENROUTER_IMAGE_MODEL i modalities). "
+                    f"Fragment treści: {preview}"
+                )
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             image_bytes = await self._bytes_from_image_ref(client, image_ref)
@@ -209,8 +233,8 @@ class OpenRouterImageGenerator:
         if isinstance(content, list):
             for part in content:
                 if isinstance(part, dict):
-                    inline = part.get("inline_data", {})
-                    if inline.get("data"):
+                    inline = part.get("inline_data") or part.get("inlineData") or {}
+                    if isinstance(inline, dict) and inline.get("data"):
                         try:
                             return base64.standard_b64decode(inline["data"])
                         except (ValueError, binascii.Error):
