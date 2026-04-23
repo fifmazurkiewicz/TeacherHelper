@@ -1,4 +1,4 @@
-"""Adapter Replicate — generowanie krótkich efektów dźwiękowych (do 30 s).
+"""Adapter Replicate — krótkie efekty dźwiękowe / foley (do 10 s), nie piosenka.
 
 Używa modelu ``meta/musicgen`` przez Replicate Predictions API:
   POST /v1/models/{owner}/{name}/predictions  → polling GET /v1/predictions/{id}
@@ -22,6 +22,11 @@ _REPLICATE_BASE = "https://api.replicate.com/v1"
 _TERMINAL_OK = frozenset({"succeeded"})
 _TERMINAL_FAIL = frozenset({"failed", "canceled"})
 _MAX_AUDIO_BYTES = 50 * 1024 * 1024  # 50 MB
+_SFX_PROMPT_PREFIX = (
+    "Sound effect / foley / ambient only — short non-musical audio. "
+    "Not a song, not a melody with structure, no vocals, no full instrumental track. "
+    "One coherent SFX matching the description. "
+)
 
 
 class ReplicateSoundGenerator(SoundGeneratorPort):
@@ -52,11 +57,12 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
             "Content-Type": "application/json",
         }
 
-    async def generate(self, prompt: str, duration_seconds: int = 30) -> SoundResult:
-        duration = max(1, min(duration_seconds, 30))
+    async def generate(self, prompt: str, duration_seconds: int = 10) -> SoundResult:
+        duration = max(1, min(duration_seconds, 10))
+        sfx_prompt = f"{_SFX_PROMPT_PREFIX}\n\nOpis / description: {(prompt or '').strip()}"
         body = {
             "input": {
-                "prompt": prompt,
+                "prompt": sfx_prompt,
                 "duration": duration,
                 "model_version": self._musicgen_model_version,
                 "output_format": self._output_format,

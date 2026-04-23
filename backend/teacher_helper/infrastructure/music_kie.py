@@ -5,6 +5,7 @@ Dokumentacja: https://docs.kie.ai/suno-api/generate-music
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import replace
@@ -12,6 +13,7 @@ from typing import Any
 
 import httpx
 
+from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync
 from teacher_helper.use_cases.ports import MusicGeneratorPort, MusicSubmitRequest, MusicSubmitResult
 
 logger = logging.getLogger(__name__)
@@ -307,6 +309,23 @@ class KieMusicGenerator(MusicGeneratorPort):
             )
 
         task_id = _extract_kie_task_id(payload)
+        await asyncio.to_thread(
+            record_langfuse_model_call_sync,
+            observation_name="kie:suno_generate",
+            model=f"kie.ai/{body.get('model', 'unknown')}",
+            provider="kie.ai",
+            input_data={
+                "title": body.get("title"),
+                "style": (str(body.get("style") or "")[:800]),
+                "instrumental": body.get("instrumental"),
+                "customMode": body.get("customMode"),
+                "prompt_excerpt": str(body.get("prompt") or "")[:2000],
+            },
+            output_text=f"submitted task_id={task_id}",
+            user_id=None,
+            metadata={"call_kind": "music_submit", "module": "music_kie"},
+            usage=None,
+        )
         return MusicSubmitResult(
             ok=True,
             http_status=r.status_code,

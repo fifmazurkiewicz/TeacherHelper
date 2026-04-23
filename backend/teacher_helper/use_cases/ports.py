@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
+from uuid import UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +94,7 @@ class ImageGeneratorPort(Protocol):
         prompt: str,
         style: str | None = None,
         size: str = "1024x1024",
+        user_id: UUID | None = None,
     ) -> ImageResult: ...
 
 
@@ -178,5 +180,5 @@ class SoundGeneratorPort(Protocol):
     async def generate(
         self,
         prompt: str,
-        duration_seconds: int = 30,
+        duration_seconds: int = 10,
     ) -> SoundResult: ...

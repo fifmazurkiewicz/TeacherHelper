@@ -1,14 +1,20 @@
 """Adapter generowania obrazów przez OpenRouter (chat/completions + modalities image)."""
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import json
 import logging
 from typing import Any
+from uuid import UUID
 
 import httpx
 
+from teacher_helper.infrastructure.db.llm_usage import (
+    record_langfuse_model_call_sync,
+    usage_from_openrouter_chat_response,
+)
 from teacher_helper.use_cases.ports import ImageResult
 
 logger = logging.getLogger(__name__)
@@ -103,6 +109,30 @@ class OpenRouterImageGenerator:
             h["X-Title"] = self._title
         return h
 
+    async def _trace_langfuse_image_success(
+        self,
+        data: dict[str, Any],
+        full_prompt: str,
+        byte_len: int,
+        revised: str | None,
+        user_id: UUID | None,
+    ) -> None:
+        usage = usage_from_openrouter_chat_response(data)
+        out = f"image_binary bytes={byte_len}"
+        if revised:
+            out += f" revised_excerpt={revised[:500]!r}"
+        await asyncio.to_thread(
+            record_langfuse_model_call_sync,
+            observation_name="openrouter:image_generation",
+            model=self._model,
+            provider="openrouter",
+            input_data=full_prompt[:12000],
+            output_text=out,
+            user_id=user_id,
+            metadata={"call_kind": "image_generation"},
+            usage=usage,
+        )
+
     @staticmethod
     def _build_prompt(prompt: str, style: str | None) -> str:
         parts = [prompt]
@@ -145,6 +175,7 @@ class OpenRouterImageGenerator:
         prompt: str,
         style: str | None = None,
         size: str = "1024x1024",
+        user_id: UUID | None = None,
     ) -> ImageResult:
         full_prompt = self._build_prompt(prompt, style)
         aspect_ratio = SIZE_TO_ASPECT.get(size, "1:1")
@@ -208,12 +239,14 @@ class OpenRouterImageGenerator:
                 text_parts = ""
                 if isinstance(content, str):
                     text_parts = content
+                rev = text_parts[:500] if text_parts else None
+                await self._trace_langfuse_image_success(data, full_prompt, len(image_data), rev, user_id)
                 return ImageResult(
                     image_data=image_data,
                     mime_type="image/png",
                     prompt_used=prompt,
                     model=self._model,
-                    revised_prompt=text_parts[:500] if text_parts else None,
+                    revised_prompt=rev,
                 )
             image_ref = _first_image_url_from_message_content(content)
             if not image_ref:
@@ -244,12 +277,14 @@ class OpenRouterImageGenerator:
             if semi > 5:
                 mime = image_ref[5:semi] or mime
 
+        rev = text_parts[:500] if text_parts else None
+        await self._trace_langfuse_image_success(data, full_prompt, len(image_bytes), rev, user_id)
         return ImageResult(
             image_data=image_bytes,
             mime_type=mime,
             prompt_used=prompt,
             model=self._model,
-            revised_prompt=text_parts[:500] if text_parts else None,
+            revised_prompt=rev,
         )
 
     @staticmethod

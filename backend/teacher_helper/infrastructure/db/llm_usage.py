@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,6 +13,94 @@ from teacher_helper.infrastructure.db.models import LlmUsageLogORM
 from teacher_helper.use_cases.ports import LlmCompletion
 
 logger = logging.getLogger(__name__)
+
+
+def usage_from_openrouter_chat_response(data: dict[str, Any]) -> dict[str, int] | None:
+    """Mapuje pole ``usage`` z odpowiedzi chat/completions (OpenRouter / OpenAI)."""
+    raw = data.get("usage")
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, int] = {}
+    for k in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        v = raw.get(k)
+        if isinstance(v, int):
+            out[k] = v
+    return out or None
+
+
+def usage_from_embeddings_response(data: dict[str, Any]) -> dict[str, int] | None:
+    raw = data.get("usage")
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, int] = {}
+    for k in ("prompt_tokens", "total_tokens"):
+        v = raw.get(k)
+        if isinstance(v, int):
+            out[k] = v
+    return out or None
+
+
+def record_langfuse_model_call_sync(
+    *,
+    observation_name: str,
+    model: str,
+    provider: str,
+    input_data: Any,
+    output_text: str,
+    user_id: UUID | None = None,
+    metadata: dict[str, Any] | None = None,
+    usage: dict[str, int] | None = None,
+) -> None:
+    """Langfuse dla wywołań spoza standardowego ``LlmCompletion`` (obrazy, embeddingi, audio, KIE)."""
+    s = get_settings()
+    if not s.langfuse_public_key or not s.langfuse_secret_key:
+        return
+    try:
+        from langfuse import Langfuse
+
+        lf = Langfuse(
+            public_key=s.langfuse_public_key,
+            secret_key=s.langfuse_secret_key,
+            host=s.langfuse_host.rstrip("/"),
+        )
+        meta = {"provider": provider, **(metadata or {})}
+        trace = lf.trace(
+            name="TeacherHelper",
+            user_id=str(user_id) if user_id else None,
+            metadata=meta,
+        )
+        if isinstance(input_data, str):
+            inp: Any = input_data[:12000]
+        else:
+            try:
+                inp = json.dumps(input_data, ensure_ascii=False)[:12000]
+            except (TypeError, ValueError):
+                inp = str(input_data)[:12000]
+        gen = trace.generation(
+            name=observation_name,
+            model=model,
+            input=inp,
+            output=output_text[:32000],
+            metadata=meta,
+        )
+        end_fn = getattr(gen, "end", None)
+        if callable(end_fn):
+            if usage:
+                try:
+                    end_fn(usage=usage)
+                except TypeError:
+                    end_fn(
+                        usage={
+                            "promptTokens": usage.get("prompt_tokens", 0),
+                            "completionTokens": usage.get("completion_tokens", 0),
+                            "totalTokens": usage.get("total_tokens", 0),
+                        }
+                    )
+            else:
+                end_fn()
+        lf.flush()
+    except Exception:
+        logger.exception("Langfuse: zapis %s nie powiódł się", observation_name)
 
 
 def _emit_langfuse_sync(

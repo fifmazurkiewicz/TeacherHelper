@@ -1455,7 +1455,10 @@ class ChatOrchestratorUseCase:
         if self._image_gen:
             try:
                 result = await self._image_gen.generate(
-                    prompt=prompt_main, style=tool_args.get("style"), size=tool_args.get("size", "1024x1024"),
+                    prompt=prompt_main,
+                    style=tool_args.get("style"),
+                    size=tool_args.get("size", "1024x1024"),
+                    user_id=user_id,
                 )
                 extra["revised_prompt"] = result.revised_prompt
                 extra["generator_model"] = result.model
@@ -1670,6 +1673,7 @@ class ChatOrchestratorUseCase:
                     lyrics=api_prompt,
                     instrumental=False,
                     variation_suffix=suffix,
+                    user_id=user_id,
                 )
                 return variant_index, audio_b, cdn_url, trace, err
 

@@ -79,18 +79,18 @@ class KieMusicImportByTaskRequest(BaseModel):
 
 
 class SoundGenerateRequest(BaseModel):
-    """Generowanie krótkiego efektu dźwiękowego przez Replicate (meta/musicgen)."""
+    """Krótki efekt dźwiękowy (SFX / foley), nie piosenka — Replicate meta/musicgen."""
 
     prompt: str = Field(
         min_length=3,
         max_length=500,
-        description="Opis dźwięku, np. 'crackling campfire'",
+        description="Opis efektu (np. zgiełk klasy, trzask ognia) — nie tekst piosenki",
     )
     duration_seconds: int = Field(
-        default=15,
+        default=8,
         ge=1,
-        le=30,
-        description="Długość nagrania w sekundach (max 30)",
+        le=10,
+        description="Długość w sekundach (max 10) — krótki dźwięk, nie utwór",
     )
     project_id: UUID | None = Field(default=None, description="Opcjonalny projekt docelowy")
 

@@ -5,6 +5,7 @@ Endpoint: POST /v1/sound/generate
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from uuid import uuid4
 
@@ -15,6 +16,7 @@ from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import FileResponse, SoundGenerateRequest
 from teacher_helper.infrastructure.db.file_ops import index_file_content
 from teacher_helper.infrastructure.db.models import FileAssetORM, FileCategory, FileStatus, ProjectORM
+from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync
 from teacher_helper.infrastructure.factories import build_sound_generator
 from teacher_helper.infrastructure.storage.local import LocalStorage
 
@@ -30,7 +32,7 @@ async def generate_sound(
     user: CurrentUser,
     body: SoundGenerateRequest,
 ) -> FileAssetORM:
-    """Generuje efekt dźwiękowy (do 30 s) z opisu tekstowego i zapisuje w bibliotece."""
+    """Generuje krótki efekt dźwiękowy (SFX, do 10 s), nie piosenkę — zapis w bibliotece."""
     check_rate_limit(user)
 
     gen = build_sound_generator()
@@ -61,10 +63,23 @@ async def generate_sound(
             detail=f"Błąd generowania dźwięku: {exc!s:.400}",
         ) from exc
 
+    await asyncio.to_thread(
+        record_langfuse_model_call_sync,
+        observation_name="replicate:sound_effect",
+        model=result.model,
+        provider="replicate",
+        input_data={"prompt": body.prompt, "duration_seconds": body.duration_seconds},
+        output_text=f"audio bytes={len(result.audio_data)} mime={result.mime_type}",
+        user_id=user.id,
+        metadata={"call_kind": "sound_effect", "module": "sound"},
+        usage=None,
+    )
+
     ext = "mp3" if result.mime_type == "audio/mpeg" else "wav"
-    name = f"sound_{uuid4().hex[:12]}.{ext}"
+    name = f"sfx_{uuid4().hex[:12]}.{ext}"
     extra: dict = {
         "module": "sound",
+        "kind": "sfx",
         "prompt": body.prompt,
         "duration_seconds": result.duration_seconds,
         "replicate_model": result.model,
@@ -77,7 +92,7 @@ async def generate_sound(
         project_id=pid,
         topic_id=None,
         name=name,
-        category=FileCategory.music,
+        category=FileCategory.other,
         mime_type=result.mime_type,
         storage_key=key,
         version=1,
@@ -89,7 +104,7 @@ async def generate_sound(
     await session.flush()
     await index_file_content(
         session, row,
-        f"Sound effect: {body.prompt}".encode("utf-8"),
+        f"Krótki efekt dźwiękowy (SFX, nie piosenka): {body.prompt}".encode("utf-8"),
         name,
     )
     await session.commit()

@@ -5,12 +5,16 @@ Logika zgodna z benchmarkiem ``research/music-provider-benchmark`` (stream:true)
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 import re
 from typing import Any
+from uuid import UUID
 
 import httpx
+
+from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync
 
 DEFAULT_LYRIA_MODEL = "google/lyria-3-pro-preview"
 
@@ -370,6 +374,7 @@ class OpenRouterLyriaMusicGenerator:
         lyrics: str,
         instrumental: bool = False,
         variation_suffix: str = "",
+        user_id: UUID | None = None,
     ) -> tuple[bytes | None, str | None, list[dict[str, Any]], str | None]:
         body = build_lyria_openrouter_body(
             title=title,
@@ -379,7 +384,7 @@ class OpenRouterLyriaMusicGenerator:
             model=self._model,
             variation_suffix=variation_suffix,
         )
-        return await fetch_lyria_audio(
+        audio_b, cdn_url, trace, err = await fetch_lyria_audio(
             self._api_key,
             base_url=self._base_url,
             http_referer=self._http_referer,
@@ -387,3 +392,21 @@ class OpenRouterLyriaMusicGenerator:
             body=body,
             timeout=self._timeout,
         )
+        if audio_b is not None:
+            model_id = str(body.get("model") or self._model)
+            await asyncio.to_thread(
+                record_langfuse_model_call_sync,
+                observation_name="openrouter:lyria_music",
+                model=model_id,
+                provider="openrouter",
+                input_data=body.get("messages", []),
+                output_text=(
+                    f"audio bytes={len(audio_b)} "
+                    f"cdn_url={(cdn_url or '')[:400]} "
+                    f"trace_steps={len(trace)}"
+                ),
+                user_id=user_id,
+                metadata={"call_kind": "lyria_music", "module": "music"},
+                usage=None,
+            )
+        return audio_b, cdn_url, trace, err

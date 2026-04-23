@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import math
@@ -8,6 +9,10 @@ from typing import Literal, Sequence
 import httpx
 
 from teacher_helper.config import Settings, get_settings
+from teacher_helper.infrastructure.db.llm_usage import (
+    record_langfuse_model_call_sync,
+    usage_from_embeddings_response,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +137,21 @@ async def _openai_embed(
         detail = r.text[:500] if r.text else r.reason_phrase
         raise RuntimeError(f"OpenAI Embeddings HTTP {r.status_code}: {detail}")
 
-    return _embeddings_response_vectors(r.json())
+    payload = r.json()
+    vecs = _embeddings_response_vectors(payload)
+    usage = usage_from_embeddings_response(payload) if isinstance(payload, dict) else None
+    await asyncio.to_thread(
+        record_langfuse_model_call_sync,
+        observation_name="openai:embeddings",
+        model=model,
+        provider="openai",
+        input_data={"batch_size": len(texts), "sample": (texts[0][:500] if texts else "")},
+        output_text=f"vectors={len(vecs)} dim={len(vecs[0]) if vecs else 0}",
+        user_id=None,
+        metadata={"call_kind": "embeddings"},
+        usage=usage,
+    )
+    return vecs
 
 
 async def _openrouter_embed_batched(
@@ -160,7 +179,20 @@ async def _openrouter_embed_batched(
         if r.is_error:
             detail = r.text[:500] if r.text else r.reason_phrase
             raise RuntimeError(f"OpenRouter Embeddings HTTP {r.status_code}: {detail}")
-        batch_vectors = _embeddings_response_vectors(r.json())
+        payload = r.json()
+        batch_vectors = _embeddings_response_vectors(payload)
+        usage = usage_from_embeddings_response(payload) if isinstance(payload, dict) else None
+        await asyncio.to_thread(
+            record_langfuse_model_call_sync,
+            observation_name="openrouter:embeddings",
+            model=model,
+            provider="openrouter",
+            input_data={"batch_size": len(batch), "sample": (batch[0][:500] if batch else "")},
+            output_text=f"vectors={len(batch_vectors)} dim={len(batch_vectors[0]) if batch_vectors else 0}",
+            user_id=None,
+            metadata={"call_kind": "embeddings"},
+            usage=usage,
+        )
         for i, emb in enumerate(batch_vectors):
             all_embeddings[start + i] = emb
     return all_embeddings
