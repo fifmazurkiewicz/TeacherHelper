@@ -1,0 +1,4 @@
+# Używane z docker-compose.all.yml. Zmienna CADDY_DOMAIN w pliku .env.all.
+{$CADDY_DOMAIN} {
+	reverse_proxy frontend:80
+}

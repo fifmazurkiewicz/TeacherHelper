@@ -16,6 +16,10 @@ frontend/  → React 18 + Vite, Tailwind CSS
 - Moduły (generowanie treści): `gemini-3-flash` — reasoning
 - Grafika: `gemini-3.1-flash-image` — generowanie obrazów
 
+## Wdrożenie (Google Cloud)
+
+Instrukcja krok po kroku: [docs/GCP_KROK_PO_KROKU.md](docs/GCP_KROK_PO_KROKU.md) — Cloud SQL, Compute Engine, Docker Compose w `deploy/gcp/` (Ścieżka A: zarządzany Postgres; w dodatku opcjonalnie Ścieżka B z Postgresem w kontenerze).
+
 ## Uruchomienie lokalne — krok po kroku
 
 ### Wymagania
@@ -208,7 +212,8 @@ TeacherHelper/
 │   ├── .env.example              ← skopiuj jako .env.local
 │   ├── package.json
 │   └── src/                      ← React (Vite SPA)
-├── docs/                         ← ZASADY, komponenty, analiza cen muzyki, wnioski z benchmarku
+├── deploy/gcp/                   ← docker-compose (GCP) + przykładowe .env
+├── docs/                         ← ZASADY, komponenty, GCP, analiza cen muzyki, benchmarki
 ├── research/
 │   ├── music-provider-benchmark/ ← osobna mini-aplikacja FastAPI (porównanie API muzyki)
 │   └── image-provider-benchmark/ ← to samo dla grafiki (OpenAI, Stability, OpenRouter image)

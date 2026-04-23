@@ -79,9 +79,11 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 
 W kontekście wiadomości użytkownika masz **„Katalog aktywny w tej rozmowie”** oraz blok **„Katalogi użytkownika”** (UUID + nazwy).
 
-1. Gdy **katalog aktywny: brak** i użytkownik prosi o **materiał do zapisania** (dowolne ``generate_*`` tworzące plik w bibliotece, w tym ``generate_study``) — **nie wywołuj** od razu narzędzi generujących. **Najpierw ask_clarification**: zapytaj, czy **utworzyć nowy folder** na podstawie tematu (zaproponuj nazwę), czy **dodać do istniejącego** — wymień **2–5** sensownych katalogów z listy (nazwa i UUID w apostrofach/backtickach), czy zostawić w **„Innych plikach”**. Wyjątek: użytkownik **jednoznacznie** pisze, że chce tylko „Inne pliki” / bez folderu — wtedy możesz od razu użyć ``generate_*``.
-2. Po wyborze **nowego folderu** — **prepare_create_teacher_project**; po potwierdzeniu w UI aplikacja ustawi aktywny katalog rozmowy i kolejne pliki tam trafią.
-3. Gdy **katalog aktywny jest ustawiony**, a nowa prośba **wyraźnie dotyczy innej tematyki** niż nazwa tego folderu — **ask_clarification**: czy zapisać w bieżącym folderze, czy w innym (kandydaci z listy).
+**Gdzie trafia zapis:** ``generate_*`` i ``export_library_file`` zapisują plik do: (a) **project_id** podanego opcjonalnie w argumentach narzędzia (UUID z listy — katalog użytkownika), albo (b) do **katalogu aktywnego w tej rozmowie**; gdy aktywnego brak i nie podano **project_id** — do **„Innych plików”**. Sam tekst odpowiedzi **nie** zmienia folderu. **search_library_fragments** z innym ``project_id`` dotyczy tylko wyszukiwania — aby zapisać materiał w tym samym folderze, podaj ten sam **project_id** w ``generate_*`` / ``export_library_file`` albo ustaw aktywny katalog w UI.
+
+1. Gdy **katalog aktywny: brak** i użytkownik prosi o **materiał do zapisania** (dowolne ``generate_*`` tworzące plik w bibliotece, w tym ``generate_study``) — **nie wywołuj** od razu narzędzi generujących. **Najpierw ask_clarification**: zapytaj, czy **utworzyć nowy folder** na podstawie tematu (zaproponuj nazwę), czy **dodać do istniejącego** — wymień **2–5** sensownych katalogów z listy (nazwa i UUID w apostrofach/backtickach), czy zostawić w **„Innych plikach”**. Gdy użytkownik wybierze istniejący folder, w wywołaniu ``generate_*`` **podaj jego project_id** (albo upewnij się, że rozmowa ma już ten katalog aktywny w UI). Wyjątek: użytkownik **jednoznacznie** pisze, że chce tylko „Inne pliki” / bez folderu — wtedy możesz od razu użyć ``generate_*`` bez **project_id**.
+2. Po wyborze **nowego folderu** — **prepare_create_teacher_project**; po potwierdzeniu w UI aplikacja ustawi aktywny katalog rozmowy i kolejne pliki tam trafią (chyba że w danym wywołaniu podasz inny **project_id**).
+3. Gdy **katalog aktywny jest ustawiony**, a nowa prośba **wyraźnie dotyczy innej tematyki** niż nazwa tego folderu — **ask_clarification**: czy zapisać w bieżącym folderze, czy w innym (kandydaci z listy + UUID); po wyborze użyj odpowiedniego **project_id** w narzędziu zapisu.
 4. Przy **wielu** pasujących folderach — zawsze **ask_clarification** z listą do wyboru; nie zgaduj ``project_id`` w ciemno.
 
 ## Doprecyzowanie przed generowaniem (wszystkie tematy)
@@ -133,17 +135,28 @@ Traktuj je jako **fakt**: te pliki **już istnieją** w bibliotece użytkownika.
 ## Zasady
 
 1. Gdy wiadomość jest **ogólna** albo **niedookreślona** — użyj **ask_clarification** (wg sekcji „Doprecyzowanie…”; dla przedstawień dodatkowo „Przedstawienia…”). Nie zgaduj za użytkownika parametrów, które zmieniają mocno wynik (czas, odbiorca, zakres, liczba elementów), chyba że prosi o domyślne założenia.
-2. Gdy użytkownik chce zestaw materiałów „do zapisania” → **prepare_create_teacher_project**, potem (po potwierdzeniu przez użytkownika) narzędzia generujące; w jednej turze możesz przygotować projekt i wygenerować pliki — pliki trafią do aktywnego projektu dopiero po jego utworzeniu przez użytkownika.
+2. Gdy użytkownik chce zestaw materiałów „do zapisania” → **prepare_create_teacher_project**, potem (po potwierdzeniu przez użytkownika) narzędzia generujące; pliki trafiają do folderu powiązanego z rozmową w UI. Jeśli w tej turze musisz zapisać **przed** potwierdzeniem utworzenia folderu, nie da się trafić do jeszcze nieistniejącego UUID — kolejna wiadomość po potwierdzeniu albo jawny **project_id** istniejącego katalogu.
 3. Przy **każdym** narzędziu ``generate_*`` ZAWSZE podaj pole **material_title**: krótki, opisowy tytuł pliku po polsku (2–12 słów), widoczny w bibliotece — bez znaku ``/``, bez rozszerzenia (np. „Scenariusz jasełka klasa 4”, „Piosenka o zimie SP”).
 4. Gdy masz wystarczające informacje → użyj odpowiedniego narzędzia generowania (z **material_title**).
 5. Możesz wywołać WIELE narzędzi jednocześnie (np. prepare_create_teacher_project + generate_music + generate_graphics). **generate_scenario** wywołaj **co najwyżej raz** w jednej turze (jedna odpowiedź) — nie zduplikuj scenariusza; inne ``generate_*`` mogą być wielokrotnie wg potrzeb.
 6. Eksport do PDF/DOCX: export_library_file (file_id z wcześniejszej wiadomości lub pominięty po wygenerowaniu pliku w tej samej odpowiedzi).
 7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące, żeby moduł dostał znalezione fragmenty w kontekście. To samo dla **search_web** przed **generate_study**.
 8. Nie łącz **search_library_fragments** ani **search_web** z **reply_to_user** w jednej turze — odpowiedź tekstowa byłaby ustalana bez wglądu w wyniki. Szukaj osobno albo użyj samego **reply_to_user**, gdy wyszukiwanie nie jest potrzebne.
-9. **Katalogi (foldery):** Na początku wiadomości użytkownika masz listę jego katalogów. Gdy temat rozmowy pasuje do któregoś z nich — zawołaj **search_library_fragments** z odpowiednim **project_id** (albo doprecyzuj przez **ask_clarification**, jeśli pasuje kilka folderów albo niepewność).
+9. **Katalogi (foldery):** Na początku wiadomości użytkownika masz listę jego katalogów. Gdy temat rozmowy pasuje do któregoś z nich — zawołaj **search_library_fragments** z odpowiednim **project_id** (albo doprecyzuj przez **ask_clarification**, jeśli pasuje kilka folderów albo niepewność). **Zapis** w tym samym folderze wymaga tego samego **project_id** w ``generate_*`` / ``export_library_file`` albo aktywnego katalogu rozmowy zgodnego z tym folderem.
 10. Przy **pierwszej** pełnej prośbie o przedstawienie / zestaw materiałów możesz AKTYWNIE zasugerować powiązane materiały (scenariusz → piosenka, plakat). Przy **kolejnych** wiadomościach dodawaj **tylko** to, o co użytkownik prosi w bieżącej wiadomości (patrz „Kontynuacja rozmowy”) — nie powtarzaj całego pakietu.
 11. Odpowiadaj po polsku, przyjaźnie, zwięźle.
 12. **Język materiałów** musi odpowiadać językowi użytkownika (zwykle polski): scenariusze, teksty, a także **napisy i etykiety na grafikach** (plakaty, slajdy-wizualizacje) — w tym samym języku co prośba; przy ``generate_graphics`` moduł przekazuje do Nano Banana pole ``prompt_image`` w tym języku (dokładne brzmienie tekstu na obrazie)."""
+
+# Opcjonalny katalog zapisu — wspólny opis we wszystkich ``generate_*`` i ``export_library_file``.
+_SAVE_PROJECT_ID_PROPERTY: dict[str, Any] = {
+    "project_id": {
+        "type": "string",
+        "description": (
+            "Opcjonalnie: UUID katalogu z bloku „Katalogi użytkownika”, do którego zapisać plik. "
+            "Gdy pominiesz — katalog aktywny w tej rozmowie (UI); gdy i ten brak — „Inne pliki”."
+        ),
+    },
+}
 
 TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
@@ -221,10 +234,14 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
     }},
     {"type": "function", "function": {
         "name": "export_library_file",
-        "description": "Wyeksportuj plik z biblioteki użytkownika do PDF, DOCX, TXT lub PPTX i zapisz jako nowy plik.",
+        "description": (
+            "Wyeksportuj plik z biblioteki użytkownika do PDF, DOCX, TXT lub PPTX i zapisz jako nowy plik. "
+            "Opcjonalnie **project_id** — folder docelowy eksportu (jak przy ``generate_*``)."
+        ),
         "parameters": {"type": "object", "properties": {
             "file_id": {"type": "string", "description": "UUID pliku źródłowego (opcjonalnie — domyślnie ostatnio utworzony w tej turze)"},
             "format": {"type": "string", "enum": ["pdf", "docx", "txt", "pptx"], "description": "Format wyjściowy"},
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["format"]},
     }},
     {"type": "function", "function": {
@@ -242,6 +259,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             "age_group": {"type": "string", "description": "Grupa wiekowa / klasa"},
             "duration_minutes": {"type": "integer", "description": "Czas trwania w minutach"},
             "style": {"type": "string", "description": "Styl (komedia, musical, dramat)"},
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["topic", "material_title"]},
     }},
     {"type": "function", "function": {
@@ -260,6 +278,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                        "description": "Styl: cartoon, realistic, watercolor, flat, 3d, pastel, comic"},
             "size": {"type": "string", "enum": ["1024x1024", "1792x1024", "1024x1792"],
                      "description": "Rozdzielczość: kwadrat, poziom, pion"},
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["description", "material_title"]},
     }},
     {"type": "function", "function": {
@@ -274,6 +293,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             "duration_seconds": {"type": "integer", "description": "Czas trwania (5-30s)"},
             "style": {"type": "string",
                        "description": "Styl: animation, realistic, cartoon, cinematic, whiteboard"},
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["description", "material_title"]},
     }},
     {"type": "function", "function": {
@@ -295,6 +315,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                 "type": "boolean",
                 "description": "true = tylko instrumenty; false = z wokalem (gdy brak — heurystyka z treści)",
             },
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["topic", "material_title"]},
     }},
     {"type": "function", "function": {
@@ -308,6 +329,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             },
             "form": {"type": "string", "description": "Forma (rymowany, biały, haiku)"},
             "length": {"type": "string", "description": "Długość (krótki, średni, długi)"},
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["topic", "material_title"]},
     }},
     {"type": "function", "function": {
@@ -321,6 +343,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
             },
             "slides_count": {"type": "integer", "description": "Liczba slajdów"},
             "audience": {"type": "string", "description": "Odbiorcy (klasa, wiek)"},
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["topic", "material_title"]},
     }},
     {"type": "function", "function": {
@@ -341,6 +364,7 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
                 "enum": ["zwięzły", "standard", "rozszerzony"],
                 "description": "Zakres materiału (domyślnie wybierz sensownie wg prośby)",
             },
+            **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["topic", "material_title"]},
     }},
 ]
@@ -776,6 +800,31 @@ async def _resolve_search_project_scope(
     return active_project_id, None
 
 
+async def _resolve_write_project_id(
+    session: AsyncSession,
+    user_id: UUID,
+    tool_args: dict[str, Any],
+    active_project_id: UUID | None,
+) -> tuple[UUID | None, str | None]:
+    """Katalog zapisu pliku: opcjonalny ``project_id`` z narzędzia lub katalog aktywny rozmowy."""
+    pid_raw = tool_args.get("project_id")
+    if pid_raw in (None, ""):
+        return active_project_id, None
+    try:
+        uid = UUID(str(pid_raw).strip())
+    except (ValueError, TypeError):
+        return active_project_id, (
+            "Nieprawidłowy **project_id** przy zapisie — użyto katalogu aktywnego w rozmowie "
+            "(lub „Inne pliki”, gdy brak aktywnego)."
+        )
+    row = await session.get(ProjectORM, uid)
+    if row is None or row.user_id != user_id:
+        return active_project_id, (
+            "Podany katalog zapisu nie istnieje lub nie należy do użytkownika — użyto katalogu aktywnego w rozmowie."
+        )
+    return uid, None
+
+
 async def _build_projects_catalog_block(
     session: AsyncSession, user_id: UUID, active_project_id: UUID | None,
 ) -> str:
@@ -811,7 +860,8 @@ async def _build_projects_catalog_block(
         if ap:
             lines.append(
                 f'**Katalog aktywny w tej rozmowie (UI):** „{ap.name}” (`{active_project_id}`). '
-                "Nowe pliki zapisują się tu, o ile nie wskażesz inaczej."
+                "Domyślnie nowe pliki trafiają tutaj; możesz też podać inny **project_id** z listy powyżej "
+                "w argumentach ``generate_*`` lub ``export_library_file`` — wtedy zapis do wskazanego katalogu."
             )
         else:
             lines.append(
@@ -819,7 +869,8 @@ async def _build_projects_catalog_block(
             )
     else:
         lines.append(
-            "**Katalog aktywny w tej rozmowie:** brak — nowe pliki trafią do „Inne pliki”, chyba że użytkownik wybierze katalog."
+            "**Katalog aktywny w tej rozmowie:** brak — nowe pliki trafią do „Inne pliki”, "
+            "chyba że w wywołaniu ``generate_*`` / ``export_library_file`` podasz **project_id** z listy albo użytkownik powiąże rozmowę z folderem w UI."
         )
     lines.append(
         "Gdy temat rozmowy pasuje do nazwy/opisu katalogu, wywołaj **search_library_fragments** z **project_id** "
@@ -1210,8 +1261,13 @@ class ChatOrchestratorUseCase:
                     reply_parts.append(f"[Dry-run] Eksport do {fmt} byłby wykonany.")
                 else:
                     try:
+                        write_pid, write_note = await _resolve_write_project_id(
+                            session, user_id, tc.arguments, active_project_id,
+                        )
+                        if write_note:
+                            reply_parts.append(write_note)
                         new_fid = await persist_export_as_new_file(
-                            session, user_id, fid, active_project_id, fmt, self._storage,
+                            session, user_id, fid, write_pid, fmt, self._storage,
                         )
                         created.append(new_fid)
                         last_created_file_id = new_fid
@@ -1237,8 +1293,13 @@ class ChatOrchestratorUseCase:
                         f"[Symulacja] Moduł **{module}** zostałby uruchomiony — pliki oraz wywołania KIE/Lyria **nie** są wykonywane."
                     )
                 else:
+                    write_pid, write_note = await _resolve_write_project_id(
+                        session, user_id, tc.arguments, active_project_id,
+                    )
+                    if write_note:
+                        reply_parts.append(write_note)
                     mod_fids, mod_note = await self._run_module(
-                        session, user_id, active_project_id, module, user_message, dynamic_context, tc.arguments,
+                        session, user_id, write_pid, module, user_message, dynamic_context, tc.arguments,
                     )
                     if mod_fids:
                         for mod_fid in mod_fids:
@@ -1329,7 +1390,9 @@ class ChatOrchestratorUseCase:
             logger.warning("No system prompt for module %r — skipping", mod)
             return [], None
 
-        args_str = json.dumps(tool_args, ensure_ascii=False) if tool_args else ""
+        args_for_prompt = dict(tool_args) if tool_args else {}
+        args_for_prompt.pop("project_id", None)
+        args_str = json.dumps(args_for_prompt, ensure_ascii=False) if args_for_prompt else ""
         user_part = f"Kontekst:\n{context}\n\nParametry:\n{args_str}\n\nProśba:\n{user_message}"
         logger.debug("Running module %r via %s", mod, type(self._llm_modules).__name__)
         mod_completion = await self._llm_modules.complete(sys_prompt, user_part)

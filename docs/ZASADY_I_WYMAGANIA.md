@@ -103,8 +103,8 @@ Szczegółowe opisy komponentów: [komponenty/README.md](komponenty/README.md).
 
 ## 7. Cloud-native i DevOps
 
-- Hosting: dowolny serwer statyczny (frontend SPA) + AWS/GCP (pełny stack).
-- Docker + ECS lub Cloud Run.
+- Hosting (docelowo): frontend SPA + backend na **GCP** (np. Compute Engine, Cloud SQL); wektory — **Qdrant Cloud** lub równoważny hosting; pliki `deploy/gcp/`.
+- Docker na VM; ewentualnie później Cloud Run — poza zakresem obecnych plików Compose w repo.
 - Monorepo, GitHub Actions (test, lint, build, deploy), preview na PR, trunk-based development.
 - Migracje: Alembic.
 - Rollback < 60 s.
