@@ -89,9 +89,13 @@ def create_app() -> FastAPI:
         from teacher_helper.infrastructure.qdrant import ensure_collection
         try:
             ensure_collection()
-        except Exception:
+        except Exception as exc:
             import logging
-            logging.getLogger(__name__).warning("Qdrant niedostępny — kolekcja nie została utworzona")
+            logging.getLogger(__name__).warning(
+                "Qdrant przy starcie: %s — indeksy/kolekcja mogą być niepełne; przy pierwszym zapisie/usunięciu nastąpi ponowna próba.",
+                exc,
+                exc_info=True,
+            )
 
     @app.get("/")
     async def root() -> dict[str, str | bool]:

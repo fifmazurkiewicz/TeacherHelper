@@ -79,6 +79,7 @@ def build_image_generator() -> ImageGeneratorPort | None:
     from teacher_helper.infrastructure.image_openrouter import OpenRouterImageGenerator
 
     img_size = (s.openrouter_image_size or "").strip() or None
+    img_tokens = int(s.openrouter_module_max_completion_tokens or s.openrouter_max_completion_tokens or 16384)
     return OpenRouterImageGenerator(
         api_key=key,
         model=model,
@@ -87,6 +88,7 @@ def build_image_generator() -> ImageGeneratorPort | None:
         app_title=s.app_name,
         timeout=float(s.openrouter_image_timeout_seconds or 120.0),
         image_size=img_size,
+        max_completion_tokens=img_tokens,
     )
 
 

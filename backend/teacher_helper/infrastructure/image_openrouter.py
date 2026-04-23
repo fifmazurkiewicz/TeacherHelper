@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import json
 import logging
 from typing import Any
 
@@ -80,6 +81,7 @@ class OpenRouterImageGenerator:
         app_title: str | None = None,
         timeout: float = 120.0,
         image_size: str | None = "1K",
+        max_completion_tokens: int = 16384,
     ) -> None:
         self._api_key = api_key
         self._model = model
@@ -88,6 +90,7 @@ class OpenRouterImageGenerator:
         self._title = app_title
         self._timeout = timeout
         self._image_size = (image_size or "").strip() or None
+        self._max_completion_tokens = max(1024, int(max_completion_tokens))
 
     def _headers(self) -> dict[str, str]:
         h: dict[str, str] = {
@@ -151,11 +154,18 @@ class OpenRouterImageGenerator:
         if self._image_size and "gemini" in self._model.lower():
             image_config["image_size"] = self._image_size
 
+        # Gemini Image przez OpenRouter często wymaga tablicy części + wystarczającego limitu tokenów.
+        if "gemini" in self._model.lower():
+            user_content: list[dict[str, Any]] | str = [{"type": "text", "text": full_prompt}]
+        else:
+            user_content = full_prompt
+
         payload: dict[str, Any] = {
             "model": self._model,
-            "messages": [{"role": "user", "content": full_prompt}],
+            "messages": [{"role": "user", "content": user_content}],
             "modalities": modalities,
             "image_config": image_config,
+            "max_tokens": self._max_completion_tokens,
         }
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
@@ -171,6 +181,10 @@ class OpenRouterImageGenerator:
             raise RuntimeError(f"OpenRouter Image HTTP {r.status_code}: {detail}")
 
         data = r.json()
+        if isinstance(data.get("error"), dict):
+            err = data["error"]
+            raise RuntimeError(f"OpenRouter Image API error: {err}")
+
         choices = data.get("choices")
         if not choices:
             raise RuntimeError("OpenRouter Image: brak choices w odpowiedzi")
@@ -178,6 +192,9 @@ class OpenRouterImageGenerator:
         msg = choices[0].get("message", {})
         if not isinstance(msg, dict):
             raise RuntimeError("OpenRouter Image: nieprawidłowe «message»")
+
+        if msg.get("refusal"):
+            raise RuntimeError(f"OpenRouter Image: model odmówił — {msg.get('refusal')}")
 
         images_raw = msg.get("images")
         image_ref: str | None = None
@@ -200,10 +217,18 @@ class OpenRouterImageGenerator:
                 )
             image_ref = _first_image_url_from_message_content(content)
             if not image_ref:
+                fr = choices[0].get("finish_reason")
                 preview = repr(content)[:400] if content is not None else "None"
+                logger.error(
+                    "OpenRouter Image: brak obrazu — finish_reason=%s message_keys=%s snippet=%s",
+                    fr,
+                    list(msg.keys()),
+                    json.dumps(choices[0], default=str)[:2500],
+                )
                 raise RuntimeError(
-                    "OpenRouter Image: brak obrazów w odpowiedzi (sprawdź OPENROUTER_IMAGE_MODEL i modalities). "
-                    f"Fragment treści: {preview}"
+                    "OpenRouter Image: brak obrazów w odpowiedzi (sprawdź OPENROUTER_IMAGE_MODEL, limity konta "
+                    f"lub modele z openrouter.ai — finish_reason={fr!r}, treść: {preview}). "
+                    "Szczegóły w logu (OpenRouter Image: brak obrazu)."
                 )
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:

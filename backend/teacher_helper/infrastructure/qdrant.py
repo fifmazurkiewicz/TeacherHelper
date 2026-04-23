@@ -48,7 +48,7 @@ def _ensure_payload_indexes(client: QdrantClient, collection_name: str) -> None:
             err = str(exc).lower()
             if "already exists" in err or "duplicate" in err or "409" in err:
                 continue
-            logger.debug("create_payload_index %s: %s", field_name, exc)
+            logger.warning("Qdrant create_payload_index %s.%s: %s", collection_name, field_name, exc)
 
 
 def ensure_collection() -> None:
@@ -83,6 +83,7 @@ def upsert_chunks(
 ) -> None:
     s = get_settings()
     client = get_qdrant()
+    _ensure_payload_indexes(client, s.qdrant_collection)
     topic_key = _topic_payload_value(topic_id)
     points = [
         PointStruct(
@@ -106,6 +107,7 @@ def delete_file_vectors(file_asset_id: UUID) -> None:
     s = get_settings()
     try:
         client = get_qdrant()
+        _ensure_payload_indexes(client, s.qdrant_collection)
         client.delete(
             collection_name=s.qdrant_collection,
             points_selector=Filter(
@@ -130,6 +132,7 @@ def search_vectors(
     """Wyszukiwanie wektorowe: zawsze filtr user_id; opcjonalnie dokładny topic_id w payload."""
     s = get_settings()
     client = get_qdrant()
+    _ensure_payload_indexes(client, s.qdrant_collection)
 
     must_filters = [
         FieldCondition(key="user_id", match=MatchValue(value=str(user_id))),
