@@ -361,7 +361,7 @@ export default function AssistantPage() {
 
   useEffect(() => {
     api<{ role: string }>("/v1/auth/me")
-      .then((m) => setIsAdmin(m.role === "admin"))
+      .then((m: { role: string }) => setIsAdmin(m.role === "admin"))
       .catch(() => setIsAdmin(false));
   }, []);
 
@@ -623,7 +623,7 @@ export default function AssistantPage() {
     const trimmed = message.trim();
     const outgoing =
       trimmed || (chatAttachments.length ? "Uwzględnij załączone pliki w odpowiedzi." : "");
-    if (!outgoing || loading || loadingThread || uploadBusy || voiceRecording || voiceBusy || chatPending)
+    if (!outgoing || loading || loadingThread || uploadBusy || voiceRecording || voiceBusy || chatPending != null)
       return;
     if (!trimmed && !chatAttachments.length) return;
 
@@ -687,7 +687,7 @@ export default function AssistantPage() {
   }
 
   async function toggleVoiceInput() {
-    if (voiceBusy || loading || loadingThread || uploadBusy || chatPending || !conversationId) return;
+    if (voiceBusy || loading || loadingThread || uploadBusy || chatPending != null || !conversationId) return;
     if (voiceRecording) {
       mediaRecorderRef.current?.stop();
       return;
@@ -849,7 +849,7 @@ export default function AssistantPage() {
             <button
               type="button"
               onClick={() => void startNewChat()}
-              disabled={loadingThread || loading || chatPending}
+              disabled={loadingThread || loading || chatPending != null}
               className="w-full rounded-lg border border-ink-800/20 bg-paper-50 py-2 text-sm font-medium text-ink-900 hover:bg-paper-100 disabled:opacity-50 dark:border-paper-100/20 dark:bg-ink-950 dark:text-paper-100 dark:hover:bg-ink-800"
             >
               Nowy czat
@@ -893,7 +893,7 @@ export default function AssistantPage() {
                     <button
                       type="button"
                       onClick={() => void openConversation(c.id)}
-                      disabled={loading || chatPending}
+                      disabled={loading || chatPending != null}
                       className="min-w-0 flex-1 truncate px-2 py-2 text-left text-sm text-ink-800 disabled:opacity-45 dark:text-paper-200"
                       title={c.title}
                     >
@@ -998,7 +998,7 @@ export default function AssistantPage() {
                   )}
                 </div>
               ))}
-            {!loadingThread && (loading || chatPending) && (
+            {!loadingThread && (loading || chatPending != null) && (
               <div
                 className="mr-8 flex gap-3 rounded-xl border border-accent/25 bg-accent/5 px-3 py-3 text-sm text-ink-800 dark:border-accent/30 dark:bg-accent/10 dark:text-paper-100"
                 aria-live="polite"
@@ -1046,7 +1046,7 @@ export default function AssistantPage() {
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
-                      disabled={projectConfirmBusy || loading || chatPending || loadingThread}
+                      disabled={projectConfirmBusy || loading || chatPending != null || loadingThread}
                       onClick={() => {
                         void (async () => {
                           setError(null);
@@ -1171,7 +1171,7 @@ export default function AssistantPage() {
                       <button
                         type="button"
                         onClick={() => removeChatAttachment(a.id)}
-                        disabled={loading || chatPending || uploadBusy || voiceRecording || voiceBusy}
+                        disabled={loading || chatPending != null || uploadBusy || voiceRecording || voiceBusy}
                         className="shrink-0 rounded px-1 text-ink-500 hover:bg-red-500/10 hover:text-red-600 disabled:opacity-40 dark:text-paper-400"
                         aria-label={`Usuń ${a.name}`}
                       >
@@ -1188,7 +1188,7 @@ export default function AssistantPage() {
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={
-                    loadingThread || loading || chatPending || uploadBusy || !conversationId || voiceRecording || voiceBusy
+                    loadingThread || loading || chatPending != null || uploadBusy || !conversationId || voiceRecording || voiceBusy
                   }
                   title={`Załącz plik PDF, DOCX lub TXT (do ${CHAT_ATTACH_MAX}, max 50 MB — folder tej rozmowy w Materiałach).`}
                   aria-label="Załącz plik"
@@ -1213,13 +1213,13 @@ export default function AssistantPage() {
                   }}
                   rows={1}
                   placeholder="Wiadomość…"
-                  disabled={loadingThread || loading || chatPending || uploadBusy || voiceRecording || voiceBusy}
+                  disabled={loadingThread || loading || chatPending != null || uploadBusy || voiceRecording || voiceBusy}
                   className="min-h-[40px] max-h-[200px] w-0 min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm text-ink-900 outline-none ring-0 placeholder:text-ink-400 focus:ring-0 dark:text-paper-100 dark:placeholder:text-paper-500"
                 />
                 <button
                   type="button"
                   onClick={() => void toggleVoiceInput()}
-                  disabled={loadingThread || loading || chatPending || uploadBusy || !conversationId || voiceBusy}
+                  disabled={loadingThread || loading || chatPending != null || uploadBusy || !conversationId || voiceBusy}
                   title={
                     voiceRecording
                       ? "Kliknij, by zakończyć nagranie i przetworzyć mowę (xAI / Grok STT)"
@@ -1239,7 +1239,7 @@ export default function AssistantPage() {
                   onClick={() => void send()}
                   disabled={
                     loading ||
-                    chatPending ||
+                    chatPending != null ||
                     loadingThread ||
                     uploadBusy ||
                     voiceRecording ||
@@ -1254,7 +1254,7 @@ export default function AssistantPage() {
                       : "bg-ink-200 text-ink-500 dark:bg-ink-700 dark:text-paper-400"
                   }`}
                 >
-                  {loading || chatPending ? (
+                  {loading || chatPending != null ? (
                     <Spinner className="size-[18px] border-2 border-white/40 border-t-white" />
                   ) : (
                     <IconArrowUp className="size-5" />

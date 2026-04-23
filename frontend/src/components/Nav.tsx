@@ -21,7 +21,7 @@ export function Nav() {
 
   useEffect(() => {
     api<{ role: string }>("/v1/auth/me")
-      .then((m) => setIsAdmin(m.role === "admin"))
+      .then((m: { role: string }) => setIsAdmin(m.role === "admin"))
       .catch(() => setIsAdmin(false));
   }, []);
 

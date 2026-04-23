@@ -10,7 +10,7 @@ export default function ProfilePage() {
   useEffect(() => {
     api<Me>("/v1/auth/me")
       .then(setMe)
-      .catch((e) => setError(e instanceof Error ? e.message : "Błąd"));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Błąd"));
   }, []);
 
   return (

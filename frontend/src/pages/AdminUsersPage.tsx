@@ -29,7 +29,7 @@ export default function AdminUsersPage() {
     setError(null);
     api<AdminUser[]>("/v1/admin/users", { headers: getAdminKeyHeaders() })
       .then(setUsers)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }
 
   useEffect(() => {

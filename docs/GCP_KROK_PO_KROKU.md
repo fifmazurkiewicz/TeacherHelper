@@ -6,6 +6,18 @@ Ten plik opisuje **domyślne wdrożenie**: **zarządzany PostgreSQL (Cloud SQL)*
 
 **Czego nie uruchamiasz przy Ścieżce A:** `docker-compose.all.yml` (tam Postgres jest w kontenerze — to **Ścieżka B**, skrót na końcu dokumentu).
 
+### Redis — czy coś klikać w GCP?
+
+**Nie.** W Ścieżce A Redis jest **kontenerem Dockera** z pliku **`deploy/gcp/docker-compose.yml`** (obraz `redis:7-alpine`). Uruchamia się **razem** z backendem i frontendem po:
+
+`docker compose --env-file .env up -d`
+
+W **`.env`** ustaw **`REDIS_URL=redis://redis:6379/0`** — `redis` to **nazwa serwisu** w Compose (wewnętrzna sieć Docker), nie adres VM.
+
+**Firewall:** **nie** otwieraj portu **6379** na świat — Redis ma być widoczny tylko dla kontenera backendu. Z internetu i tak nie łączysz się z Redisem.
+
+**Alternatywa (rzadko na start):** zarządzany **Memorystore for Redis** w GCP — osobna usługa, płatność i konfiguracja VPC; obecny przewodnik i Compose **tego nie używają**.
+
 ---
 
 ## Szybki plan (kolejność)
@@ -184,8 +196,34 @@ Podstaw właściwą ścieżkę URL swojego repo (fork lub prywatne).
 
 ### 4.5 Plik `.env` i uruchomienie Compose
 
-1. `cd ~/TeacherHelper/deploy/gcp` (albo `cd ścieżka/do/TeacherHelper/deploy/gcp`, jeśli klonowałeś gdzie indziej).
-2. `cp .env.example .env` — uzupełnij:
+**Dlaczego „nie widać” `.env.example`:** pliki z nazwą zaczynającą się od **kropki** są **ukryte**. Polecenie `ls` ich nie wypisuje — użyj:
+
+```bash
+ls -la ~/TeacherHelper/deploy/gcp
+```
+
+Powinieneś zobaczyć m.in. **`.env.example`**. To **nie** jest to samo co `.env` (ten drugi plik tworzysz sam i **nie** jest w repozytorium — trzyma sekrety).
+
+**Skopiuj szablon na właściwy plik** (będąc w `deploy/gcp`):
+
+```bash
+cd ~/TeacherHelper/deploy/gcp
+cp -n .env.example .env
+```
+
+(`cp -n` nie nadpisze `.env`, jeśli już istnieje; wtedy edytuj ręcznie `vim .env` lub `nano .env`.)
+
+**Edytor vim na Ubuntu** (opcjonalnie — wygodne do dłuższych plików):
+
+```bash
+sudo apt-get update
+sudo apt-get install -y vim
+vim .env
+```
+
+Jeśli wolisz coś prostszego, często jest już **`nano`** (`nano .env`, zapis: Ctrl+O, wyjście: Ctrl+X).
+
+3. Uzupełnij w `.env` m.in.:
    - `DATABASE_URL`, `DATABASE_URL_SYNC` (ETAP 3),
    - `REDIS_URL=redis://redis:6379/0`,
    - `QDRANT_URL`, `QDRANT_API_KEY` (ETAP 1),
@@ -193,29 +231,102 @@ Podstaw właściwą ścieżkę URL swojego repo (fork lub prywatne).
    - **`CORS_ORIGINS`** — zgodnie z sekcją na początku dokumentu,
    - `STORAGE_ROOT=/app/data/storage`,
    - `ADMIN_SEED_EMAIL`, `ADMIN_SEED_PASSWORD`.
-3. `chmod 600 .env`
-4. Uruchomienie:
+4. `chmod 600 .env`
+5. Uruchomienie:
 
 ```bash
 docker compose --env-file .env build
 docker compose --env-file .env up -d
 ```
 
-5. `docker compose ps` — kontenery **redis**, **backend**, **frontend** (kontenera **qdrant** nie ma — wektory idą do Qdrant Cloud).
-6. Frontend nasłuchuje **`127.0.0.1:8080`** na hoście — ruch z internetu podajesz dopiero przez proxy (ETAP 5).
+6. `docker compose ps` — kontenery **redis**, **backend**, **frontend** (kontenera **qdrant** nie ma — wektory idą do Qdrant Cloud).
+7. Frontend nasłuchuje **`127.0.0.1:8080`** na hoście — ruch z internetu podajesz dopiero przez proxy (ETAP 5).
 
 **Porty:** nie musisz otwierać **6333** (Qdrant jest poza GCP). Nie wystawiaj publicznie portu aplikacji poza 80/443 na proxy.
 
 ---
 
-## ETAP 5 — Reverse proxy na VM (Caddy lub nginx)
+## ETAP 5 — Reverse proxy na VM (Caddy)
 
-Ruch: **internet → :80 / :443 na VM → proxy → `http://127.0.0.1:8080`**.
+Ruch: **internet → :80 / :443 na VM → Caddy → `http://127.0.0.1:8080`** (frontend z Docker Compose nasłuchuje tylko na localhost).
 
-1. Zainstaluj **Caddy** albo **nginx** na Ubuntu (poza Dockerem).
-2. W repozytorium: **`deploy/gcp/Caddyfile.host.example`** — wariant **HTTP** (`:80` + `reverse_proxy 127.0.0.1:8080`) albo blok z **nazwą domeny** po skonfigurowaniu DNS na **External IP** VM.
-3. Wgraj konfigurację na serwer (np. `/etc/caddy/Caddyfile`), przeładuj usługę (`systemctl restart caddy` lub odpowiednik dla nginx).
-4. Sprawdź ponownie **`CORS_ORIGINS`** w `.env` vs adres w przeglądarce.
+Upewnij się, że w **GCP** reguły firewall przepuszczają **TCP 80** (i **443**, jeśli używasz HTTPS z domeną). **Compose** musi już działać (`docker compose ps`).
+
+### 5.1 Instalacja Caddy na Ubuntu (oficjalny pakiet apt)
+
+Na VM (SSH). Instrukcja zgodna z [dokumentacją Caddy (Debian/Ubuntu)](https://caddyserver.com/docs/install):
+
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+sudo chmod o+r /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install -y caddy
+```
+
+Po instalacji usługa **`caddy`** jest pod **systemd** (często już włączona). Sprawdzenie:
+
+```bash
+sudo systemctl status caddy
+caddy version
+```
+
+### 5.2 Konfiguracja (`Caddyfile`)
+
+Domyślna ścieżka pakietu: **`/etc/caddy/Caddyfile`**. Zrób kopię zapasową i edytuj:
+
+```bash
+sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
+```
+
+Edycja pliku (wybierz jedno):
+
+- `sudo nano /etc/caddy/Caddyfile` — jeśli brak `nano`: `sudo apt install -y nano`
+- `sudo vim /etc/caddy/Caddyfile` lub `sudo vi /etc/caddy/Caddyfile`
+
+W repozytorium TeacherHelper masz szkic: **`deploy/gcp/Caddyfile.host.example`**.
+
+- **Tylko HTTP (np. wejście po `http://EXTERNAL_IP`):** odkomentuj wariant z **`:80`** i **`reverse_proxy 127.0.0.1:8080`**. W Caddy **wcięcia** w bloku muszą być **tabulatorami** (nie spacjami), np.:
+
+```caddy
+:80 {
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+- **HTTPS (Let's Encrypt):** w pliku wpisz **jedną linię z domeną** (DNS **A** musi wskazywać **External IP** VM **zanim** pierwszy raz wystartuje ACME), np.:
+
+```caddy
+twoja.domena.pl {
+	reverse_proxy 127.0.0.1:8080
+}
+```
+
+Usuń lub nie zostawiaj **konfliktujących** bloków (np. dwa serwisy na `:80`).
+
+Walidacja i restart:
+
+```bash
+sudo caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+Przy pierwszej konfiguracji, jeśli `reload` zawiedzie, spróbuj:
+
+```bash
+sudo systemctl restart caddy
+sudo journalctl -u caddy -e --no-pager
+```
+
+### 5.3 `CORS_ORIGINS`
+
+W **`deploy/gcp/.env`** ustaw **`CORS_ORIGINS`** tak samo jak adres w przeglądarce (`http://IP` vs `https://domena`).
+
+### 5.4 Zamiast Caddy — nginx
+
+Możesz użyć **nginx** jako reverse proxy na `:80` / `:443`; ten przewodnik nie rozpisuje kroków pod nginx. Idea ta sama: `proxy_pass http://127.0.0.1:8080;` i certyfikat (np. certbot) przy HTTPS.
 
 ---
 
