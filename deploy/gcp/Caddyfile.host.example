@@ -1,13 +1,4 @@
-# Przykład dla Caddy zainstalowanego NA HOŚCIE (poza Dockerem), Ścieżka A.
-# Frontend w Dockerze: 127.0.0.1:8080 (z docker-compose.yml).
-# Skopiuj do np. /etc/caddy/Caddyfile i dostosuj.
-#
-# --- Wariant 1: tylko HTTP (np. zwykły adres IP) ---
-# :80 {
-# 	reverse_proxy 127.0.0.1:8080
-# }
-#
-# --- Wariant 2: HTTPS (np. własna domena) — Caddy sam uzyska Let's Encrypt ---
-# twoja.domena.pl {
-# 	reverse_proxy 127.0.0.1:8080
-# }
+# --- Wariant 2: HTTPS (DNS A → IP VM; podmień domenę) — CORS_ORIGINS=https://... ---
+teacherhelper.duckdns.org {
+	reverse_proxy 127.0.0.1:8080
+}

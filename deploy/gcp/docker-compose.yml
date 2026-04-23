@@ -1,6 +1,9 @@
-# PostgreSQL: Cloud SQL (poza Compose). Redis + app na VM (Compute Engine).
-# Qdrant: darmowy klaster w Qdrant Cloud — QDRANT_URL + QDRANT_API_KEY w .env.
-# Z katalogu deploy/gcp: docker compose --env-file .env up -d
+# GCP Ścieżka A: Cloud SQL (poza Compose) + Redis + backend + frontend na jednej VM.
+# Qdrant: Qdrant Cloud — QDRANT_URL + QDRANT_API_KEY w pliku .env (obok tego katalogu).
+# Reverse proxy (Caddy): na hoście VM → http://127.0.0.1:8080 (patrz docs/GCP_KROK_PO_KROKU.md).
+#
+# Pierwszy start / aktualizacja: docker compose --env-file .env build && docker compose --env-file .env up -d
+# Szybki przepływ po git pull: ten sam build + up (sekcja w docs/GCP_KROK_PO_KROKU.md).
 
 services:
   redis:

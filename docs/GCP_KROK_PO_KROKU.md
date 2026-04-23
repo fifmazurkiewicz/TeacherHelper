@@ -2,9 +2,7 @@
 
 Ten plik opisuje **domyślne wdrożenie**: **zarządzany PostgreSQL (Cloud SQL)** + **jedna maszyna (Compute Engine)** z **Docker Compose** (`redis`, `backend`, `frontend`). **Qdrant** jest **poza GCP** — darmowy klaster w [Qdrant Cloud](https://cloud.qdrant.io) (`QDRANT_URL`, `QDRANT_API_KEY` w `.env`).
 
-**Pliki:** katalog **`deploy/gcp/`** — używasz **`docker-compose.yml`** i **`.env`** (wzór **`.env.example`**). Plików `.env` **nie commituj**.
-
-**Czego nie uruchamiasz przy Ścieżce A:** `docker-compose.all.yml` (tam Postgres jest w kontenerze — to **Ścieżka B**, skrót na końcu dokumentu).
+**Pliki:** katalog **`deploy/gcp/`** — **`docker-compose.yml`**, **`.env`** (wzór **`.env.example`**), **`Caddyfile.host.example`** (proxy na hoście). Pliku **`.env` nie commituj**.
 
 ### Redis — czy coś klikać w GCP?
 
@@ -281,12 +279,19 @@ Domyślna ścieżka pakietu: **`/etc/caddy/Caddyfile`**. Zrób kopię zapasową 
 sudo cp /etc/caddy/Caddyfile /etc/caddy/Caddyfile.bak
 ```
 
-Edycja pliku (wybierz jedno):
+**Edycja w vimie** (jeśli brak: `sudo apt install -y vim`):
 
-- `sudo nano /etc/caddy/Caddyfile` — jeśli brak `nano`: `sudo apt install -y nano`
-- `sudo vim /etc/caddy/Caddyfile` lub `sudo vi /etc/caddy/Caddyfile`
+```bash
+sudo vim /etc/caddy/Caddyfile
+```
 
-W repozytorium TeacherHelper masz szkic: **`deploy/gcp/Caddyfile.host.example`**.
+Krótki **vim**:
+
+- **Usuń stary blok** — np. `ggdG` (od pierwszej do ostatniej linii; uważaj, nieodwracalne w tej sesji) albo ręcznie usuń zawartość.
+- **Wklejasz z komputera:** **Esc**, wpisz **`:set paste`**, **Enter**, **`i`**, wklej w terminalu, **Esc**, **`:set nopaste`**, **Enter** (opcjonalnie).
+- **Zapis i wyjście:** **Esc**, **`:wq`**, **Enter**; wyjście bez zapisu: **`:q!`**
+
+W repozytorium TeacherHelper masz szkic: **`deploy/gcp/Caddyfile.host.example`** (możesz otworzyć drugą sesję SSH: `vim ~/TeacherHelper/deploy/gcp/Caddyfile.host.example` i przepisać blok ręcznie).
 
 - **Tylko HTTP (np. wejście po `http://EXTERNAL_IP`):** odkomentuj wariant z **`:80`** i **`reverse_proxy 127.0.0.1:8080`**. W Caddy **wcięcia** w bloku muszą być **tabulatorami** (nie spacjami), np.:
 
@@ -345,6 +350,46 @@ Możesz użyć **nginx** jako reverse proxy na `:80` / `:443`; ten przewodnik ni
 
 ---
 
+## Wdrożenie zmian z brancha (szybki pull na VM)
+
+Użyj tego, gdy **zmieniasz kod na innym branchu** (lub po `merge` na `main`) i chcesz **szybko wgrać** nową wersję na tę samą VM **bez** ponownego klikania w GCP.
+
+**Założenia:** masz już działające środowisko (ETAPY 0–5), plik **`deploy/gcp/.env`** leży na serwerze i **nie** jest nadpisywany przez `git pull` (nie trzymaj sekretów w repo).
+
+Na VM po SSH:
+
+```bash
+cd ~/TeacherHelper
+git fetch origin
+git checkout main
+git pull origin main
+```
+
+Zamiast `main` podstaw **nazwę brancha**, np. `git checkout feature/nazwa && git pull origin feature/nazwa`.
+
+Potem przebuduj i podnieś kontenery (z katalogu compose):
+
+```bash
+cd ~/TeacherHelper/deploy/gcp
+docker compose --env-file .env build
+docker compose --env-file .env up -d
+```
+
+**Migracje bazy:** przy starcie kontenera **backend** uruchamiany jest `alembic upgrade head` (patrz `backend/entrypoint.sh`) — nowe migracje zwykle zastosują się same po `up -d`.
+
+**Kiedy wymusić pełną przebudowę obrazów** (rzadziej, np. podejrzenie cache Dockera):
+
+```bash
+docker compose --env-file .env build --no-cache
+docker compose --env-file .env up -d
+```
+
+**Logi po wdrożeniu:** `docker compose logs -f backend` (lub `frontend`).
+
+**Caddy** na hoście **nie** wymaga restartu po typowej zmianie tylko w aplikacji — tylko gdy zmieniasz port frontendu w Compose albo ścieżkę proxy.
+
+---
+
 ## ETAP 7 — Backup i utrzymanie
 
 | Zasób | Działanie |
@@ -352,7 +397,7 @@ Możesz użyć **nginx** jako reverse proxy na `:80` / `:443`; ten przewodnik ni
 | **Cloud SQL** | W karcie instancji: **Backups**; ewentualnie eksport; przechowuj hasła. |
 | **Pliki użytkowników** | Wolumen Docker **`backend_storage`** — snapshot dysku VM lub kopia przy zatrzymanym kontenerze. |
 | **Wektory** | **Qdrant Cloud** — wg polityki usługi w panelu. |
-| **Kod** | `git pull`, potem `docker compose --env-file .env build` i `up -d` po zmianach wymagających przebudowy obrazów. |
+| **Kod / wdrożenie** | Sekcja **„Wdrożenie zmian z brancha”** powyżej; okresowo `sudo apt upgrade` na VM. |
 
 ---
 
@@ -365,14 +410,4 @@ Możesz użyć **nginx** jako reverse proxy na `:80` / `:443`; ten przewodnik ni
 | VM | ☰ → **Compute Engine** → **VM instances** |
 | Firewall | ☰ → **VPC network** → **Firewall** |
 
----
-
-## Dodatek — Ścieżka B (Postgres w Dockerze)
-
-Jeśli **nie** używasz Cloud SQL, możesz uruchomić Postgresa w kontenerze razem z resztą:
-
-- Pliki: **`deploy/gcp/docker-compose.all.yml`**, **`deploy/gcp/.env.all.example`** → `.env.all`.
-- W Compose jest też **Caddy** (porty 80/443); w `.env.all` ustaw **`CADDY_DOMAIN`** i spójny **`CORS_ORIGINS`**.
-- **Nie łącz** tego równolegle z tą samą bazą Cloud SQL w jednym środowisku bez świadomej migracji — wybierasz jeden model bazy.
-
-Pełniejszy opis zmiennych: `backend/teacher_helper/config.py`.
+Pełniejszy opis zmiennych backendu: `backend/teacher_helper/config.py` oraz `deploy/gcp/.env.example`.

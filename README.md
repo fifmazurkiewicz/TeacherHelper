@@ -18,7 +18,7 @@ frontend/  → React 18 + Vite, Tailwind CSS
 
 ## Wdrożenie (Google Cloud)
 
-Instrukcja krok po kroku: [docs/GCP_KROK_PO_KROKU.md](docs/GCP_KROK_PO_KROKU.md) — Cloud SQL, Compute Engine, Docker Compose w `deploy/gcp/` (Ścieżka A: zarządzany Postgres; w dodatku opcjonalnie Ścieżka B z Postgresem w kontenerze).
+Instrukcja krok po kroku: [docs/GCP_KROK_PO_KROKU.md](docs/GCP_KROK_PO_KROKU.md) — Cloud SQL, Compute Engine, Docker Compose w `deploy/gcp/`, Caddy na hoście; w dokumencie jest też **szybkie wdrożenie po zmianach na branchu**.
 
 ## Uruchomienie lokalne — krok po kroku
 
