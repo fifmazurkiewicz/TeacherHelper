@@ -89,8 +89,8 @@ class SoundGenerateRequest(BaseModel):
     duration_seconds: int = Field(
         default=8,
         ge=1,
-        le=10,
-        description="Długość w sekundach (max 10) — krótki dźwięk, nie utwór",
+        le=30,
+        description="Długość w sekundach (max wg MusicGen, domyślnie 30) — krótki dźwięk, nie pełna piosenka długa",
     )
     project_id: UUID | None = Field(default=None, description="Opcjonalny projekt docelowy")
 

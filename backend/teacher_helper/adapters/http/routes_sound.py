@@ -49,7 +49,9 @@ async def generate_sound(
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Projekt nie znaleziony")
 
     try:
-        result = await gen.generate(body.prompt, duration_seconds=body.duration_seconds)
+        result = await gen.generate(
+            body.prompt, duration_seconds=body.duration_seconds, mode="sfx",
+        )
     except TimeoutError as exc:
         logger.warning("Replicate timeout for user=%s: %s", user.id, exc)
         raise HTTPException(

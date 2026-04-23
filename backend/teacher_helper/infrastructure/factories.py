@@ -132,6 +132,7 @@ def build_sound_generator() -> SoundGeneratorPort | None:
         output_format=s.replicate_sound_output_format,
         timeout=s.replicate_sound_timeout_seconds,
         poll_interval=s.replicate_sound_poll_interval_seconds,
+        max_duration_seconds=s.replicate_sound_max_duration_seconds,
     )
 
 

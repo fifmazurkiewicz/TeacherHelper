@@ -1,4 +1,4 @@
-"""Adapter Replicate — krótkie efekty dźwiękowe / foley (do 10 s), nie piosenka.
+"""Adapter Replicate — efekty dźwiękowe / foley oraz krótkie klipy (MusicGen, limit w konfiguracji).
 
 Używa modelu ``meta/musicgen`` przez Replicate Predictions API:
   POST /v1/models/{owner}/{name}/predictions  → polling GET /v1/predictions/{id}
@@ -27,6 +27,11 @@ _SFX_PROMPT_PREFIX = (
     "Not a song, not a melody with structure, no vocals, no full instrumental track. "
     "One coherent SFX matching the description. "
 )
+_SHORT_MUSIC_PREFIX = (
+    "Short educational music clip (one segment). "
+    "Can include simple singing or melody; keep a single clear idea, classroom-friendly, no long suite. "
+    "Match the following theme and any lyrics. "
+)
 
 
 class ReplicateSoundGenerator(SoundGeneratorPort):
@@ -41,6 +46,7 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
         output_format: str = "mp3",
         timeout: float = 120.0,
         poll_interval: float = 2.0,
+        max_duration_seconds: int = 30,
     ) -> None:
         self._api_key = api_key
         owner, name = model.split("/", 1)
@@ -50,6 +56,7 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
         self._output_format = output_format
         self._timeout = timeout
         self._poll_interval = poll_interval
+        self._max_duration_seconds = max(1, min(int(max_duration_seconds), 30))
 
     def _headers(self) -> dict[str, str]:
         return {
@@ -57,9 +64,16 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
             "Content-Type": "application/json",
         }
 
-    async def generate(self, prompt: str, duration_seconds: int = 10) -> SoundResult:
-        duration = max(1, min(duration_seconds, 10))
-        sfx_prompt = f"{_SFX_PROMPT_PREFIX}\n\nOpis / description: {(prompt or '').strip()}"
+    async def generate(
+        self, prompt: str, duration_seconds: int = 10, *, mode: str = "sfx",
+    ) -> SoundResult:
+        cap = self._max_duration_seconds
+        duration = max(1, min(int(duration_seconds), cap))
+        body_prompt = (prompt or "").strip()
+        if (mode or "sfx").lower() in ("short_music", "short-track", "music_short"):
+            sfx_prompt = f"{_SHORT_MUSIC_PREFIX}\n\n{body_prompt}"
+        else:
+            sfx_prompt = f"{_SFX_PROMPT_PREFIX}\n\nOpis / description: {body_prompt}"
         body = {
             "input": {
                 "prompt": sfx_prompt,

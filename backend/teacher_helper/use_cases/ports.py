@@ -181,4 +181,6 @@ class SoundGeneratorPort(Protocol):
         self,
         prompt: str,
         duration_seconds: int = 10,
+        *,
+        mode: str = "sfx",
     ) -> SoundResult: ...
