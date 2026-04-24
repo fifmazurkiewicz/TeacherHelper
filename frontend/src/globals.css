@@ -11,5 +11,5 @@
 }
 
 body {
-  @apply bg-paper-50 text-ink-950 antialiased dark:bg-ink-950 dark:text-paper-100 min-h-screen;
+  @apply min-h-screen overflow-x-hidden bg-paper-50 text-ink-950 antialiased dark:bg-ink-950 dark:text-paper-100;
 }

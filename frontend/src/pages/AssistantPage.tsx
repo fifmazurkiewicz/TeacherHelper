@@ -112,6 +112,23 @@ const SIDEBAR_WIDTH_DEFAULT = 260;
 const SIDEBAR_WIDTH_MIN = 168;
 const SIDEBAR_WIDTH_MAX = 520;
 
+const HISTORY_COLLAPSED_KEY = "teacher-helper:assistant-history-collapsed";
+
+function readInitialHistoryCollapsed(): boolean {
+  if (typeof sessionStorage === "undefined") return false;
+  try {
+    const v = sessionStorage.getItem(HISTORY_COLLAPSED_KEY);
+    if (v === "1" || v === "true") return true;
+    if (v === "0" || v === "false") return false;
+  } catch {
+    /* ignore */
+  }
+  if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches) {
+    return true;
+  }
+  return false;
+}
+
 function readInitialSidebarWidth(): number {
   if (typeof sessionStorage === "undefined") return SIDEBAR_WIDTH_DEFAULT;
   try {
@@ -260,6 +277,22 @@ function IconArrowUp({ className }: { className?: string }) {
   );
 }
 
+function IconChevronLeft({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconChevronRight({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M9 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function normalizePersistedAttachments(raw: unknown): ChatAttachment[] {
   if (!Array.isArray(raw)) return [];
   const out: ChatAttachment[] = [];
@@ -318,6 +351,7 @@ export default function AssistantPage() {
   const [pendingProjectDelete, setPendingProjectDelete] = useState<PendingProjectAction | null>(null);
   const [projectConfirmBusy, setProjectConfirmBusy] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialSidebarWidth);
+  const [historyCollapsed, setHistoryCollapsed] = useState(readInitialHistoryCollapsed);
   const sidebarResizeRef = useRef<{
     pointerId: number;
     startX: number;
@@ -358,6 +392,14 @@ export default function AssistantPage() {
   useEffect(() => {
     sidebarWidthCommitRef.current = sidebarWidth;
   }, [sidebarWidth]);
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(HISTORY_COLLAPSED_KEY, historyCollapsed ? "1" : "0");
+    } catch {
+      /* quota / private mode */
+    }
+  }, [historyCollapsed]);
 
   useEffect(() => {
     api<{ role: string }>("/v1/auth/me")
@@ -797,54 +839,85 @@ export default function AssistantPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-ink-800/15 px-3 dark:border-paper-100/10">
-        <span className="font-semibold text-accent">Teacher Helper</span>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <Link
-            to="/materials"
-            className="rounded-md px-2 py-1 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-          >
-            Materiały
-          </Link>
-          <Link
-            to="/profile"
-            className="rounded-md px-2 py-1 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-          >
-            Profil
-          </Link>
-          {isAdmin && (
-            <>
-              <Link
-                to="/admin/monitoring"
-                className="rounded-md px-2 py-1 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-              >
-                Monitoring
-              </Link>
-              <Link
-                to="/admin/users"
-                className="rounded-md px-2 py-1 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-              >
-                Użytkownicy
-              </Link>
-            </>
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
+      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-ink-800/15 px-2 py-1.5 sm:px-3 sm:py-0 dark:border-paper-100/10">
+        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+          {historyCollapsed && (
+            <button
+              type="button"
+              onClick={() => setHistoryCollapsed(false)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ink-800/20 bg-paper-50 px-2 py-1.5 text-xs font-medium text-ink-800 hover:bg-paper-100 sm:text-sm dark:border-paper-100/20 dark:bg-ink-900 dark:text-paper-200 dark:hover:bg-ink-800"
+              aria-expanded="false"
+              title="Pokaż listę rozmów"
+            >
+              <IconChevronRight className="size-4" />
+              <span className="whitespace-nowrap">Historia</span>
+            </button>
           )}
-          <ThemeToggle className="rounded-md px-2 py-1 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800" />
-          <button
-            type="button"
-            onClick={logout}
-            className="rounded-md px-2 py-1 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-          >
-            Wyloguj
-          </button>
+          <span className="min-w-0 truncate text-sm font-semibold text-accent sm:text-base">Teacher Helper</span>
+        </div>
+        <div className="flex min-w-0 flex-1 justify-end sm:shrink-0 sm:flex-initial">
+          <div className="flex max-w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto text-xs [scrollbar-width:none] sm:gap-2 sm:text-sm [&::-webkit-scrollbar]:hidden">
+            <Link
+              to="/materials"
+              className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+            >
+              Materiały
+            </Link>
+            <Link
+              to="/profile"
+              className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+            >
+              Profil
+            </Link>
+            {isAdmin && (
+              <>
+                <Link
+                  to="/admin/monitoring"
+                  className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+                >
+                  Monitoring
+                </Link>
+                <Link
+                  to="/admin/users"
+                  className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+                >
+                  Użytkownicy
+                </Link>
+              </>
+            )}
+            <ThemeToggle className="shrink-0 rounded-md px-1.5 py-1 sm:px-2 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800" />
+            <button
+              type="button"
+              onClick={logout}
+              className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+            >
+              Wyloguj
+            </button>
+          </div>
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-x-hidden">
+        {!historyCollapsed && (
+        <>
         <aside
           className="flex min-w-0 shrink-0 flex-col border-r border-ink-800/15 bg-white dark:border-paper-100/10 dark:bg-ink-900"
-          style={{ width: sidebarWidth }}
+          style={{ width: sidebarWidth, maxWidth: "100%" }}
         >
+          <div className="flex items-center justify-between gap-1 border-b border-ink-800/10 px-2 py-1.5 dark:border-paper-100/10">
+            <span className="truncate text-xs font-medium text-ink-500 dark:text-paper-500">Rozmowy</span>
+            <button
+              type="button"
+              onClick={() => setHistoryCollapsed(true)}
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-1.5 py-1 text-xs text-ink-600 hover:bg-paper-100 dark:text-paper-400 dark:hover:bg-ink-800"
+              title="Zwiń listę rozmów"
+              aria-expanded="true"
+            >
+              <IconChevronLeft className="size-4" />
+              <span className="hidden sm:inline">Zwiń</span>
+            </button>
+          </div>
           <div className="p-2">
             <button
               type="button"
@@ -907,7 +980,7 @@ export default function AssistantPage() {
                         setRenamingId(c.id);
                         setRenameDraft(c.title);
                       }}
-                      className="shrink-0 rounded p-1 text-ink-400 opacity-0 hover:bg-paper-100 hover:text-accent group-hover:opacity-100 dark:text-paper-500 dark:hover:bg-ink-800"
+                      className="shrink-0 rounded p-1 text-ink-400 opacity-100 hover:bg-paper-100 hover:text-accent sm:opacity-0 sm:group-hover:opacity-100 dark:text-paper-500 dark:hover:bg-ink-800"
                     >
                       Edytuj
                     </button>
@@ -915,7 +988,7 @@ export default function AssistantPage() {
                       type="button"
                       title="Usuń"
                       onClick={(e) => void removeConversation(c.id, e)}
-                      className="shrink-0 rounded p-1 text-ink-400 opacity-0 hover:bg-red-500/10 hover:text-red-600 group-hover:opacity-100 dark:text-paper-500 dark:hover:text-red-400"
+                      className="shrink-0 rounded p-1 text-ink-400 opacity-100 hover:bg-red-500/10 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 dark:text-paper-500 dark:hover:text-red-400"
                     >
                       ×
                     </button>
@@ -932,7 +1005,7 @@ export default function AssistantPage() {
           aria-valuemin={SIDEBAR_WIDTH_MIN}
           aria-valuemax={SIDEBAR_WIDTH_MAX}
           aria-label="Szerokość panelu czatów — przeciągnij"
-          className="group relative w-2 shrink-0 cursor-col-resize select-none touch-none"
+          className="group relative hidden w-2 shrink-0 cursor-col-resize select-none touch-none sm:block"
           onPointerDown={onSidebarResizePointerDown}
           onPointerMove={onSidebarResizePointerMove}
           onPointerUp={endSidebarResize}
@@ -940,8 +1013,10 @@ export default function AssistantPage() {
         >
           <div className="pointer-events-none absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-ink-800/20 transition-colors group-hover:bg-accent/60 group-active:bg-accent dark:bg-paper-100/12" />
         </div>
+        </>
+        )}
 
-        <section className="flex min-w-0 flex-1 flex-col bg-paper-50 dark:bg-ink-950">
+        <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-paper-50 dark:bg-ink-950">
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
             {loadingThread && (
               <p className="text-sm text-ink-500">Wczytywanie rozmowy…</p>
@@ -956,16 +1031,16 @@ export default function AssistantPage() {
               messages.map((msg, i) => (
                 <div
                   key={msg.id ?? `local-${i}`}
-                  className={`rounded-xl px-3 py-2 text-sm ${
+                  className={`min-w-0 rounded-xl px-3 py-2 text-sm ${
                     msg.role === "user"
-                      ? "ml-8 bg-accent/12 text-ink-900 dark:text-paper-100"
-                      : "mr-8 border border-ink-800/10 bg-white text-ink-900 dark:border-paper-100/10 dark:bg-ink-900 dark:text-paper-100"
+                      ? "ms-2 me-0 bg-accent/12 text-ink-900 sm:ms-8 dark:text-paper-100"
+                      : "ms-0 me-2 border border-ink-800/10 bg-white text-ink-900 sm:me-8 dark:border-paper-100/10 dark:bg-ink-900 dark:text-paper-100"
                   }`}
                 >
                   <span className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-paper-500">
                     {msg.role === "user" ? "Ty" : "Asystent"}
                   </span>
-                  <pre className="mt-1 whitespace-pre-wrap font-sans">{msg.text}</pre>
+                  <pre className="mt-1 min-w-0 whitespace-pre-wrap break-words font-sans">{msg.text}</pre>
                   {msg.role === "user" && msg.attachments && msg.attachments.length > 0 && (
                     <ul className="mt-2 list-inside list-disc text-xs text-ink-600 dark:text-paper-400">
                       {msg.attachments.map((a) => (
@@ -1000,7 +1075,7 @@ export default function AssistantPage() {
               ))}
             {!loadingThread && (loading || chatPending != null) && (
               <div
-                className="mr-8 flex gap-3 rounded-xl border border-accent/25 bg-accent/5 px-3 py-3 text-sm text-ink-800 dark:border-accent/30 dark:bg-accent/10 dark:text-paper-100"
+                className="me-2 flex min-w-0 gap-2 rounded-xl border border-accent/25 bg-accent/5 px-3 py-3 text-sm text-ink-800 sm:me-8 sm:gap-3 dark:border-accent/30 dark:bg-accent/10 dark:text-paper-100"
                 aria-live="polite"
               >
                 <Spinner className="mt-0.5 shrink-0" />
