@@ -89,8 +89,8 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **generate_scenario** — scenariusz przedstawienia.
 - **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
 - **generate_video** — storyboard/prompt wideo.
-- **generate_music** — piosenka / utwór: gdy w narzędziu podasz **target_duration_seconds** w zakresie **1–30** (w limitach ``REPLICATE_SOUND_MAX_DURATION_SECONDS``), generacja audio **tylko w Replicate** (krótki klip **MusicGen**). Gdy **pominiesz** to pole (pełna piosenka) **albo** ``target_duration_seconds`` **> 30** (lub > limitu w .env) — **KIE** (Suno) + opcjonalnie **OpenRouter Lyria (Gemini)**. **SFX** (ptaki, plusk — nie piosenka) — tylko **generate_sound_effect**.
-- **generate_sound_effect** — **krótki efekt / foley** (woda, ptaki, klik…) — **Replicate Stable Audio** (nie MusicGen), **nie** pełna piosenka; długość wg **duration_seconds** (limit jak w konfiguracji, typ. 30 s). Wymaga ``REPLICATE_API_KEY``.
+- **generate_music** — piosenka / utwór: audio **KIE** (Suno) + opcjonalnie **OpenRouter Lyria (Gemini)**. Pole **target_duration_seconds** możesz podać jako **orientację** na długość (KIE / Lyria mają własne limity) — to **nie** przełącza na inny silnik. **SFX** (ptaki, plusk — nie piosenka) — tylko **generate_sound_effect**.
+- **generate_sound_effect** — **krótki efekt / foley** (woda, ptaki, klik…) — **ElevenLabs** Text to Sound, **nie** pełna piosenka; długość wg **duration_seconds** (limit jak w ``ELEVENLABS_SOUND_MAX_DURATION_SECONDS`` w konfiguracji, do 30 s). Wymaga ``ELEVENLABS_API_KEY``.
 - **generate_poetry** — wiersz do recytacji.
 - **generate_presentation** — nowa prezentacja: katalogowa treść, **PPTX** + plik planu w bibliotece; pole **include_agenda** (z **ask_clarification** o agendę na okładce, patrz sekcja „Prezentacje…”). Gdy wcześniej w **tej samej turze** wywołałeś **search_library_fragments**, **dokończ** turę wywołaniem **generate_presentation** (z **material_title** i ewent. **project_id**), żeby plik faktycznie powstał. Nie wywołuj, dopóki użytkownik **nie** prosi o prezentację / slajdy (inne rozmowy tylko odpowiedź tekstem lub inne ``generate_*``).
 - **edit_presentation** — zmiana **konkretnego slajdu** w pliku z „Moje materiały” (wymaga **file_id** z listy; **slide_number** 1 = okładka, 2+ = slajd treści). Gdy użytkownik pisze np. „na slajdzie 2 zrób …”, wskaż właściwy plik (często .pptx albo plik *plan* z ostatniej generacji) i edytuj.
@@ -367,9 +367,8 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "generate_music",
         "description": (
-            "**Piosenka / utwór** — zapis w bibliotece jako .txt + audio. "
-            "Jeśli podasz **target_duration_seconds** od **1 do 30** (nie wyżej niż limit w konfiguracji serwera) — audio **tylko Replicate** (krótki klip). "
-            "Jeśli **target_duration_seconds** **> 30** (lub > limit) **albo pominiesz** to pole (pełna piosenka) — **KIE** (Suno) + opcjonalnie **Lyria / Gemini** (WAV itd.). "
+            "**Piosenka / utwór** — zapis w bibliotece jako .txt + audio wyłącznie przez **KIE** (Suno) + opcjonalnie **Lyria / Gemini** (WAV itd.). "
+            "**target_duration_seconds** (opcjonalne) — orientacja na długość; nie wybiera innego API. "
             "Czyste SFX (szum, plusk) — **generate_sound_effect**, nie to narzędzie."
         ),
         "parameters": {"type": "object", "properties": {
@@ -380,7 +379,7 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
             },
             "target_duration_seconds": {
                 "type": "integer",
-                "description": "Długość w sekundach. 1–30: tylko Replicate (krótki klip). Powyżej 30 (lub brak pola): KIE + Lyria (dłuższa piosenka).",
+                "description": "Opcjonalnie: orientacyjna długość w sekundach (KIE / Lyria — własne limity; nie przełącza silnika).",
             },
             "style": {"type": "string", "description": "Styl muzyczny"},
             "age_group": {"type": "string", "description": "Grupa wiekowa"},
@@ -394,8 +393,8 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "generate_sound_effect",
         "description": (
-            "**Krótki efekt dźwiękowy** (SFX / foley) — **Replicate Stable Audio**, nie piosenka. "
-            "Pełny utwór: **generate_music** (Replicate tylko przy **target_duration_seconds 1–30 s**; dłużej KIE+Lyria)."
+            "**Krótki efekt dźwiękowy** (SFX / foley) — **ElevenLabs** Text to Sound, nie piosenka. "
+            "Pełna piosenka / utwór: **generate_music** (KIE + Lyria)."
         ),
         "parameters": {"type": "object", "properties": {
             "description": {
@@ -408,7 +407,7 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
             },
             "duration_seconds": {
                 "type": "integer",
-                "description": "Długość 1–30 s, domyślnie 8 (limit w REPLICATE_SOUND_MAX_DURATION_SECONDS)",
+                "description": "Długość 1–30 s, domyślnie 8 (limit w ELEVENLABS_SOUND_MAX_DURATION_SECONDS)",
             },
             **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["description", "material_title"]},
@@ -634,7 +633,7 @@ _REPLY_TO_USER_MAX_AFTER_TEXT_MODULE = 2800
 # Gdy brak wierszy w DB po zapisie (rzadkie) — bez żargonu konfiguracyjnego.
 _MODULE_REPLY_FALLBACK: dict[str, str] = {
     "sound": "Zapisano krótki efekt dźwiękowy (SFX) w „Moje materiały”.",
-    "music": "Zapisano materiały w bibliotece. Otwórz „Moje materiały” — .txt + audio: **≤30 s** zwykle z Replicate; **dłużej** z KIE (.mp3) i/lub Lyria (.wav).",
+    "music": "Zapisano materiały w bibliotece. Otwórz „Moje materiały” — .txt + audio z **KIE** (.mp3) i/lub **Lyria** (.wav), zależnie od konfiguracji.",
     "graphics": "Zapisano plik w „Moje materiały”.",
     "video": "Zapisano materiał wideo w „Moje materiały”.",
     "scenario": "Zapisano scenariusz w „Moje materiały”.",
@@ -1010,11 +1009,6 @@ def _music_kie_status_note(
     """Komunikat przy braku zapisanego audio — KIE i/lub Lyria."""
     if has_saved_audio:
         return None
-    if extra.get("replicate_short_track"):
-        return (
-            "Krótki utwór miał być zapisany przez Replicate, ale plik audio nie powstał — "
-            "sprawdź **REPLICATE_API_KEY** i logi serwera."
-        )
     if not music_providers_configured:
         return (
             "Generacja audio nie jest skonfigurowana (ustaw **KIE_API_KEY** i/lub **OPENROUTER_API_KEY** "
@@ -1775,7 +1769,7 @@ class ChatOrchestratorUseCase:
             has_audio = any((r.mime_type or "").lower().startswith("audio/") for r in ordered)
             if has_audio:
                 lines.append(
-                    "\nDołączono pliki audio: **Replicate tylko przy krótkim ustalonym czasie (do 30 s)**; dłużej **KIE** i/lub **Lyria (Gemini)** — pobierzesz je pod wiadomością albo w „Moje materiały”."
+                    "\nDołączono pliki audio: **KIE** (.mp3) i/lub **Lyria (Gemini)** — pobierzesz je pod wiadomością albo w „Moje materiały”."
                 )
             else:
                 lines.append(
@@ -1785,7 +1779,7 @@ class ChatOrchestratorUseCase:
         elif module == "graphics":
             lines.append("\nMożesz pobrać obraz przyciskiem pod wiadomością.")
         elif module == "sound":
-            lines.append("\nTo krótki efekt dźwiękowy (SFX z Replicate) — pobierzesz go przyciskiem pod wiadomością.")
+            lines.append("\nTo krótki efekt dźwiękowy (SFX z ElevenLabs) — pobierzesz go przyciskiem pod wiadomością.")
         elif module == "video":
             lines.append("\nJeśli to wideo MP4, pobierzesz je przyciskiem pod wiadomością.")
         elif module == "presentation":
@@ -2146,7 +2140,7 @@ class ChatOrchestratorUseCase:
         gen = self._sound_gen
         if gen is None:
             return [], (
-                "Krótkie efekty dźwiękowe wymagają **REPLICATE_API_KEY** w konfiguracji serwera. "
+                "Krótkie efekty dźwiękowe wymagają **ELEVENLABS_API_KEY** w konfiguracji serwera. "
                 "Możesz też wywołać **POST /v1/sound/generate** z API."
             )
         desc = (tool_args.get("description") or "").strip()
@@ -2157,23 +2151,23 @@ class ChatOrchestratorUseCase:
             dur = int(dur_raw)
         except (TypeError, ValueError):
             dur = 8
-        cap = int(get_settings().replicate_sound_max_duration_seconds)
+        cap = int(get_settings().elevenlabs_sound_max_duration_seconds)
         cap = max(1, min(cap, 30))
         dur = max(1, min(cap, dur))
         try:
             result = await gen.generate(desc, duration_seconds=dur, mode="sfx")
         except TimeoutError as exc:
-            logger.warning("Replicate SFX timeout user=%s: %s", user_id, exc)
+            logger.warning("ElevenLabs SFX timeout user=%s: %s", user_id, exc)
             return [], f"Timeout generowania dźwięku: {exc!s:.200}"
         except Exception as exc:
-            logger.error("Replicate SFX error user=%s: %s", user_id, exc)
-            return [], f"Błąd Replicate: {exc!s:.300}"
+            logger.error("ElevenLabs SFX error user=%s: %s", user_id, exc)
+            return [], f"Błąd ElevenLabs: {exc!s:.300}"
 
         await asyncio.to_thread(
             record_langfuse_model_call_sync,
-            observation_name="replicate:sound_effect",
+            observation_name="elevenlabs:sound_effect",
             model=result.model,
-            provider="replicate",
+            provider="elevenlabs",
             input_data={"prompt": desc, "duration_seconds": dur, "source": "orchestrator"},
             output_text=f"audio bytes={len(result.audio_data)} mime={result.mime_type}",
             user_id=user_id,
@@ -2187,7 +2181,7 @@ class ChatOrchestratorUseCase:
             "tool_args": tool_args,
             "prompt": desc,
             "duration_seconds": result.duration_seconds,
-            "replicate_model": result.model,
+            "elevenlabs_model": result.model,
         }
         index_txt = f"Krótki efekt dźwiękowy (SFX, nie piosenka): {desc}"
         fid = await self._persist_file(
@@ -2301,122 +2295,6 @@ class ChatOrchestratorUseCase:
             ext="json", extra=extra,
         )
 
-    # --- Muzyka: krótki utwór (Replicate) vs KIE + Lyria ---
-
-    async def _handle_music_replicate_short(
-        self,
-        session: AsyncSession,
-        user_id: UUID,
-        project_id: UUID | None,
-        tool_args: dict[str, Any],
-        music_data: dict[str, Any],
-        topic: str,
-        title: str,
-        style_full: str,
-        api_prompt: str,
-        lyrics_body: str,
-        material_md: str,
-        legacy_full: str,
-        style_en: str | None,
-        target_d: int,
-    ) -> tuple[list[UUID], str | None]:
-        """Tylko gdy target ≤ limit (domyślnie 30 s): Replicate (MusicGen); dłużej — KIE + Lyria w ``_handle_music``."""
-        s = get_settings()
-        if self._sound_gen is None:
-            return [], (
-                "Krótki utwór w Replicate (do **30 s** wg ``REPLICATE_SOUND_MAX_DURATION_SECONDS``) wymaga **REPLICATE_API_KEY**. "
-                "Dla **> 30 s** (lub bez ``target_duration_seconds``) używana jest ścieżka KIE + Lyria."
-            )
-        cap = int(s.replicate_sound_max_duration_seconds)
-        cap = max(1, min(cap, 30))
-        gen_s = min(int(target_d), cap)
-        inst = tool_args.get("instrumental") is True
-        prompt_bits = [f"Topic / temat: {topic}", f"Musical style: {style_full}"]
-        if inst:
-            prompt_bits.append("Instrumental only, no singing.")
-        if (api_prompt or "").strip():
-            prompt_bits.append("Content / lyrics to follow:\n" + (api_prompt or "").strip()[:5000])
-        rep_prompt = "\n\n".join(prompt_bits)
-        extra: dict[str, Any] = {
-            "module": "music",
-            "tool_args": tool_args,
-            "replicate_short_track": True,
-            "target_duration_seconds": target_d,
-            "replicate_generating_seconds": gen_s,
-            "replicate_max_clip_seconds": cap,
-            "replicate_duration_truncated": target_d > cap,
-            "openrouter_music_model": s.openrouter_music_model,
-        }
-        try:
-            result = await self._sound_gen.generate(
-                rep_prompt, duration_seconds=gen_s, mode="short_music"
-            )
-        except TimeoutError as exc:
-            logger.warning("Replicate short music timeout user=%s: %s", user_id, exc)
-            return [], f"Timeout Replicate: {exc!s:.200}"
-        except Exception as exc:
-            logger.error("Replicate short music error user=%s: %s", user_id, exc)
-            return [], f"Błąd Replicate: {exc!s:.300}"
-
-        await asyncio.to_thread(
-            record_langfuse_model_call_sync,
-            observation_name="replicate:short_track_music",
-            model=result.model,
-            provider="replicate",
-            input_data={
-                "prompt": rep_prompt[:4000],
-                "duration_seconds": gen_s,
-                "target_duration_seconds": target_d,
-                "source": "orchestrator_music",
-            },
-            output_text=f"audio bytes={len(result.audio_data)} mime={result.mime_type}",
-            user_id=user_id,
-            metadata={"call_kind": "short_track_music", "module": "music"},
-            usage=None,
-        )
-
-        if material_md:
-            doc_body = material_md
-        elif music_data:
-            chunks: list[str] = []
-            if style_en:
-                chunks.append(f"### Styl (zapytanie)\n\n{style_en}")
-            if lyrics_body:
-                chunks.append(f"### Tekst / treść\n\n{lyrics_body}")
-            doc_body = "\n\n".join(chunks) if chunks else legacy_full
-        else:
-            doc_body = legacy_full
-        parts = ["# Muzyka — krótki utwór (Replicate / MusicGen)\n\n", doc_body]
-        if target_d > cap:
-            parts.append(
-                f"\n\n**Uwaga:** zamówiono {target_d} s; w jednym klipie MusicGen maks. {cap} s — zapisano ~{result.duration_seconds} s."
-            )
-        else:
-            parts.append(
-                f"\n\n**Generacja audio:** Replicate, docelowa długość {target_d} s (~{result.duration_seconds} s w pliku)."
-            )
-        combined = "\n".join(parts)
-        txt_id = await self._persist_file(
-            session, user_id, project_id, "music",
-            data=combined.encode("utf-8"), mime="text/plain; charset=utf-8",
-            ext="txt", extra=extra,
-            index_override=api_prompt[:12000],
-        )
-        ext = "mp3" if result.mime_type == "audio/mpeg" else "wav"
-        mp3_extra: dict[str, Any] = {
-            **extra,
-            "replicate_model": result.model,
-            "file_stem_suffix": "replicate_1",
-            "related_txt_context": "Powiązany opis w pliku .txt z tej samej generacji (Replicate).",
-        }
-        idx_text = f"{title}\n{rep_prompt[:4000]}".strip()
-        audio_id = await self._persist_file(
-            session, user_id, project_id, "music",
-            data=result.audio_data, mime=result.mime_type, ext=ext,
-            extra=mp3_extra, index_override=idx_text,
-        )
-        return [txt_id, audio_id], None
-
     # --- Muzyka (LLM + KIE + opcjonalnie OpenRouter Lyria) ---
 
     async def _handle_music(
@@ -2461,25 +2339,6 @@ class ChatOrchestratorUseCase:
         if target_d is not None:
             target_d = max(1, min(int(target_d), 24 * 3600))
 
-        route_max = max(1, min(30, int(s.replicate_sound_max_duration_seconds)))
-        if target_d is not None and target_d <= route_max:
-            return await self._handle_music_replicate_short(
-                session,
-                user_id,
-                project_id,
-                tool_args,
-                music_data,
-                topic,
-                title,
-                style_full,
-                api_prompt,
-                lyrics_body,
-                material_md,
-                legacy_full,
-                style_en,
-                target_d,
-            )
-
         n_variants = min(max(1, int(s.music_variants_per_provider)), 5)
         extra: dict[str, Any] = {
             "module": "music",
@@ -2488,6 +2347,8 @@ class ChatOrchestratorUseCase:
             "music_variants_per_provider": n_variants,
             "openrouter_music_model": s.openrouter_music_model,
         }
+        if target_d is not None:
+            extra["target_duration_seconds"] = target_d
         result = None
         kie_saved = 0
         lyria_saved = 0

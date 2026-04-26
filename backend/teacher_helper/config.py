@@ -144,21 +144,15 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_origins: str = "*"
 
-    # --- Replicate — generowanie dźwięku (SFX vs krótki utwór) ---
-    replicate_api_key: str | None = None
-    # SFX / foley (ptaki, woda) — domyślnie Stable Audio Open (nie MusicGen):
-    replicate_sfx_model: str = "stackadoc/stable-audio-open-1.0"
-    # Krótki utwór / melodia (generate_music, krótki target) — MusicGen:
-    replicate_sound_model: str = "meta/musicgen"
-    # Wariant modelu musicgen: stereo-large | large | melody | stereo-melody-large
-    replicate_sound_musicgen_version: str = "stereo-large"
-    # Format wyjściowy: mp3 | wav
-    replicate_sound_output_format: str = "mp3"
-    # Czas oczekiwania na zakończenie predykcji (polling).
-    replicate_sound_timeout_seconds: float = Field(default=120.0)
-    replicate_sound_poll_interval_seconds: float = Field(default=2.0)
-    # Max długość klipu w Replicate (SFX + MusicGen) oraz **próg routingu** muzyki: target ≤ tej liczby sekund → Replicate, wyżej → KIE + Lyria.
-    replicate_sound_max_duration_seconds: int = Field(default=30, ge=1, le=30)
+    # --- ElevenLabs — krótkie SFX / odgłosy (Text to Sound) ---
+    # https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert
+    elevenlabs_api_key: str | None = None
+    elevenlabs_sound_model_id: str = "eleven_text_to_sound_v2"
+    # Jako parametr query `output_format` (np. mp3_44100_128) — zob. dokumentację API.
+    elevenlabs_sound_output_format: str = "mp3_44100_128"
+    elevenlabs_sound_timeout_seconds: float = Field(default=90.0, ge=5.0)
+    elevenlabs_sound_max_duration_seconds: int = Field(default=30, ge=1, le=30)
+    elevenlabs_sound_prompt_influence: float = Field(default=0.3, ge=0.0, le=1.0)
 
     # --- Opcjonalne: Alerty webhook ---
     alert_webhook_url: str | None = None
@@ -177,7 +171,7 @@ class Settings(BaseSettings):
             "langfuse_secret_key",
             "kie_webhook_hmac_key",
             "tavily_api_key",
-            "replicate_api_key",
+            "elevenlabs_api_key",
         ):
             val = getattr(self, name)
             if isinstance(val, str):

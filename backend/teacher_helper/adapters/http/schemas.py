@@ -79,7 +79,7 @@ class KieMusicImportByTaskRequest(BaseModel):
 
 
 class SoundGenerateRequest(BaseModel):
-    """Krótki efekt dźwiękowy (SFX / foley), nie piosenka — Replicate Stable Audio Open."""
+    """Krótki efekt dźwiękowy (SFX / foley), nie piosenka — ElevenLabs Text to Sound."""
 
     prompt: str = Field(
         min_length=3,

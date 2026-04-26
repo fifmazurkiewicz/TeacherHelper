@@ -158,7 +158,7 @@ class MusicGeneratorPort(Protocol):
 
 
 # ---------------------------------------------------------------------------
-# Dźwięki / efekty audio (Replicate)
+# Dźwięki / efekty audio (np. ElevenLabs Text to Sound)
 # ---------------------------------------------------------------------------
 
 
