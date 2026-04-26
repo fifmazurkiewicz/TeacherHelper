@@ -5,6 +5,7 @@ POST ``https://api.elevenlabs.io/v1/sound-generation`` — jedna odpowiedź (aud
 
 from __future__ import annotations
 
+import json
 import logging
 
 import httpx
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _ELEVENLABS_SOUND_URL = "https://api.elevenlabs.io/v1/sound-generation"
 _MAX_AUDIO_BYTES = 50 * 1024 * 1024  # 50 MB
+_LOG_TEXT_MAX = 4000
 
 # Angielski prefix — model dobrze rozumie EN; w promptach mamy i treść użytkownika.
 _SFX_USER_PREFIX = (
@@ -87,6 +89,19 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
             "Accept": "application/octet-stream, application/json, */*",
         }
 
+        log_body = dict(body)
+        _full_t = log_body.get("text") or ""
+        if len(_full_t) > _LOG_TEXT_MAX:
+            log_body["text"] = (
+                _full_t[:_LOG_TEXT_MAX] + f"... [ucięte, łącznie {len(_full_t)} znaków]"
+            )
+        logger.info(
+            "ElevenLabs → POST %s | query=%s | json=%s | headers=Content-Type, Accept, xi-api-key=<ustawiony>",
+            _ELEVENLABS_SOUND_URL,
+            json.dumps(params, ensure_ascii=False),
+            json.dumps(log_body, ensure_ascii=False),
+        )
+
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(self._timeout, connect=30.0),
@@ -108,13 +123,28 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
                 err_detail = str(r.json())
             except Exception:
                 pass
+            logger.warning(
+                "ElevenLabs ← HTTP %s | response=%s",
+                r.status_code,
+                err_detail[:2000] + ("..." if len(err_detail) > 2000 else ""),
+            )
             raise RuntimeError(
                 f"ElevenLabs {r.status_code} dla {_ELEVENLABS_SOUND_URL!s}: {err_detail!r}"
             )
 
         content_type = (r.headers.get("content-type") or "").lower()
+        logger.info(
+            "ElevenLabs ← HTTP %s | Content-Type=%s | body_bytes=%d",
+            r.status_code,
+            r.headers.get("content-type"),
+            len(r.content or b""),
+        )
         if "application/json" in content_type:
             j = r.json()
+            logger.warning(
+                "ElevenLabs ← HTTP 200 ale Content-Type to JSON (oczekiwano audio): %s",
+                str(j)[:2000],
+            )
             raise RuntimeError(
                 f"ElevenLabs zwrócił JSON zamiast audio: {j!r:.800}"
             )
