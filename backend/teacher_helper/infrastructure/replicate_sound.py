@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 
 import httpx
@@ -19,6 +20,14 @@ import httpx
 from teacher_helper.use_cases.ports import SoundGeneratorPort, SoundResult
 
 logger = logging.getLogger(__name__)
+
+# Ujednolicone POST /v1/predictions wymaga w polu `version` **64-znakowego** id wersji modelu
+# albo slugów typu oficjalnych; slug `meta/musicgen` bywa odrzucany (422) — mapujemy na aktualną
+# wersję domyślną z karty Replicate (możesz w .env podać własne 64 znaki w REPLICATE_SOUND_MODEL).
+_MUSICGEN_DEFAULT_VERSION_ID = (
+    "671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb"
+)
+_HEX64 = re.compile(r"^[0-9a-fA-F]{64}$")
 
 _REPLICATE_BASE = "https://api.replicate.com/v1"
 _TERMINAL_OK = frozenset({"succeeded"})
@@ -34,6 +43,22 @@ _SHORT_MUSIC_PREFIX = (
     "Can include simple singing or melody; keep a single clear idea, classroom-friendly, no long suite. "
     "Match the following theme and any lyrics. "
 )
+
+
+def _predict_version_id(model: str) -> str:
+    """
+    Dla `POST /v1/predictions` — pole ``version`` musi wskazywać działającą wersję.
+    64 znaki hex = id wersji; inaczej (np. meta/musicgen) podmieniamy na znaną wersję MusicGen.
+    Inne `owner/nazwa` przekazujemy bez zmian.
+    """
+    m = (model or "").strip()
+    if not m:
+        return m
+    if _HEX64.match(m):
+        return m
+    if m.lower() == "meta/musicgen":
+        return _MUSICGEN_DEFAULT_VERSION_ID
+    return m
 
 
 class ReplicateSoundGenerator(SoundGeneratorPort):
@@ -54,12 +79,13 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
         m = (model or "").strip()
         if not m:
             raise ValueError("replicate_sound_model: pusty model")
-        if "/" not in m and len(m) != 64:
+        if "/" not in m and not _HEX64.match(m):
             raise ValueError(
                 "replicate_sound_model: użyj 'owner/nazwa' (np. meta/musicgen) albo 64-znakowego version id"
             )
         self._predictions_url = f"{_REPLICATE_BASE}/predictions"
         self._model = m
+        self._predict_version = _predict_version_id(m)
         self._musicgen_model_version = musicgen_model_version
         self._output_format = output_format
         self._timeout = timeout
@@ -82,21 +108,29 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
             sfx_prompt = f"{_SHORT_MUSIC_PREFIX}\n\n{body_prompt}"
         else:
             sfx_prompt = f"{_SFX_PROMPT_PREFIX}\n\nOpis / description: {body_prompt}"
+        # Minimalne, zgodne ze schematem Cog (replicate.com/meta/musicgen): bez
+        # normalization_strategy — domyślna strategia na serwerze (loudness) jest bezpieczna.
         body: dict = {
-            "version": self._model,
+            "version": self._predict_version,
             "input": {
                 "prompt": sfx_prompt,
-                "duration": duration,
+                "duration": int(duration),
                 "model_version": self._musicgen_model_version,
                 "output_format": self._output_format,
-                "normalization_strategy": "peak",
             },
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             r = await client.post(self._predictions_url, json=body, headers=self._headers())
-            r.raise_for_status()
-            prediction = r.json()
+        if r.status_code >= 400:
+            try:
+                err_body = r.json()
+            except Exception:
+                err_body = r.text
+            raise RuntimeError(
+                f"Replicate {r.status_code} dla {self._predictions_url!s}: {err_body!r}"
+            )
+        prediction = r.json()
 
         prediction_id: str = prediction["id"]
         poll_url = f"{_REPLICATE_BASE}/predictions/{prediction_id}"
