@@ -99,6 +99,204 @@ function fileIcon(name: string): string {
   return String.fromCodePoint(0x1f4c1);
 }
 
+function isRasterImageFile(f: ApiFile): boolean {
+  const m = (f.mime_type ?? "").toLowerCase();
+  if (m.startsWith("image/") && !m.includes("svg")) return true;
+  const x = f.name.toLowerCase();
+  const ext = x.includes(".") ? x.slice(x.lastIndexOf(".")) : "";
+  return [".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(ext);
+}
+
+function isAudioFile(f: ApiFile): boolean {
+  const m = (f.mime_type ?? "").toLowerCase().split(";")[0].trim();
+  if (m.startsWith("audio/")) return true;
+  if (m === "application/octet-stream" || m === "binary/octet-stream") {
+    return /\.(mp3|wav|ogg|m4a|aac|flac|opus|weba)$/i.test(f.name);
+  }
+  const x = f.name.toLowerCase();
+  const ext = x.includes(".") ? x.slice(x.lastIndexOf(".")) : "";
+  return [".mp3", ".wav", ".ogg", ".m4a", ".aac", ".flac", ".opus", ".weba"].includes(ext);
+}
+
+function IconPlay({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M8 5v14l11-7L8 5z" />
+    </svg>
+  );
+}
+
+function IconPause({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z" />
+    </svg>
+  );
+}
+
+const audioListBtnClass =
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border-0 bg-accent/15 text-accent transition hover:bg-accent/25 focus:outline-none focus:ring-2 focus:ring-accent/40 focus:ring-offset-2 focus:ring-offset-paper-50 dark:text-accent-muted dark:focus:ring-offset-ink-900 disabled:cursor-wait disabled:opacity-70";
+
+type FileListFileThumbProps = {
+  f: ApiFile;
+  materialsAudio: { fileId: string; url: string } | null;
+  materialsAudioPlaying: boolean;
+  materialsAudioLoadingId: string | null;
+  onMaterialsAudioClick: (f: ApiFile) => void;
+};
+
+function FileListFileThumb({
+  f,
+  materialsAudio,
+  materialsAudioPlaying,
+  materialsAudioLoadingId,
+  onMaterialsAudioClick,
+}: FileListFileThumbProps) {
+  if (isRasterImageFile(f)) return <FileListRasterThumb f={f} />;
+  if (isAudioFile(f)) {
+    const active = materialsAudio?.fileId === f.id;
+    const playing = active && materialsAudioPlaying;
+    const loading = materialsAudioLoadingId === f.id;
+    return (
+      <button
+        type="button"
+        className={audioListBtnClass}
+        onClick={() => onMaterialsAudioClick(f)}
+        disabled={loading}
+        aria-label={
+          loading
+            ? "Wczytywanie pliku…"
+            : playing
+              ? "Wstrzymaj odsłuch"
+              : active
+                ? "Wznów odsłuch"
+                : "Odsłuchaj w przeglądarce"
+        }
+      >
+        {loading ? (
+          <span
+            className="size-5 shrink-0 animate-spin rounded-full border-2 border-accent/30 border-t-accent"
+            aria-hidden
+          />
+        ) : playing ? (
+          <IconPause className="size-5" />
+        ) : (
+          <IconPlay className="ml-0.5 size-5" />
+        )}
+      </button>
+    );
+  }
+  return (
+    <div
+      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-lg"
+      aria-hidden
+    >
+      {fileIcon(f.name)}
+    </div>
+  );
+}
+
+function FileListRasterThumb({ f }: { f: ApiFile }) {
+  const [shouldLoad, setShouldLoad] = useState(false);
+  const [src, setSrc] = useState<string | null>(null);
+  const [useFallback, setUseFallback] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const urlForCleanup = useRef<string | null>(null);
+
+  const want = isRasterImageFile(f);
+
+  useEffect(() => {
+    if (!want) return;
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            setShouldLoad(true);
+            io.disconnect();
+            break;
+          }
+        }
+      },
+      { root: null, rootMargin: "160px 0px", threshold: 0.01 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [want, f.id]);
+
+  useEffect(() => {
+    if (!want || !shouldLoad) return;
+    if (useFallback) return;
+    const ac = new AbortController();
+    (async () => {
+      try {
+        const { blob } = await downloadFileBlob(f.id, { signal: ac.signal });
+        if (ac.signal.aborted) return;
+        const t = (blob.type || "").toLowerCase();
+        if (!t.startsWith("image/") || t.includes("svg")) {
+          setUseFallback(true);
+          return;
+        }
+        const u = URL.createObjectURL(blob);
+        urlForCleanup.current = u;
+        setSrc(u);
+      } catch {
+        if (!ac.signal.aborted) setUseFallback(true);
+      }
+    })();
+    return () => {
+      ac.abort();
+      if (urlForCleanup.current) {
+        URL.revokeObjectURL(urlForCleanup.current);
+        urlForCleanup.current = null;
+      }
+    };
+  }, [want, shouldLoad, f.id, useFallback]);
+
+  if (!want) {
+    return (
+      <div
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-lg"
+        aria-hidden
+      >
+        {fileIcon(f.name)}
+      </div>
+    );
+  }
+
+  const loading = shouldLoad && !src && !useFallback;
+
+  return (
+    <div
+      ref={ref}
+      className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-accent/15 text-lg"
+      aria-hidden
+    >
+      {useFallback && fileIcon(f.name)}
+      {loading && (
+        <span className="block size-8 rounded-md bg-ink-800/10 animate-pulse dark:bg-paper-100/10" />
+      )}
+      {src && !useFallback && (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => {
+            if (urlForCleanup.current) {
+              URL.revokeObjectURL(urlForCleanup.current);
+              urlForCleanup.current = null;
+            }
+            setSrc(null);
+            setUseFallback(true);
+          }}
+        />
+      )}
+      {!shouldLoad && !useFallback && !src && fileIcon(f.name)}
+    </div>
+  );
+}
+
 function formatFileDate(iso: string | undefined): string {
   if (!iso) return "";
   try {
@@ -165,6 +363,16 @@ export default function MaterialsPage() {
   const [bulkMoveTarget, setBulkMoveTarget] = useState("");
   const selectAllFilteredRef = useRef<HTMLInputElement>(null);
 
+  const [materialsAudio, setMaterialsAudio] = useState<{
+    fileId: string;
+    url: string;
+  } | null>(null);
+  const [materialsAudioPlaying, setMaterialsAudioPlaying] = useState(false);
+  const [materialsAudioLoadingId, setMaterialsAudioLoadingId] = useState<string | null>(null);
+  const materialsAudioRef = useRef<HTMLAudioElement | null>(null);
+  const materialsAudioCleanupRef = useRef<{ fileId: string; url: string } | null>(null);
+  materialsAudioCleanupRef.current = materialsAudio;
+
   const refreshProjects = useCallback(async () => {
     const list = await api<Project[]>("/v1/projects");
     setProjects(list);
@@ -198,6 +406,22 @@ export default function MaterialsPage() {
       const next = new Set([...prev].filter((id) => files.some((f) => f.id === id)));
       if (next.size === prev.size && [...prev].every((id) => next.has(id))) return prev;
       return next;
+    });
+  }, [files]);
+
+  useEffect(() => {
+    return () => {
+      const x = materialsAudioCleanupRef.current;
+      if (x?.url) URL.revokeObjectURL(x.url);
+    };
+  }, []);
+
+  useEffect(() => {
+    setMaterialsAudio((prev) => {
+      if (!prev) return null;
+      if (files.some((x) => x.id === prev.fileId)) return prev;
+      URL.revokeObjectURL(prev.url);
+      return null;
     });
   }, [files]);
 
@@ -326,6 +550,53 @@ export default function MaterialsPage() {
       setError(err instanceof Error ? err.message : "Pobieranie nie powiodło się");
     }
   }
+
+  const onMaterialsAudioClick = useCallback(
+    async (f: ApiFile) => {
+      if (materialsAudio?.fileId === f.id) {
+        const el = materialsAudioRef.current;
+        if (el) {
+          if (el.paused) void el.play().catch(() => {});
+          else el.pause();
+        }
+        return;
+      }
+      if (materialsAudio?.url) URL.revokeObjectURL(materialsAudio.url);
+      setMaterialsAudioLoadingId(f.id);
+      setError(null);
+      try {
+        const { blob } = await downloadFileBlob(f.id);
+        const url = URL.createObjectURL(blob);
+        setMaterialsAudio({ fileId: f.id, url });
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Nie udało się wczytać pliku");
+        setMaterialsAudio(null);
+      } finally {
+        setMaterialsAudioLoadingId((id) => (id === f.id ? null : id));
+      }
+    },
+    [materialsAudio],
+  );
+
+  useEffect(() => {
+    const el = materialsAudioRef.current;
+    if (!materialsAudio) {
+      if (el) {
+        el.pause();
+        el.removeAttribute("src");
+      }
+      return;
+    }
+    if (!el) return;
+    el.src = materialsAudio.url;
+    void el.load();
+    const p = el.play();
+    if (p !== undefined) {
+      p.catch(() => {
+        setError("Nie udało się uruchomić odtwarzania w tej przeglądarce.");
+      });
+    }
+  }, [materialsAudio]);
 
   async function startDeleteProject(id: string) {
     setError(null);
@@ -526,6 +797,15 @@ export default function MaterialsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 px-4 pb-16 pt-2">
+      <audio
+        ref={materialsAudioRef}
+        className="hidden"
+        preload="auto"
+        onPlay={() => setMaterialsAudioPlaying(true)}
+        onPause={() => setMaterialsAudioPlaying(false)}
+        onEnded={() => setMaterialsAudioPlaying(false)}
+        playsInline
+      />
       <header className="space-y-2">
         <h1 className="text-2xl font-bold tracking-tight text-ink-900 dark:text-paper-50 sm:text-3xl">
           Moje materiały
@@ -949,12 +1229,13 @@ export default function MaterialsPage() {
                           className="mt-3 size-4 shrink-0 rounded border-ink-800/30 text-accent focus:ring-accent/40 dark:border-paper-100/30"
                           aria-label={`Zaznacz plik ${f.name}`}
                         />
-                        <div
-                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-lg"
-                          aria-hidden
-                        >
-                          {fileIcon(f.name)}
-                        </div>
+                        <FileListFileThumb
+                          f={f}
+                          materialsAudio={materialsAudio}
+                          materialsAudioPlaying={materialsAudioPlaying}
+                          materialsAudioLoadingId={materialsAudioLoadingId}
+                          onMaterialsAudioClick={onMaterialsAudioClick}
+                        />
                         <div className="min-w-0">
                           <p className="truncate font-medium text-ink-900 dark:text-paper-50">{f.name}</p>
                           <p className="mt-0.5 text-xs text-ink-500 dark:text-paper-500">

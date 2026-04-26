@@ -430,9 +430,10 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "generate_presentation",
         "description": (
-            "Nowa prezentacja: **PPTX** (slajd tytułowy: tytuł + krótki opis) oraz slajdy treści. Moduł zwraca JSON z polem **theme** (kolory #RRGGBB dopasowane do treści). "
+            "Nowa prezentacja: **PPTX** (slajd tytułowy: tytuł + krótki opis) oraz slajdy treści. Moduł zwraca JSON z **theme** (cztery kolory #RRGGBB) — model musi **dobierać i uzgadniać** paletę: kontrast tło↔tekst, spójność czcionek, "
+            "oraz (przy slajdach z grafiką) prompt ilustracji dopasowany do tych kolorów. "
             "Grafika **nie** jest wymagana — "
-            "dla slajdów z grafiką model ustawia ``include_image`` + opcjonalnie **image.suggested_prompt**; bez grafiki: ``include_image: false``."
+            "dla slajdów z grafiką: ``include_image: true`` + **image.suggested_prompt** spójny z motywem; bez grafiki: ``include_image: false``."
         ),
         "parameters": {"type": "object", "properties": {
             "topic": {"type": "string", "description": "Temat / zakres merytoryczny (do promptu wewnętrznego modułu)"},
@@ -576,10 +577,14 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         "Całość `description` musi się zmieścić wizualnie na slajdzie: **maks. ok. 1100 znaków**; priorytet: zwięzłość.\n"
         "**Spójność całej prezentacji (obowiązkowa):** jeden styl wypowiedzi w punktorach (np. wszystkie w formie krótkich faktów albo wszystkie rozkazujące do ucznia), ta sama terminologia w `title`/`description` i na slajdach, logiczna kolejność treści, brak sprzeczności między slajdami. "
         "**Dopasowanie treści do slajdu (żeby nie „wyjeżdżała”):** tytuł slajdu treści **maks. ~52 znaki**, jeden wątek; na slajd **maks. 5 punktów**; **jeden punkt = jedna myśl**, do **~90 znaków** na punkt; unikaj akapitów — jeśli treść długa, **podziel na drugi slajd** zamiast ściany tekstu. "
-        "Pole `theme` — **wymagane**: wybierz spójną z treścią i tonem lekcji paletę (kontrast tła z `title`/`body` tekstu w slajdzie). "
-        "Np. przyroda: zieleń / beż; woda: błękity; historia: ciepłe brązy. Zapis: `#` + 6 znaków hex (np. `#0D3B2C`).\n"
-        "Zasady: `slides` to **tylko** slajdy merytoryczne; `include_image`: false i `image`: null, gdy grafika niepotrzebna. "
-        "Dopasuj liczbę slajdów do **slides_count** w Parametrach (gdy brak: sensownie 5–12). "
+        "**Pole `theme` — wymagane; zaplanuj je jak projektant slajdów (nie na „chybił trafił”):** "
+        "Najpierw wymyśl **jedną** spójną całość (ciepłą, chłodną, neutralną) dopasowaną do treści (np. przyroda: zieleń/beż, woda: błękity, technologia: granat + cyjan). "
+        "Potem ustaw w tej samej gamie barw **background**; kolory `title` i `body` muszą być czytelne na tym tle: **wyraźny kontrast** (jasne litery na ciemnym tle lub **ciemne na jasnym** — nigdy tytuł ani treść w kolorze zbliżonym do tła). "
+        "**muted** służy drugorzędnym wierszom (agenda, dopiski) — czytelny względem tła, lekko stonowany względem `body`, w **tej samej rodzinie barw** co reszta motywu, a nie przypadkowy akcent. "
+        "Wszystkie cztery wartości w `theme` muszą do siebie **pasować** (jeden motyw, jedna atmosfera). Zapis: `#` + 6 znaków hex (np. `#0D3B2C`).\n"
+        "**Grafika (gdy `include_image` = true + `image` z `suggested_prompt`):** dopracuj prompt tak, by **kolory i styl ilustracji** były spójne z `theme` tego slajdu (i całą prezentacją). W `suggested_prompt` opisz oczekiwaną **paletę** (w tonacji tła/tekstu, bez przypadkowych neonów sprzecznych z lekcją), ewent. styl płaskiej infografiki vs realistyczny, oświetlenie, "
+        "Cel: po wstawieniu obrazu obok czytelnych napisów całość ma wyglądać jak **jeden zharmonizowany** zestaw, a nie wklejony obcy plik. Gdy `include_image` = false — `image`: null.\n"
+        "Zasady: `slides` to **tylko** slajdy merytoryczne. Dopasuj liczbę slajdów do **slides_count** w Parametrach (gdy brak: sensownie 5–12). "
         "Napisy/tekst w opisach grafik w języku prośby użytkownika."
     ),
     "study": (
@@ -606,7 +611,7 @@ PRESENTATION_EDIT_SYSTEM = (
     "  ani nie tracz treści, chyba że użytkownik wyraźnie tego chce (np. „usuń wszystkie slajdy poza 1. i 2.”).\n"
     "- **Długość / slajd:** gdy edytujesz treść, utrzymuj zasady: krótkie tytuły, punktory do ~90 znaków, max ~5 punktów na slajd; spójna terminologia z resztą specu.\n"
     "- Gdy w **instruction** jest zmiana listy wątków, zaktualizuj **agendę** w `description` (jeśli w specie występuje blok „Agenda:”), żeby odpowiadała `slides`.\n"
-    "- **theme**: gdy użytkownik nie wspomina o kolorach / wyglądzie, przepisz `theme` z wejścia **bez zmian**; gdy prosi o nową kolorystykę, ustaw `theme` zgodnie z prośbą (hex #RRGGBB).\n"
+    "- **theme** i spójność wizualna: gdy użytkownik nie wspomina o kolorach / wyglądzie, przepisz `theme` z wejścia **bez zmian**; gdy prosi o nową kolorystykę, zdefiniuj **całą czwórkę** tak, by do siebie pasowała: kontrast tło↔`title`/`body`, `muted` w tej samej gamie, bez „ciemny na ciemnym”. Zaktualizuj `image.suggested_prompt` gdy edytujesz slajd z grafiką, żeby ilustracja pasowała do nowego (lub nienaruszonego) motywu (hex #RRGGBB).\n"
     "- Przy `slide_to_edit_1based` = 1 edytuj wyłącznie `title` i/lub `description` — nie modyfikuj tablicy `slides` "
     "o ile instruction nie wymaga dotknięcia treści slajdów merytorycznych."
 )

@@ -15,7 +15,14 @@ _DEFAULT_THEME_RGB: dict[str, tuple[int, int, int]] = {
     "body": (0xE8, 0xF0, 0xF8),
     "muted": (0x9A, 0xB4, 0xCC),
 }
+# Gdy tło slajdu jest jasne, a model zwróci jasne litery — podmiana na czytelne ciemne
+_DEFAULT_DARK_ON_LIGHT: dict[str, tuple[int, int, int]] = {
+    "title": (0x0D, 0x1B, 0x2A),
+    "body": (0x1B, 0x26, 0x3B),
+    "muted": (0x41, 0x5A, 0x77),
+}
 _THEME_JSON_KEYS: tuple[str, ...] = ("background", "title", "body", "muted")
+_BG_LUMINANCE_LIGHT: float = 0.55  # powyżej: jasne tło → ciemny tekst z zapasu
 
 
 def _parse_hex_rgb(s: str) -> tuple[int, int, int] | None:
@@ -28,6 +35,51 @@ def _parse_hex_rgb(s: str) -> tuple[int, int, int] | None:
         return (int(t[0:2], 16), int(t[2:4], 16), int(t[4:6], 16))
     except ValueError:
         return None
+
+
+def _luminance_srgb(r: int, g: int, b: int) -> float:
+    def ch(x: int) -> float:
+        c = x / 255.0
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * ch(r) + 0.7152 * ch(g) + 0.0722 * ch(b)
+
+
+def _contrast_ratio_rgb(fg: tuple[int, int, int], bg: tuple[int, int, int]) -> float:
+    """Współczynnik kontrastu WCAG 2.1 (większa / mniejsza jasność + 0,05)."""
+    lf, lb = _luminance_srgb(*fg), _luminance_srgb(*bg)
+    a, b = (lf, lb) if lf >= lb else (lb, lf)
+    if b < 0:
+        return 21.0
+    return (a + 0.05) / (b + 0.05)
+
+
+def _mend_theme_contrast(raw: dict[str, str] | None) -> dict[str, str] | None:
+    """
+    Gdy model zwróci tło i tekst zbyt zbliżone (np. ciemny body na ciemnym tle),
+    podmienia kolory tytułu/treści/akcentu na czytelną parę: jasne litery na ciemnym tle
+    albo ciemne na jasnym (wg jasności tła).
+    """
+    if not raw:
+        return None
+    resolved: dict[str, tuple[int, int, int]] = {}
+    for k in _THEME_JSON_KEYS:
+        t = _parse_hex_rgb(str(raw.get(k) or ""))
+        resolved[k] = t if t else _DEFAULT_THEME_RGB[k]
+    br, bgg, bb = resolved["background"]
+    l_bg = _luminance_srgb(br, bgg, bb)
+    on_light = l_bg > _BG_LUMINANCE_LIGHT
+    floor = 3.0
+    for k in ("title", "body", "muted"):
+        fr, fgg, fb = resolved[k]
+        if _contrast_ratio_rgb((fr, fgg, fb), (br, bgg, bb)) >= floor:
+            continue
+        if on_light:
+            dr, dg, db = _DEFAULT_DARK_ON_LIGHT[k]
+        else:
+            dr, dg, db = _DEFAULT_THEME_RGB[k]
+        raw[k] = f"#{dr:02X}{dg:02X}{db:02X}"
+    return raw
 
 
 def _normalize_theme_dict(data: Any) -> dict[str, str] | None:
@@ -45,7 +97,10 @@ def _normalize_theme_dict(data: Any) -> dict[str, str] | None:
             continue
         r, g, b = parsed
         out[k] = f"#{r:02X}{g:02X}{b:02X}"
-    return out if out else None
+    if not out:
+        return None
+    _mend_theme_contrast(out)
+    return out
 
 
 def ensure_theme_persisted(
@@ -158,9 +213,9 @@ def _resolved_theme_colors(theme: dict[str, str] | None) -> dict[str, Any]:
     from pptx.dml.color import RGBColor
 
     out: dict[str, Any] = {}
-    th = theme if isinstance(theme, dict) else None
+    thm = _normalize_theme_dict(theme) if isinstance(theme, dict) and theme else None
     for k in _THEME_JSON_KEYS:
-        raw = (th or {}).get(k) if th else None
+        raw = (thm or {}).get(k) if thm else None
         tup: tuple[int, int, int] | None
         if raw:
             tup = _parse_hex_rgb(str(raw))
@@ -197,13 +252,17 @@ def _apply_colorful_theme_to_slide(slide: Any, colors: dict[str, Any]) -> None:
             pass
         return None
 
+    _sub_ph = (PP_PLACEHOLDER.SUBTITLE,)
+    if hasattr(PP_PLACEHOLDER, "CENTER_SUBTITLE"):
+        _sub_ph = (PP_PLACEHOLDER.SUBTITLE, PP_PLACEHOLDER.CENTER_SUBTITLE)
+
     for shape in slide.shapes:
         if not shape.has_text_frame:
             continue
         tf = shape.text_frame
         ph_t = _ph_type(shape)
         is_title = ph_t in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE)
-        is_sub = ph_t == PP_PLACEHOLDER.SUBTITLE
+        is_sub = ph_t in _sub_ph
 
         for p in tf.paragraphs:
             t = (p.text or "").strip()
@@ -344,7 +403,7 @@ def spec_to_pptx_bytes(spec: dict[str, Any]) -> bytes:
 
     th = spec.get("theme")
     spec_theme = th if isinstance(th, dict) else None
-    apply_colorful_theme_to_presentation(prs, _normalize_theme_dict(spec_theme))
+    apply_colorful_theme_to_presentation(prs, spec_theme)
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()

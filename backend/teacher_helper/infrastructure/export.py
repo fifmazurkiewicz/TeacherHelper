@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import os
 import platform
 import re
 from pathlib import Path
@@ -174,24 +175,53 @@ def convert_text(text: str, target_format: str, title: str = "") -> tuple[bytes,
 
 
 def _find_unicode_font() -> str | None:
-    """Szuka systemowej czcionki TTF ze wsparciem dla polskich znaków."""
+    """Szuka systemowej czcionki TTF ze wsparciem dla polskich znaków (Latin Extended itd.)."""
     system = platform.system()
     candidates: list[Path] = []
     if system == "Windows":
-        base = Path("C:/Windows/Fonts")
-        candidates = [base / "arial.ttf", base / "calibri.ttf", base / "segoeui.ttf"]
+        base = Path(os.environ.get("WINDIR", "C:/Windows")) / "Fonts"
+        for name in (
+            "arial.ttf",
+            "calibri.ttf",
+            "segoeui.ttf",
+            "tahoma.ttf",
+            "verdana.ttf",
+            "micross.ttf",
+        ):
+            candidates.append(base / name)
     elif system == "Darwin":
         candidates = [
             Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
             Path("/Library/Fonts/Arial.ttf"),
+            Path("/System/Library/Fonts/Supplemental/Tahoma.ttf"),
         ]
     else:
         candidates = [
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
             Path("/usr/share/fonts/TTF/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/dejavu/DejaVuSans.ttf"),
             Path("/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"),
+            Path("/usr/share/fonts/liberation/LiberationSans-Regular.ttf"),
         ]
     for p in candidates:
-        if p.exists():
+        if p.is_file():
             return str(p)
+    # Ostatnia deska: płytkie wyszukiwanie w typowych katalogach (np. WSL / niestandardowa instalacja)
+    if system != "Windows":
+        for root in (
+            Path("/usr/share/fonts/truetype"),
+            Path("/usr/share/fonts/TTF"),
+        ):
+            if not root.is_dir():
+                continue
+            try:
+                for p in root.rglob("DejaVuSans.ttf"):
+                    if p.is_file():
+                        return str(p)
+                for p in root.rglob("LiberationSans-Regular.ttf"):
+                    if p.is_file():
+                        return str(p)
+            except OSError:
+                continue
     return None
