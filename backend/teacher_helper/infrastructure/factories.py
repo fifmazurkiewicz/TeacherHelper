@@ -127,7 +127,8 @@ def build_sound_generator() -> SoundGeneratorPort | None:
 
     return ReplicateSoundGenerator(
         api_key=s.replicate_api_key.strip(),  # type: ignore[arg-type]
-        model=s.replicate_sound_model,
+        sfx_model=s.replicate_sfx_model,
+        music_model=s.replicate_sound_model,
         musicgen_model_version=s.replicate_sound_musicgen_version,
         output_format=s.replicate_sound_output_format,
         timeout=s.replicate_sound_timeout_seconds,

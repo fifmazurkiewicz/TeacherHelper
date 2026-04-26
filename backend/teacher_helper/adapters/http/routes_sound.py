@@ -1,4 +1,4 @@
-"""Generowanie krótkich efektów dźwiękowych przez Replicate (meta/musicgen).
+"""Generowanie krótkich efektów dźwiękowych przez Replicate (Stable Audio Open — SFX).
 
 Endpoint: POST /v1/sound/generate
 """

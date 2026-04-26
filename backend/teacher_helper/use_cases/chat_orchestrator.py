@@ -89,8 +89,8 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **generate_scenario** — scenariusz przedstawienia.
 - **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
 - **generate_video** — storyboard/prompt wideo.
-- **generate_music** — piosenka / utwór: gdy w narzędziu podasz **target_duration_seconds** w zakresie **1–90**, audio generuje **wyłącznie Replicate** (krótki klip; sam model zwykle max ~30 s). Gdy brak tego pola (pełna piosenka) **albo** **target_duration_seconds** **> 90** (dłużej niż 1:30) — **KIE** (Suno) + opcjonalnie **OpenRouter Lyria**. SFX bez utworu (szum, plusk…) — tylko **generate_sound_effect**.
-- **generate_sound_effect** — **SFX** (woda, deszcz, klik…), **do chwili w sekundach z limitem MusicGen (domyślnie 30 s)** — **zawsze Replicate**; **nie** piosenka. Wymaga ``REPLICATE_API_KEY``.
+- **generate_music** — piosenka / utwór: gdy w narzędziu podasz **target_duration_seconds** w zakresie **1–30** (w limitach ``REPLICATE_SOUND_MAX_DURATION_SECONDS``), generacja audio **tylko w Replicate** (krótki klip **MusicGen**). Gdy **pominiesz** to pole (pełna piosenka) **albo** ``target_duration_seconds`` **> 30** (lub > limitu w .env) — **KIE** (Suno) + opcjonalnie **OpenRouter Lyria (Gemini)**. **SFX** (ptaki, plusk — nie piosenka) — tylko **generate_sound_effect**.
+- **generate_sound_effect** — **krótki efekt / foley** (woda, ptaki, klik…) — **Replicate Stable Audio** (nie MusicGen), **nie** pełna piosenka; długość wg **duration_seconds** (limit jak w konfiguracji, typ. 30 s). Wymaga ``REPLICATE_API_KEY``.
 - **generate_poetry** — wiersz do recytacji.
 - **generate_presentation** — nowa prezentacja: katalogowa treść, **PPTX** + plik planu w bibliotece; pole **include_agenda** (z **ask_clarification** o agendę na okładce, patrz sekcja „Prezentacje…”). Gdy wcześniej w **tej samej turze** wywołałeś **search_library_fragments**, **dokończ** turę wywołaniem **generate_presentation** (z **material_title** i ewent. **project_id**), żeby plik faktycznie powstał. Nie wywołuj, dopóki użytkownik **nie** prosi o prezentację / slajdy (inne rozmowy tylko odpowiedź tekstem lub inne ``generate_*``).
 - **edit_presentation** — zmiana **konkretnego slajdu** w pliku z „Moje materiały” (wymaga **file_id** z listy; **slide_number** 1 = okładka, 2+ = slajd treści). Gdy użytkownik pisze np. „na slajdzie 2 zrób …”, wskaż właściwy plik (często .pptx albo plik *plan* z ostatniej generacji) i edytuj.
@@ -368,8 +368,8 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
         "name": "generate_music",
         "description": (
             "**Piosenka / utwór** — zapis w bibliotece jako .txt + audio. "
-            "Jeśli podasz **target_duration_seconds** od **1 do 90** — audio **tylko przez Replicate** (krótki fragment; realny max klipu modelu to zwykle ~30 s). "
-            "Jeśli **target_duration_seconds** **> 90** (dłużej niż 1:30) **albo pominiesz** to pole (pełna piosenka) — **KIE** (Suno) + opcjonalnie **Lyria** (warianty MP3/WAV). "
+            "Jeśli podasz **target_duration_seconds** od **1 do 30** (nie wyżej niż limit w konfiguracji serwera) — audio **tylko Replicate** (krótki klip). "
+            "Jeśli **target_duration_seconds** **> 30** (lub > limit) **albo pominiesz** to pole (pełna piosenka) — **KIE** (Suno) + opcjonalnie **Lyria / Gemini** (WAV itd.). "
             "Czyste SFX (szum, plusk) — **generate_sound_effect**, nie to narzędzie."
         ),
         "parameters": {"type": "object", "properties": {
@@ -380,7 +380,7 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
             },
             "target_duration_seconds": {
                 "type": "integer",
-                "description": "Docelowa długość w sekundach. 1–90: tylko Replicate. >90 albo brak: KIE + Lyria (długa piosenka).",
+                "description": "Długość w sekundach. 1–30: tylko Replicate (krótki klip). Powyżej 30 (lub brak pola): KIE + Lyria (dłuższa piosenka).",
             },
             "style": {"type": "string", "description": "Styl muzyczny"},
             "age_group": {"type": "string", "description": "Grupa wiekowa"},
@@ -394,8 +394,8 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "generate_sound_effect",
         "description": (
-            "**Krótki efekt dźwiękowy** (SFX / foley / ambient) — **zawsze Replicate** (MusicGen), **bez** pełnej piosenki. "
-            "Gdy użytkownik chce **długi utwór** (**> 90 s**) albo pełną piosenkę — **generate_music** (KIE+Lyria). Wymaga ``REPLICATE_API_KEY``."
+            "**Krótki efekt dźwiękowy** (SFX / foley) — **Replicate Stable Audio**, nie piosenka. "
+            "Pełny utwór: **generate_music** (Replicate tylko przy **target_duration_seconds 1–30 s**; dłużej KIE+Lyria)."
         ),
         "parameters": {"type": "object", "properties": {
             "description": {
@@ -408,7 +408,7 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
             },
             "duration_seconds": {
                 "type": "integer",
-                "description": "Długość 1–30 s, domyślnie 8 (limit MusicGen, patrz REPLICATE_SOUND_MAX_DURATION_SECONDS)",
+                "description": "Długość 1–30 s, domyślnie 8 (limit w REPLICATE_SOUND_MAX_DURATION_SECONDS)",
             },
             **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["description", "material_title"]},
@@ -634,7 +634,7 @@ _REPLY_TO_USER_MAX_AFTER_TEXT_MODULE = 2800
 # Gdy brak wierszy w DB po zapisie (rzadkie) — bez żargonu konfiguracyjnego.
 _MODULE_REPLY_FALLBACK: dict[str, str] = {
     "sound": "Zapisano krótki efekt dźwiękowy (SFX) w „Moje materiały”.",
-    "music": "Zapisano materiały w bibliotece. Otwórz „Moje materiały”, aby zobaczyć plik .txt oraz audio (krótki utwór: Replicate; dłuższa piosenka: KIE .mp3, Lyria .wav).",
+    "music": "Zapisano materiały w bibliotece. Otwórz „Moje materiały” — .txt + audio: **≤30 s** zwykle z Replicate; **dłużej** z KIE (.mp3) i/lub Lyria (.wav).",
     "graphics": "Zapisano plik w „Moje materiały”.",
     "video": "Zapisano materiał wideo w „Moje materiały”.",
     "scenario": "Zapisano scenariusz w „Moje materiały”.",
@@ -1775,7 +1775,7 @@ class ChatOrchestratorUseCase:
             has_audio = any((r.mime_type or "").lower().startswith("audio/") for r in ordered)
             if has_audio:
                 lines.append(
-                    "\nDołączono pliki audio (KIE, Lyria lub Replicate, zależnie od długości) — pobierzesz je przyciskami pod wiadomością albo z „Moje materiały”."
+                    "\nDołączono pliki audio: **Replicate tylko przy krótkim ustalonym czasie (do 30 s)**; dłużej **KIE** i/lub **Lyria (Gemini)** — pobierzesz je pod wiadomością albo w „Moje materiały”."
                 )
             else:
                 lines.append(
@@ -2320,12 +2320,12 @@ class ChatOrchestratorUseCase:
         style_en: str | None,
         target_d: int,
     ) -> tuple[list[UUID], str | None]:
-        """Docelowo 1–90 s: wyłącznie Replicate (MusicGen); dłuższe piosenki w ``_handle_music``."""
+        """Tylko gdy target ≤ limit (domyślnie 30 s): Replicate (MusicGen); dłużej — KIE + Lyria w ``_handle_music``."""
         s = get_settings()
         if self._sound_gen is None:
             return [], (
-                "Krótki utwór (target ≤ 90 s) wymaga **REPLICATE_API_KEY** (Replicate / MusicGen). "
-                "Dla **> 90 s** ustaw **target_duration_seconds** powyżej 90 *albo* pominij to pole, aby użyć KIE i Lyrii."
+                "Krótki utwór w Replicate (do **30 s** wg ``REPLICATE_SOUND_MAX_DURATION_SECONDS``) wymaga **REPLICATE_API_KEY**. "
+                "Dla **> 30 s** (lub bez ``target_duration_seconds``) używana jest ścieżka KIE + Lyria."
             )
         cap = int(s.replicate_sound_max_duration_seconds)
         cap = max(1, min(cap, 30))
@@ -2461,7 +2461,8 @@ class ChatOrchestratorUseCase:
         if target_d is not None:
             target_d = max(1, min(int(target_d), 24 * 3600))
 
-        if target_d is not None and target_d <= 90:
+        route_max = max(1, min(30, int(s.replicate_sound_max_duration_seconds)))
+        if target_d is not None and target_d <= route_max:
             return await self._handle_music_replicate_short(
                 session,
                 user_id,

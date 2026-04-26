@@ -20,8 +20,8 @@ frontend/  → React 18 + Vite, Tailwind CSS
 
 - **Agentowe / orkiestracja:** jeden model steruje rozmową przez **function calling** (narzędzia: scenariusz, grafika, muzyka, wideo, wiersz, prezentacja, eksport, biblioteka, wyszukiwanie, „omówienie tematu” itd.) — backend wykonuje narzędzia i zwraca wynik do kolejnej tury LLM (`chat_orchestrator`).
 - **RAG / pamięć plików:** embeddingi tekstu (**OpenAI** lub **OpenRouter**), wektory w **Qdrant**, wyszukiwanie semantyczne po fragmentach zuploadowanych materiałów.
-- **Muzyka:** **KIE.ai** (API w stylu Suno, callback / polling) oraz opcjonalnie **Lyria** przez **OpenRouter** (audio z `chat/completions` + SSE).
-- **Krótkie efekty dźwiękowe (SFX):** **Replicate** — osobny endpoint (do ~10 s), nie pełne „piosenki”.
+- **Muzyka:** **Replicate (MusicGen)** tylko dla **krótkich klipów** (``target_duration_seconds`` ≤ **30**, limit w ``REPLICATE_SOUND_MAX_DURATION_SECONDS``); **dłuższe / pełne piosenki** — **KIE.ai** (Suno) + opcjonalnie **Lyria (Gemini)** przez **OpenRouter**.
+- **SFX (nie piosenka):** **Replicate Stable Audio** — osobny przepływ, krótkie próbki/foley.
 - **Grafika:** wyłącznie **OpenRouter** (modele z wyjściem obrazu / `modalities`).
 - **Wideo:** narzędzie w orchestratorze przygotowuje storyboard / prompt; **brak** podłączonego zewnętrznego API wideo w fabryce — wynik to głównie treść od LLM (integracja pod przyszły adapter).
 - **Narzędzia pomocnicze:** wyszukiwanie w sieci (**Tavily**), opcjonalnie transkrypcja głosu (**xAI** STT), tokeny potwierdzające destrukcyjne akcje (JWT).

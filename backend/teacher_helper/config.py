@@ -144,9 +144,11 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_origins: str = "*"
 
-    # --- Replicate — generowanie efektów dźwiękowych (POST /v1/sound/generate) ---
+    # --- Replicate — generowanie dźwięku (SFX vs krótki utwór) ---
     replicate_api_key: str | None = None
-    # W Replicate: pole `version` w POST /v1/predictions — owner/name (np. meta/musicgen) albo 64 znaków id wersji.
+    # SFX / foley (ptaki, woda) — domyślnie Stable Audio Open (nie MusicGen):
+    replicate_sfx_model: str = "stackadoc/stable-audio-open-1.0"
+    # Krótki utwór / melodia (generate_music, krótki target) — MusicGen:
     replicate_sound_model: str = "meta/musicgen"
     # Wariant modelu musicgen: stereo-large | large | melody | stereo-melody-large
     replicate_sound_musicgen_version: str = "stereo-large"
@@ -155,7 +157,7 @@ class Settings(BaseSettings):
     # Czas oczekiwania na zakończenie predykcji (polling).
     replicate_sound_timeout_seconds: float = Field(default=120.0)
     replicate_sound_poll_interval_seconds: float = Field(default=2.0)
-    # Pojedyncze wywołanie MusicGen — typowo maks. 30 s (model meta/musicgen na Replicate).
+    # Max długość klipu w Replicate (SFX + MusicGen) oraz **próg routingu** muzyki: target ≤ tej liczby sekund → Replicate, wyżej → KIE + Lyria.
     replicate_sound_max_duration_seconds: int = Field(default=30, ge=1, le=30)
 
     # --- Opcjonalne: Alerty webhook ---

@@ -79,7 +79,7 @@ class KieMusicImportByTaskRequest(BaseModel):
 
 
 class SoundGenerateRequest(BaseModel):
-    """Krótki efekt dźwiękowy (SFX / foley), nie piosenka — Replicate meta/musicgen."""
+    """Krótki efekt dźwiękowy (SFX / foley), nie piosenka — Replicate Stable Audio Open."""
 
     prompt: str = Field(
         min_length=3,
@@ -90,7 +90,7 @@ class SoundGenerateRequest(BaseModel):
         default=8,
         ge=1,
         le=30,
-        description="Długość w sekundach (max wg MusicGen, domyślnie 30) — krótki dźwięk, nie pełna piosenka długa",
+        description="Długość w sekundach (limit konfiguracji, typ. 30) — krótki SFX, nie pełna piosenka",
     )
     project_id: UUID | None = Field(default=None, description="Opcjonalny projekt docelowy")
 
