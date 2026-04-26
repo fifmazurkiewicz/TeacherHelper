@@ -19,6 +19,10 @@ def extract_plain_text(data: bytes, mime: str, filename: str) -> str:
         ".docx"
     ):
         return _docx_to_text(data)
+    if "presentationml.presentation" in mime_l or name.endswith(".pptx"):
+        from teacher_helper.infrastructure.presentation_spec import extract_pptx_plain_text
+
+        return extract_pptx_plain_text(data)
     return ""
 
 

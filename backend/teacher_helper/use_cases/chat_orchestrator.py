@@ -13,12 +13,22 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from teacher_helper.infrastructure.export import text_to_pdf, text_to_pptx
 from teacher_helper.infrastructure.db.file_ops import (
     category_for_module,
     index_file_content,
     load_attached_context,
     persist_export_as_new_file,
     semantic_search_chunks,
+)
+from teacher_helper.infrastructure.presentation_spec import (
+    extract_pptx_plain_text,
+    normalize_presentation_spec,
+    parse_presentation_json,
+    pptx_to_spec,
+    spec_to_json_text,
+    spec_to_pptx_bytes,
+    spec_to_readable_plan_text,
 )
 from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync, record_llm_usage_event
 from teacher_helper.infrastructure.music_kie import (
@@ -67,14 +77,15 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **search_library_fragments** — wyszukaj w zindeksowanej bibliotece plików użytkownika (semantycznie). W bloku **„Katalogi użytkownika”** masz UUID i nazwy folderów — gdy rozmowa dotyczy tematu zgodnego z nazwą lub opisem katalogu, ogranicz wyszukiwanie przez **project_id** (preferowane) lub **project_name**. Gdy potrzebujesz przeszukać wszystko naraz — **entire_library: true**. Użyj, gdy pytanie dotyczy treści z materiałów w „Moje materiały”, albo gdy użytkownik wspomina temat powiązany z istniejącym folderem.
 - **search_web** — wyszukaj **w internecie** (Tavily). Użyj przy **opracowaniu / pogłębianiu wiedzy**, faktach aktualnych, definicjach, gdy biblioteka nie wystarcza. W jednej turze wywołaj **przed** ``generate_study``. Gdy API nie jest skonfigurowane, krótko poinformuj użytkownika i nie podawaj szczegółowych faktów z pamięci jako rzekomych wyników wyszukiwania.
 - **generate_study** — przygotuj **opracowanie edukacyjne** (markdown) na podany temat i **zapisz** je jako plik w bibliotece. Opieraj treść na bloku wyników ``search_web`` w kontekście; zamieść linki do stron z tych wyników (sekcja na końcu dokumentu). Gdy użytkownik chce materiały w **osobnym folderze**, w tej samej turze użyj **prepare_create_teacher_project** (nazwa np. „Opracowanie: …”) — po **potwierdzeniu** utworzenia folderu w UI pliki z kolejnych generacji trafią tam, jeśli rozmowa ma ustawiony aktywny katalog.
-- **export_library_file** — zapisz kopię istniejącego pliku z biblioteki jako PDF/DOCX/TXT/PPTX (podaj file_id UUID lub pomiń, by użyć pliku utworzonego w tej samej turze).
+- **export_library_file** — zapisz kopię istniejącego pliku z biblioteki jako PDF, DOCX, TXT lub PPTX (podaj file_id UUID lub pomiń, by użyć ostatniego w tej turze). **Prezentację PPTX** możesz też przekonwertować na **PDF** (zapis w bibliotece) — w PDF widać głównie treść stron, nie „sztywny” układ z PowerPoint.
 - **generate_scenario** — scenariusz przedstawienia.
 - **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
 - **generate_video** — storyboard/prompt wideo.
 - **generate_music** — piosenka / utwór: gdy w narzędziu podasz **target_duration_seconds** w zakresie **1–90**, audio generuje **wyłącznie Replicate** (krótki klip; sam model zwykle max ~30 s). Gdy brak tego pola (pełna piosenka) **albo** **target_duration_seconds** **> 90** (dłużej niż 1:30) — **KIE** (Suno) + opcjonalnie **OpenRouter Lyria**. SFX bez utworu (szum, plusk…) — tylko **generate_sound_effect**.
 - **generate_sound_effect** — **SFX** (woda, deszcz, klik…), **do chwili w sekundach z limitem MusicGen (domyślnie 30 s)** — **zawsze Replicate**; **nie** piosenka. Wymaga ``REPLICATE_API_KEY``.
 - **generate_poetry** — wiersz do recytacji.
-- **generate_presentation** — plan prezentacji (slajdy).
+- **generate_presentation** — nowa prezentacja: katalogowa treść, **PPTX** + plik planu w bibliotece. Nie wywołuj, dopóki użytkownik **nie** prosi o prezentację / slajdy (inne rozmowy tylko odpowiedź tekstem lub inne ``generate_*``).
+- **edit_presentation** — zmiana **konkretnego slajdu** w pliku z „Moje materiały” (wymaga **file_id** z listy; **slide_number** 1 = okładka, 2+ = slajd treści). Gdy użytkownik pisze np. „na slajdzie 2 zrób …”, wskaż właściwy plik (często .pptx albo plik *plan* z ostatniej generacji) i edytuj.
 - **reply_to_user** — odpowiedź tekstowa bez generowania materiałów.
 
 ## Miejsce zapisu plików (katalog w rozmowie)
@@ -363,17 +374,51 @@ TOOL_DEFINITIONS: list[ToolDefinition] = [
     }},
     {"type": "function", "function": {
         "name": "generate_presentation",
-        "description": "Wygeneruj plan prezentacji (slajdy).",
+        "description": (
+            "Nowa prezentacja: **PPTX** (slajd tytułowy: tytuł + krótki opis) oraz slajdy treści. Grafika **nie** jest wymagana — "
+            "dla slajdów z grafiką model ustawia ``include_image`` + opcjonalnie **image.suggested_prompt**; bez grafiki: ``include_image: false``."
+        ),
         "parameters": {"type": "object", "properties": {
-            "topic": {"type": "string", "description": "Temat prezentacji"},
+            "topic": {"type": "string", "description": "Temat / zakres merytoryczny (do promptu wewnętrznego modułu)"},
             "material_title": {
                 "type": "string",
-                "description": "Tytuł pliku w bibliotece, np. Prezentacja ekologia klasa 5",
+                "description": "Tytuł plików w bibliotece, np. Prezentacja ekologia klasa 5",
             },
-            "slides_count": {"type": "integer", "description": "Liczba slajdów"},
-            "audience": {"type": "string", "description": "Odbiorcy (klasa, wiek)"},
+            "slides_count": {
+                "type": "integer",
+                "description": "Docelowa liczba slajdów merytorycznych (bez okładki). Opcjonalnie — model dobiera, jeśli pominiesz",
+            },
+            "audience": {"type": "string", "description": "Odbiorcy (klasa, wiek, przedmiot)"},
             **_SAVE_PROJECT_ID_PROPERTY,
         }, "required": ["topic", "material_title"]},
+    }},
+    {"type": "function", "function": {
+        "name": "edit_presentation",
+        "description": (
+            "Zmień **istniejącą** prezentację (PPTX albo plik planu .txt z **generate_presentation**). Używaj, gdy użytkownik wskazuje "
+            "numer slajdu (np. slajd 2) lub mówi **popraw tę prezentację** — wówczas podaj file_id pliku w bibliotece."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "file_id": {
+                "type": "string",
+                "description": (
+                    "UUID pliku źródłowego. W tej samej turze co **generate_presentation** możesz pominąć — użyty zostanie ostatnio zapisany plik z generacji."
+                ),
+            },
+            "slide_number": {
+                "type": "integer",
+                "description": "Numer slajdu **od 1**: 1 = okładka (tytuł + opis), 2 = pierwszy slajd treści, 3 = drugi, itd.",
+            },
+            "instruction": {
+                "type": "string",
+                "description": "Co dokładnie zmienić na tym slajdu (język jak u użytkownika)",
+            },
+            "material_title": {
+                "type": "string",
+                "description": "Tytuł nowych plików w bibliotece (wariant po edycji), np. Prezentacja ekologia v2",
+            },
+            **_SAVE_PROJECT_ID_PROPERTY,
+        }, "required": ["slide_number", "instruction", "material_title"]},
     }},
     {"type": "function", "function": {
         "name": "generate_study",
@@ -435,7 +480,15 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
     ),
     "poetry": "Napisz wiersz do recytacji zgodnie z prośbą. Krótki wstęp i treść wiersza.",
     "presentation": (
-        "Napisz plan prezentacji (nagłówki slajdów + punktory) w języku prośby użytkownika (zwykle polski). Markdown."
+        "Tworzysz prezentację lekcyjną. Zwróć WYŁĄCZNIE jeden obiekt JSON (bez markdown, bez ```) w języku prośby (zwykle polski) "
+        "o strukturze:\n"
+        '{"title": "krótki tytuł całości (np. na okładkę)", "description": "2–4 zdania: cel, odbiorca, o czym jest lekcja", "slides": '
+        "[ { \"title\": \"tytuł slajdu treści (nie okładka)\", \"bullets\": [\"punkt\", \"...\"], "
+        '"include_image": true/false, "image": null albo { "suggested_prompt": "opis jednej ilustracji edukacyjnej (gdy include_image true)" } }'
+        " ] }\n"
+        "Zasady: `slides` to **wyłącznie slajdy merytoryczne** (okładkę i opis dajesz w `title` + `description`). Dla slajdów, na których **nie** ma być miejsca na grafikę, ustaw `include_image`: false, a `image`: null. "
+        "Dopasuj długość do parameters.slides_count (gdy brak, sensowna liczba 5–12 slajdów w `slides` — bez przeliczania 1:1, orientacyjnie). "
+        "Punktory zwięźle, treści merytoryczne; napis na ilustracjach (gdy własne) w języku prośby użytkownika."
     ),
     "study": (
         "Tworzysz **opracowanie edukacyjne** (markdown) dla nauczyciela. Język = język prośby (zwykle polski). "
@@ -449,6 +502,19 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         "i unikaj podawania dat lub statystyk bez pewności."
     ),
 }
+
+# Edycja slajdów (osobne wywołanie modułu LLM — nie łącz w TOOL_TO_MODULE)
+PRESENTATION_EDIT_SYSTEM = (
+    "Jesteś edytorem prezentacji w formacie JSON. Dostaniesz: obiekt `spec` (takie same pola jak przy tworzeniu: "
+    "title, description, slides), pole `slide_to_edit_1based` (1 = okładka = tylko `title` i `description` z planu, "
+    "2 = `slides[0]`, 3 = `slides[1]`, itd.) oraz `instruction` — co użytkownik chce zmienić.\n"
+    "Zasady:\n"
+    "- Zwróć WYŁĄCZNIE jeden obiekt JSON w **tym samym schemacie** co w narzędziu generate_presentation (bez markdown, bez ```).\n"
+    "- Zmień tylko to, wynika z **instruction** (i ewentualny kontekst z user_message), nie wyrzucaj pozostałych slajdów\n"
+    "  ani nie tracz treści, chyba że użytkownik wyraźnie tego chce (np. „usuń wszystkie slajdy poza 1. i 2.”).\n"
+    "- Przy `slide_to_edit_1based` = 1 edytuj wyłącznie `title` i/lub `description` — nie modyfikuj tablicy `slides` "
+    "o ile instruction nie wymaga dotknięcia treści slajdów merytorycznych."
+)
 
 TOOL_TO_MODULE: dict[str, str] = {
     "generate_scenario": "scenario",
@@ -473,7 +539,7 @@ _MODULE_REPLY_FALLBACK: dict[str, str] = {
     "video": "Zapisano materiał wideo w „Moje materiały”.",
     "scenario": "Zapisano scenariusz w „Moje materiały”.",
     "poetry": "Zapisano wiersz w „Moje materiały”.",
-    "presentation": "Zapisano plan prezentacji w „Moje materiały”.",
+    "presentation": "Zapisano pliki prezentacji w „Moje materiały” (PPTX + plan).",
     "study": "Zapisano opracowanie tematu w „Moje materiały”.",
 }
 
@@ -488,7 +554,9 @@ _INTENT_MODULE_TO_GENERATE_TOOL: dict[str, str] = {
     "study": "generate_study",
 }
 
-_PERSIST_FILE_TOOL_NAMES = frozenset(TOOL_TO_MODULE.keys()) | frozenset({"export_library_file"})
+_PERSIST_FILE_TOOL_NAMES = frozenset(TOOL_TO_MODULE.keys()) | frozenset(
+    {"export_library_file", "edit_presentation"},
+)
 
 _NON_FILE_OR_SETUP_TOOLS = frozenset({
     "ask_clarification",
@@ -972,7 +1040,7 @@ def _tool_call_sort_key(tc: Any) -> tuple[int, str]:
         return (1, tc.id or "")
     if name == "search_web":
         return (2, tc.id or "")
-    if name in TOOL_TO_MODULE:
+    if name in TOOL_TO_MODULE or name == "edit_presentation":
         return (3, tc.id or "")
     if name == "export_library_file":
         return (4, tc.id or "")
@@ -1335,6 +1403,37 @@ class ChatOrchestratorUseCase:
                     except ValueError as exc:
                         reply_parts.append(str(exc))
 
+            elif tc.name == "edit_presentation":
+                if dry_run:
+                    side_effects_skipped = True
+                    reply_parts.append("[Symulacja] **edit_presentation** — pliki by nie powstały.")
+                else:
+                    write_pid, write_note = await _resolve_write_project_id(
+                        session, user_id, tc.arguments, active_project_id,
+                    )
+                    if write_note:
+                        reply_parts.append(write_note)
+                    e_fids, e_note = await self._handle_edit_presentation(
+                        session, user_id, write_pid, user_message, dynamic_context, tc.arguments,
+                        last_created_in_turn=last_created_file_id,
+                    )
+                    if e_fids:
+                        for ef in e_fids:
+                            created.append(ef)
+                            last_created_file_id = ef
+                        run_modules.append("presentation")
+                        reply_body = await self._reply_for_saved_module(
+                            session, "presentation", tc.arguments, e_fids,
+                        )
+                        if e_note:
+                            reply_body = f"{reply_body}\n\n{e_note}"
+                        reply_parts.append(reply_body)
+                    else:
+                        reply_parts.append(
+                            e_note
+                            or "Nie udało się zapisać poprawionej prezentacji (brak wyników albo błąd wykonania)."
+                        )
+
             elif tc.name in TOOL_TO_MODULE:
                 module = TOOL_TO_MODULE[tc.name]
                 if tc.name == "generate_scenario":
@@ -1436,6 +1535,11 @@ class ChatOrchestratorUseCase:
             lines.append("\nTo krótki efekt dźwiękowy (SFX z Replicate) — pobierzesz go przyciskiem pod wiadomością.")
         elif module == "video":
             lines.append("\nJeśli to wideo MP4, pobierzesz je przyciskiem pod wiadomością.")
+        elif module == "presentation":
+            lines.append(
+                "\nZapisałem **.pptx**, plik planu (JSON, *plan* w nazwie) oraz **PDF planu** (zarys tytułu, opis i slajdy). "
+                "Edycja: **edit_presentation**; dodatkowy PDF z PPTX: **export_library_file** (treść wyciągnięta ze slajdów)."
+            )
         else:
             lines.append("\nMożesz pobrać pliki przyciskami pod tą wiadomością.")
         return "\n".join(lines)
@@ -1449,6 +1553,10 @@ class ChatOrchestratorUseCase:
         mod = module.lower().strip()
         if mod == "sound":
             return await self._handle_sound_effect(session, user_id, project_id, tool_args)
+        if mod == "presentation":
+            return await self._handle_presentation(
+                session, user_id, project_id, user_message, context, tool_args,
+            )
         sys_prompt = MODULE_SYSTEM_PROMPTS.get(mod)
         if not sys_prompt:
             logger.warning("No system prompt for module %r — skipping", mod)
@@ -1492,6 +1600,287 @@ class ChatOrchestratorUseCase:
             extra={"module": mod, "tool_args": tool_args},
         )
         return [fid], trunc_note
+
+    async def _handle_presentation(
+        self,
+        session: AsyncSession,
+        user_id: UUID,
+        project_id: UUID | None,
+        user_message: str,
+        context: str,
+        tool_args: dict[str, Any],
+    ) -> tuple[list[UUID], str | None]:
+        sys_prompt = MODULE_SYSTEM_PROMPTS["presentation"]
+        args_for_prompt = dict(tool_args) if tool_args else {}
+        args_for_prompt.pop("project_id", None)
+        args_str = json.dumps(args_for_prompt, ensure_ascii=False) if args_for_prompt else ""
+        user_part = f"Kontekst:\n{context}\n\nParametry:\n{args_str}\n\nProśba:\n{user_message}"
+        mod_completion = await self._llm_modules.complete(sys_prompt, user_part)
+        await record_llm_usage_event(
+            session, user_id=user_id, call_kind="module", module_name="presentation",
+            completion=mod_completion, system_text=sys_prompt, user_text=user_part,
+        )
+        content = mod_completion.text if mod_completion.text is not None else ""
+        trunc_note: str | None = None
+        if (mod_completion.finish_reason or "").lower() == "length":
+            trunc_note = (
+                "**Uwaga:** odpowiedź modelu mogła zostać ucięta — skróć zapytanie lub zwiększ "
+                "**OPENROUTER_MODULE_MAX_COMPLETION_TOKENS**."
+            )
+        spec = parse_presentation_json(content)
+        if spec is None and content.strip().startswith("{"):
+            try:
+                spec = normalize_presentation_spec(json.loads(content))
+            except (json.JSONDecodeError, TypeError, ValueError):
+                spec = None
+
+        if spec is not None:
+            try:
+                pptx_b = spec_to_pptx_bytes(spec)
+            except Exception as exc:
+                logger.exception("spec_to_pptx_bytes: %s", exc)
+                spec = None
+                pptx_b = b""
+        else:
+            pptx_b = b""
+
+        if not spec:
+            body = content if isinstance(content, str) else ""
+            if not (body and body.strip()):
+                return [], "Model nie zwrócił treści prezentacji (spróbuj ponowić lub dopracuj **topic** w narzędziu)."
+            stem = _resolve_file_stem("presentation", tool_args)
+            try:
+                pptx_b = text_to_pptx(body, title=stem)
+            except Exception as exc:
+                logger.warning("text_to_pptx fallback: %s", exc)
+                pptx_b = b""
+            extra = {"module": "presentation", "tool_args": tool_args, "format": "markdown_fallback"}
+            plan_id = await self._persist_file(
+                session, user_id, project_id, "presentation",
+                data=body.encode("utf-8"), mime="text/plain; charset=utf-8", ext="txt",
+                extra=extra, index_override=body[:20000],
+            )
+            try:
+                pdf_plan = text_to_pdf(body, title=stem)
+            except Exception as exc:
+                logger.warning("text_to_pdf (plan fallback): %s", exc)
+                pdf_plan = b""
+            ids_fb: list[UUID] = [plan_id]
+            if pdf_plan:
+                extra_pdf = {**extra, "file_stem_suffix": "plan_pdf", "companion": "plan_txt", "companion_id": str(plan_id)}
+                pdf_id = await self._persist_file(
+                    session, user_id, project_id, "presentation",
+                    data=pdf_plan, mime="application/pdf", ext="pdf",
+                    extra=extra_pdf, index_override=body[:20000],
+                )
+                ids_fb.append(pdf_id)
+            if not pptx_b:
+                return ids_fb, trunc_note
+            extra_px = {**extra, "file_stem_suffix": "slajdy", "companion": "plan_txt", "companion_id": str(plan_id)}
+            pptx_id = await self._persist_file(
+                session, user_id, project_id, "presentation",
+                data=pptx_b, mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                ext="pptx", extra=extra_px, index_override=None,
+            )
+            ids_fb.append(pptx_id)
+            return ids_fb, trunc_note
+
+        plan_text = spec_to_json_text(spec)
+        extra = {"module": "presentation", "tool_args": tool_args, "format": "json_spec", "role": "plan_source"}
+        plan_id = await self._persist_file(
+            session, user_id, project_id, "presentation",
+            data=plan_text.encode("utf-8"), mime="text/plain; charset=utf-8", ext="txt",
+            extra={**extra, "file_stem_suffix": "plan"},
+            index_override=plan_text[:20000],
+        )
+        plan_plain = spec_to_readable_plan_text(spec)
+        pdf_title = (spec.get("title") or _resolve_file_stem("presentation", tool_args))[:500]
+        try:
+            pdf_bytes = text_to_pdf(plan_plain, title=pdf_title)
+        except Exception as exc:
+            logger.warning("text_to_pdf (plan): %s", exc)
+            pdf_bytes = b""
+        plan_pdf_id: UUID | None = None
+        if pdf_bytes:
+            extra_pdf = {
+                **extra,
+                "file_stem_suffix": "plan_pdf",
+                "companion": "json_plan",
+                "companion_id": str(plan_id),
+                "format": "plan_pdf",
+            }
+            plan_pdf_id = await self._persist_file(
+                session, user_id, project_id, "presentation",
+                data=pdf_bytes, mime="application/pdf", ext="pdf",
+                extra=extra_pdf, index_override=plan_plain[:20000],
+            )
+        extra_px = {
+            "module": "presentation",
+            "tool_args": tool_args,
+            "format": "pptx",
+            "file_stem_suffix": "slajdy",
+            "companion": "json_plan",
+            "companion_id": str(plan_id),
+        }
+        pptx_id = await self._persist_file(
+            session, user_id, project_id, "presentation",
+            data=pptx_b, mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ext="pptx", extra=extra_px, index_override=plan_plain[:20000],
+        )
+        out_ids: list[UUID] = [plan_id]
+        if plan_pdf_id is not None:
+            out_ids.append(plan_pdf_id)
+        out_ids.append(pptx_id)
+        return out_ids, trunc_note
+
+    def _load_presentation_spec_from_file(
+        self, raw: bytes, name_lower: str,
+    ) -> dict[str, Any] | None:
+        if name_lower.endswith(".pptx"):
+            return pptx_to_spec(raw)
+        if not name_lower.endswith((".txt", ".md", ".json")):
+            return None
+        text = raw.decode("utf-8", errors="replace")
+        spec = parse_presentation_json(text)
+        if spec is not None:
+            return spec
+        try:
+            return normalize_presentation_spec(json.loads(text))
+        except (json.JSONDecodeError, TypeError):
+            return None
+
+    async def _handle_edit_presentation(
+        self,
+        session: AsyncSession,
+        user_id: UUID,
+        project_id: UUID | None,
+        user_message: str,
+        context: str,
+        tool_args: dict[str, Any],
+        last_created_in_turn: UUID | None = None,
+    ) -> tuple[list[UUID], str | None]:
+        sn_raw = tool_args.get("slide_number")
+        try:
+            slide_number = int(sn_raw) if sn_raw is not None else 0
+        except (TypeError, ValueError):
+            slide_number = 0
+        instruction = (tool_args.get("instruction") or "").strip()
+        if slide_number < 1 or not instruction:
+            return [], "Wymagane są co najmniej **slide_number** (od 1) i **instruction**."
+        fid_raw = tool_args.get("file_id")
+        fid: UUID | None = None
+        if fid_raw not in (None, ""):
+            try:
+                fid = UUID(str(fid_raw).strip())
+            except (ValueError, TypeError):
+                return [], "Nieprawidłowy **file_id** (oczekiwany UUID)."
+        else:
+            fid = last_created_in_turn
+        if fid is None:
+            return (
+                [],
+                "Podaj **file_id** (PPTX albo plik *plan*) albo w tej samej odpowiedzi najpierw wywołaj **generate_presentation**, "
+                "żeby domyślnie wskazać ostatnio zapisany plik.",
+            )
+        row = await session.get(FileAssetORM, fid)
+        if not row or row.user_id != user_id:
+            return [], "Plik nie istnieje lub nie należy do Ciebie."
+        raw = await self._storage.get(row.storage_key)
+        name_l = (row.name or "").lower()
+        spec = self._load_presentation_spec_from_file(raw, name_l)
+        if not spec:
+            return [], "Nie udało się odczytać prezentacji. Użyj pliku **.pptx** albo pliku planu (JSON z *plan* w nazwie) z **Moje materiały**."
+        n_content = len(spec.get("slides") or [])
+        n_total = 1 + n_content
+        if slide_number > n_total:
+            return (
+                [],
+                f"Ten plik ma {n_total} slajd(ów) (numeracja: 1 = okładka, dalej treść). Wskaż w zakresie 1–{n_total}.",
+            )
+        edit_payload: dict[str, Any] = {
+            "spec": spec,
+            "slide_to_edit_1based": slide_number,
+            "hint_slajd_1_to_okladka_merytoryczne_od_2": True,
+            "mapowanie": "2 → slides[0], 3 → slides[1], itd.",
+            "instruction": instruction,
+            "nazwa_pliku_zrodlowego": row.name,
+        }
+        user_part = (
+            f"Kontekst (skrót):\n{context[:10000]}\n\nDane (JSON) do modyfikacji:\n"
+            f"{json.dumps(edit_payload, ensure_ascii=False)[:50000]}\n\nOryginalna prośba użytkownika (cała wiadomość):"
+            f"\n{user_message}\n"
+        )
+        comp = await self._llm_modules.complete(PRESENTATION_EDIT_SYSTEM, user_part)
+        await record_llm_usage_event(
+            session, user_id=user_id, call_kind="module", module_name="presentation_edit",
+            completion=comp, system_text=PRESENTATION_EDIT_SYSTEM, user_text=user_part,
+        )
+        new_spec = parse_presentation_json(comp.text or "")
+        if not new_spec:
+            return [], "Model nie zwrócił poprawnej zaktualizowanej specyfikacji — doprecyzuj polecenie (lub wskaż właściwy plik PPTX / planu)."
+        new_spec = normalize_presentation_spec(new_spec)
+        if not new_spec:
+            return [], "Odpowiedź modelu nie da się ułożyć w poprawną specyfikację (JSON). Spróbuj jeszcze raz."
+        try:
+            pptx_b = spec_to_pptx_bytes(new_spec)
+        except Exception as exc:
+            logger.exception("edit spec_to_pptx: %s", exc)
+            return [], f"Nie udało się złożyć pliku PPTX: {exc!s:.200}"
+        plan_text = spec_to_json_text(new_spec)
+        extra = {
+            "module": "presentation",
+            "tool_args": tool_args,
+            "format": "json_spec",
+            "role": "plan_source",
+            "edited_from_file_id": str(fid),
+        }
+        plan_id = await self._persist_file(
+            session, user_id, project_id, "presentation",
+            data=plan_text.encode("utf-8"), mime="text/plain; charset=utf-8", ext="txt",
+            extra={**extra, "file_stem_suffix": "plan"},
+            index_override=plan_text[:20000],
+        )
+        plan_plain = spec_to_readable_plan_text(new_spec)
+        pdf_title = (new_spec.get("title") or _resolve_file_stem("presentation", tool_args))[:500]
+        try:
+            pdf_bytes = text_to_pdf(plan_plain, title=pdf_title)
+        except Exception as exc:
+            logger.warning("text_to_pdf (edit plan): %s", exc)
+            pdf_bytes = b""
+        plan_pdf_id: UUID | None = None
+        if pdf_bytes:
+            extra_pdf = {
+                **extra,
+                "file_stem_suffix": "plan_pdf",
+                "companion": "json_plan",
+                "companion_id": str(plan_id),
+                "format": "plan_pdf",
+            }
+            plan_pdf_id = await self._persist_file(
+                session, user_id, project_id, "presentation",
+                data=pdf_bytes, mime="application/pdf", ext="pdf",
+                extra=extra_pdf, index_override=plan_plain[:20000],
+            )
+        extra_px = {
+            "module": "presentation",
+            "tool_args": tool_args,
+            "format": "pptx",
+            "file_stem_suffix": "slajdy",
+            "companion": "json_plan",
+            "companion_id": str(plan_id),
+            "edited_from_file_id": str(fid),
+        }
+        idx_pptx = (plan_plain or extract_pptx_plain_text(pptx_b) or plan_text)[:20000]
+        pptx_id = await self._persist_file(
+            session, user_id, project_id, "presentation",
+            data=pptx_b, mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            ext="pptx", extra=extra_px, index_override=idx_pptx,
+        )
+        out_e: list[UUID] = [plan_id]
+        if plan_pdf_id is not None:
+            out_e.append(plan_pdf_id)
+        out_e.append(pptx_id)
+        return out_e, None
 
     async def _handle_sound_effect(
         self,
