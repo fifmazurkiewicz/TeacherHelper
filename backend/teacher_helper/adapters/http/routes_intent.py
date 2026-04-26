@@ -8,7 +8,7 @@ from teacher_helper.adapters.http.deps import CurrentUser, DbSession
 from teacher_helper.adapters.http.schemas import AnalyzeIntentRequest
 from teacher_helper.infrastructure.db.llm_usage import record_llm_usage_event
 from teacher_helper.infrastructure.factories import build_llm_client
-from teacher_helper.use_cases.chat_orchestrator import ORCHESTRATOR_SYSTEM, parse_orchestration_json
+from teacher_helper.use_cases.chat_orchestrator import orchestrator_system_prompt, parse_orchestration_json
 
 router = APIRouter(prefix="/v1/intent", tags=["intent"])
 _llm = build_llm_client()
@@ -18,14 +18,15 @@ _llm = build_llm_client()
 async def analyze_intent(session: DbSession, user: CurrentUser, body: AnalyzeIntentRequest) -> dict:
     """Lekki endpoint diagnostyczny — ten sam kontrakt JSON co orchestrator."""
     user_text = body.message.strip()
-    comp = await _llm.complete(ORCHESTRATOR_SYSTEM, user_text)
+    sys_prompt = orchestrator_system_prompt()
+    comp = await _llm.complete(sys_prompt, user_text)
     await record_llm_usage_event(
         session,
         user_id=user.id,
         call_kind="intent_analyze",
         module_name=None,
         completion=comp,
-        system_text=ORCHESTRATOR_SYSTEM,
+        system_text=sys_prompt,
         user_text=user_text,
     )
     await session.commit()

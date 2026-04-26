@@ -120,6 +120,9 @@ def text_to_pptx(text: str, title: str = "") -> bytes:
         if slide.placeholders[1]:
             slide.placeholders[1].text = text[:500]
 
+    from teacher_helper.infrastructure.presentation_spec import apply_colorful_theme_to_presentation
+
+    apply_colorful_theme_to_presentation(prs)
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()

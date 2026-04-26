@@ -1056,7 +1056,13 @@ export default function AssistantPage() {
                   )}
                   {assistantFiles && att && (
                     <div className="mt-3 border-t border-ink-800/10 pt-3 dark:border-paper-100/10">
-                      {showMediaPreview && <ChatAttachmentPreviews attachments={att} />}
+                      {showMediaPreview && (
+                        <ChatAttachmentPreviews
+                          attachments={att}
+                          onDownloadFile={(id) => void downloadFromChat(id)}
+                          downloadingId={downloadingId}
+                        />
+                      )}
                       <p
                         className={
                           showMediaPreview

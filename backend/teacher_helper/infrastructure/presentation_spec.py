@@ -8,6 +8,60 @@ from typing import Any
 
 # --- Normalizacja specyfikacji z LLM / z pliku JSON ---
 
+# Domyślna paleta (gdy brak / częściowy `theme` w specie)
+_DEFAULT_THEME_RGB: dict[str, tuple[int, int, int]] = {
+    "background": (0x1A, 0x24, 0x3A),
+    "title": (0x7E, 0xC8, 0xF0),
+    "body": (0xE8, 0xF0, 0xF8),
+    "muted": (0x9A, 0xB4, 0xCC),
+}
+_THEME_JSON_KEYS: tuple[str, ...] = ("background", "title", "body", "muted")
+
+
+def _parse_hex_rgb(s: str) -> tuple[int, int, int] | None:
+    t = s.strip().lstrip("#")
+    if len(t) == 3 and all(c in "0123456789abcdefABCDEF" for c in t):
+        t = "".join(c * 2 for c in t)
+    if len(t) != 6 or not all(c in "0123456789abcdefABCDEF" for c in t):
+        return None
+    try:
+        return (int(t[0:2], 16), int(t[2:4], 16), int(t[4:6], 16))
+    except ValueError:
+        return None
+
+
+def _normalize_theme_dict(data: Any) -> dict[str, str] | None:
+    """Waliduje kolory z LLM: klucze background/title/body/muted, wartości #RRGGBB."""
+    if not isinstance(data, dict):
+        return None
+    out: dict[str, str] = {}
+    for k in _THEME_JSON_KEYS:
+        v = data.get(k)
+        if v is None:
+            continue
+        s = str(v).strip()
+        parsed = _parse_hex_rgb(s)
+        if not parsed:
+            continue
+        r, g, b = parsed
+        out[k] = f"#{r:02X}{g:02X}{b:02X}"
+    return out if out else None
+
+
+def ensure_theme_persisted(
+    new_spec: dict[str, Any], previous_spec: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Przy edycji: gdy nowy JSON nie zawiera motywu, kopiuj z poprzedniej wersji."""
+    if not previous_spec:
+        return new_spec
+    if _normalize_theme_dict(new_spec.get("theme")):
+        return new_spec
+    prev = _normalize_theme_dict(previous_spec.get("theme"))
+    if not prev:
+        return new_spec
+    merged = {**new_spec, "theme": prev}
+    return merged
+
 
 def normalize_presentation_spec(data: Any) -> dict[str, Any] | None:
     """Waliduje i porządkuje słownik z modelu. Zwraca None, gdy brak slajdów merytorycznych."""
@@ -60,12 +114,16 @@ def normalize_presentation_spec(data: Any) -> dict[str, Any] | None:
     has_substance = bool(out_slides) or bool(desc and desc.strip()) or (title != "Prezentacja")
     if not has_substance:
         return None
-    return {
+    theme: dict[str, str] | None = _normalize_theme_dict(data.get("theme") if isinstance(data, dict) else None)
+    out: dict[str, Any] = {
         "version": 1,
         "title": title,
         "description": desc,
         "slides": out_slides,
     }
+    if theme:
+        out["theme"] = theme
+    return out
 
 
 def parse_presentation_json(raw: str) -> dict[str, Any] | None:
@@ -93,7 +151,131 @@ def spec_to_json_text(spec: dict[str, Any]) -> str:
     return json.dumps(spec, ensure_ascii=False, indent=2)
 
 
-# --- PPTX ---
+# --- PPTX — motyw kolorowy (LLM w specie lub domyślna paleta) ---
+
+
+def _resolved_theme_colors(theme: dict[str, str] | None) -> dict[str, Any]:
+    from pptx.dml.color import RGBColor
+
+    out: dict[str, Any] = {}
+    th = theme if isinstance(theme, dict) else None
+    for k in _THEME_JSON_KEYS:
+        raw = (th or {}).get(k) if th else None
+        tup: tuple[int, int, int] | None
+        if raw:
+            tup = _parse_hex_rgb(str(raw))
+        else:
+            tup = None
+        if tup is None:
+            tup = _DEFAULT_THEME_RGB[k]
+        r, g, b = tup
+        out[k] = RGBColor(r, g, b)
+    return out
+
+
+def _apply_colorful_theme_to_slide(slide: Any, colors: dict[str, Any]) -> None:
+    """Tło i tekst wg palety (z LLM lub domyślnej)."""
+    from pptx.enum.shapes import PP_PLACEHOLDER
+    from pptx.util import Pt
+
+    BG = colors["background"]
+    TITLE = colors["title"]
+    BODY = colors["body"]
+    MUTED = colors["muted"]
+
+    try:
+        slide.background.fill.solid()
+        slide.background.fill.fore_color.rgb = BG
+    except Exception:
+        return
+
+    def _ph_type(shape: Any) -> Any:
+        try:
+            if shape.is_placeholder:
+                return shape.placeholder_format.type
+        except Exception:
+            pass
+        return None
+
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        tf = shape.text_frame
+        ph_t = _ph_type(shape)
+        is_title = ph_t in (PP_PLACEHOLDER.TITLE, PP_PLACEHOLDER.CENTER_TITLE)
+        is_sub = ph_t == PP_PLACEHOLDER.SUBTITLE
+
+        for p in tf.paragraphs:
+            t = (p.text or "").strip()
+            line_muted = t.startswith(("[", "("))
+            if is_sub or (line_muted and not is_title):
+                color = MUTED
+            elif is_title:
+                color = TITLE
+            else:
+                color = BODY
+            for run in p.runs:
+                run.font.color.rgb = color
+            if not p.runs:
+                p.font.color.rgb = color
+            if is_title:
+                p.font.bold = True
+                try:
+                    p.font.size = Pt(32)
+                except Exception:
+                    pass
+        try:
+            tf.word_wrap = True
+        except Exception:
+            pass
+
+
+def apply_colorful_theme_to_presentation(
+    prs: Any, theme: dict[str, str] | None = None
+) -> None:
+    """Stosuj do wszystkich slajdów po zbudowaniu treści. ``theme`` z pola ``spec.theme`` (hex #RRGGBB)."""
+    color_map = _resolved_theme_colors(theme)
+    for s in prs.slides:
+        _apply_colorful_theme_to_slide(s, color_map)
+
+
+def _cover_subtitle_font_pt(text_len: int) -> int:
+    """Czcionka opisu na okładce — mniejsza przy długim tekście (w tym agendzie)."""
+    if text_len < 200:
+        return 18
+    if text_len < 420:
+        return 16
+    if text_len < 800:
+        return 14
+    if text_len < 1200:
+        return 12
+    return 11
+
+
+def _content_body_font_pt(num_nonempty_lines: int, max_line_len: int) -> int:
+    """Czcionka listy na slajdzie treści — zmniejsz przy wielu lub długich punktach."""
+    n = num_nonempty_lines
+    m = max_line_len
+    pt = 18
+    if n > 6 or m > 100:
+        pt = 14
+    elif n > 4 or m > 78:
+        pt = 15
+    elif n > 3 or m > 58:
+        pt = 16
+    elif n > 2 and m > 50:
+        pt = 17
+    return max(11, min(pt, 20))
+
+
+def _set_textframe_font_pt(tf: Any, pt: int) -> None:
+    from pptx.util import Pt
+
+    s = max(11, min(int(pt), 24))
+    for p in tf.paragraphs:
+        p.font.size = Pt(s)
+        for r in p.runs:
+            r.font.size = Pt(s)
 
 
 def spec_to_pptx_bytes(spec: dict[str, Any]) -> bytes:
@@ -104,14 +286,21 @@ def spec_to_pptx_bytes(spec: dict[str, Any]) -> bytes:
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
     title = (spec.get("title") or "Prezentacja")[:200]
-    desc = (spec.get("description") or "")[:1200]
+    desc = (spec.get("description") or "")[:2200]
     # Slajd 1 — tytuł + opis
     layout0 = prs.slide_layouts[0]
     slide0 = prs.slides.add_slide(layout0)
     slide0.shapes.title.text = title
     if len(slide0.placeholders) > 1:
         ph = slide0.placeholders[1]
-        ph.text = desc if desc else " "
+        dplain = desc if desc else " "
+        ph.text = dplain
+        try:
+            _set_textframe_font_pt(
+                ph.text_frame, _cover_subtitle_font_pt(len(dplain))
+            )
+        except Exception:
+            pass
 
     layout1 = prs.slide_layouts[1]
     for s in spec.get("slides") or []:
@@ -133,20 +322,29 @@ def spec_to_pptx_bytes(spec: dict[str, Any]) -> bytes:
         body = slide.placeholders[1]
         tf = body.text_frame
         tf.clear()
+        nonempty = [x for x in body_lines if str(x).strip()]
+        mlen = max((len(x) for x in nonempty), default=0)
+        base_pt = _content_body_font_pt(len(nonempty), mlen)
         if not body_lines:
             p0 = tf.paragraphs[0]
             p0.text = " "
-            p0.font.size = Pt(18)
+            p0.font.size = Pt(base_pt)
         for i, line in enumerate(body_lines):
+            small = line.startswith("[") or line.startswith("(")
+            fs = max(11, base_pt - 1) if small else base_pt
             if i == 0:
                 p = tf.paragraphs[0]
                 p.text = line
-                p.font.size = Pt(18)
+                p.font.size = Pt(fs)
             else:
                 p = tf.add_paragraph()
                 p.text = line
-                p.font.size = Pt(16 if line.startswith("[") or line.startswith("(") else 18)
+                p.font.size = Pt(fs)
                 p.level = 0
+
+    th = spec.get("theme")
+    spec_theme = th if isinstance(th, dict) else None
+    apply_colorful_theme_to_presentation(prs, _normalize_theme_dict(spec_theme))
     buf = io.BytesIO()
     prs.save(buf)
     return buf.getvalue()
@@ -228,7 +426,11 @@ def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
 
 def spec_to_readable_plan_text(spec: dict[str, Any]) -> str:
     """Czytelny opis planu (tytuł, opis, slajdy) — do pliku PDF i podglądu."""
-    parts: list[str] = [f"# {spec.get('title', '')}", "", (spec.get("description") or "").strip(), ""]
+    t_raw = _normalize_theme_dict(spec.get("theme")) if spec.get("theme") else None
+    theme_line = ""
+    if t_raw:
+        theme_line = "Motyw kolorów: " + ", ".join(f"{k}={t_raw[k]}" for k in _THEME_JSON_KEYS if k in t_raw) + "\n\n"
+    parts: list[str] = [f"# {spec.get('title', '')}", "", (spec.get("description") or "").strip(), "", theme_line]
     for i, s in enumerate(spec.get("slides") or [], start=1):
         st = s.get("title", "") if isinstance(s, dict) else ""
         parts.append(f"## Slajd {i + 1} — {st}")
