@@ -22,9 +22,24 @@ import {
   useAssistantActivity,
   type AssistantChatResponse,
 } from "@/context/AssistantActivityContext";
+import { ChatAttachmentPreviews, hasPreviewableAttachments } from "@/components/ChatAttachmentPreviews";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 type ChatAttachment = { id: string; name: string; mime_type: string };
+
+function DownloadGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3v9m0 0l-4-4m4 4l4-4M5 20h14"
+      />
+    </svg>
+  );
+}
 
 function coerceMessageExtra(raw: unknown): Record<string, unknown> | undefined {
   if (raw == null) return undefined;
@@ -115,6 +130,10 @@ const SIDEBAR_WIDTH_MAX = 520;
 const HISTORY_COLLAPSED_KEY = "teacher-helper:assistant-history-collapsed";
 
 function readInitialHistoryCollapsed(): boolean {
+  // Na telefonach zawsze zaczynamy z zwiniętą historią (nadpisuje zapis z sesji z szerszego ekranu).
+  if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches) {
+    return true;
+  }
   if (typeof sessionStorage === "undefined") return false;
   try {
     const v = sessionStorage.getItem(HISTORY_COLLAPSED_KEY);
@@ -122,9 +141,6 @@ function readInitialHistoryCollapsed(): boolean {
     if (v === "0" || v === "false") return false;
   } catch {
     /* ignore */
-  }
-  if (typeof window !== "undefined" && window.matchMedia?.("(max-width: 639px)").matches) {
-    return true;
   }
   return false;
 }
@@ -839,22 +855,22 @@ export default function AssistantPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
-      <header className="flex min-h-12 shrink-0 items-center justify-between gap-2 border-b border-ink-800/15 px-2 py-1.5 sm:px-3 sm:py-0 dark:border-paper-100/10">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden text-[0.94rem] sm:text-base">
+      <header className="flex min-h-11 shrink-0 items-center justify-between gap-1.5 border-b border-ink-800/15 px-2 py-1 sm:px-3 sm:min-h-12 sm:gap-2 sm:py-0 dark:border-paper-100/10">
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           {historyCollapsed && (
             <button
               type="button"
               onClick={() => setHistoryCollapsed(false)}
-              className="inline-flex shrink-0 items-center gap-1 rounded-md border border-ink-800/20 bg-paper-50 px-2 py-1.5 text-xs font-medium text-ink-800 hover:bg-paper-100 sm:text-sm dark:border-paper-100/20 dark:bg-ink-900 dark:text-paper-200 dark:hover:bg-ink-800"
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-ink-800/20 bg-paper-50 px-1.5 py-1 text-[0.7rem] font-medium text-ink-800 hover:bg-paper-100 sm:gap-1 sm:px-2 sm:py-1.5 sm:text-sm dark:border-paper-100/20 dark:bg-ink-900 dark:text-paper-200 dark:hover:bg-ink-800"
               aria-expanded="false"
               title="Pokaż listę rozmów"
             >
-              <IconChevronRight className="size-4" />
+              <IconChevronRight className="size-3.5 sm:size-4" />
               <span className="whitespace-nowrap">Historia</span>
             </button>
           )}
-          <span className="min-w-0 truncate text-sm font-semibold text-accent sm:text-base">Teacher Helper</span>
+          <span className="min-w-0 truncate text-[0.8125rem] font-semibold text-accent sm:text-base">Teacher Helper</span>
         </div>
         <div className="flex min-w-0 flex-1 justify-end sm:shrink-0 sm:flex-initial">
           <div className="flex max-w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto text-xs [scrollbar-width:none] sm:gap-2 sm:text-sm [&::-webkit-scrollbar]:hidden">
@@ -918,12 +934,12 @@ export default function AssistantPage() {
               <span className="hidden sm:inline">Zwiń</span>
             </button>
           </div>
-          <div className="p-2">
+          <div className="p-1.5 sm:p-2">
             <button
               type="button"
               onClick={() => void startNewChat()}
               disabled={loadingThread || loading || chatPending != null}
-              className="w-full rounded-lg border border-ink-800/20 bg-paper-50 py-2 text-sm font-medium text-ink-900 hover:bg-paper-100 disabled:opacity-50 dark:border-paper-100/20 dark:bg-ink-950 dark:text-paper-100 dark:hover:bg-ink-800"
+              className="w-full rounded-lg border border-ink-800/20 bg-paper-50 py-1.5 text-sm font-medium text-ink-900 hover:bg-paper-100 disabled:opacity-50 sm:py-2 dark:border-paper-100/20 dark:bg-ink-950 dark:text-paper-100 dark:hover:bg-ink-800"
             >
               Nowy czat
             </button>
@@ -1017,54 +1033,98 @@ export default function AssistantPage() {
         )}
 
         <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-paper-50 dark:bg-ink-950">
-          <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 sm:space-y-3 sm:p-4">
             {loadingThread && (
-              <p className="text-sm text-ink-500">Wczytywanie rozmowy…</p>
+              <p className="text-xs text-ink-500 sm:text-sm">Wczytywanie rozmowy…</p>
             )}
             {!loadingThread && messages.length === 0 && (
-              <p className="text-sm text-ink-500">
+              <p className="text-xs text-ink-500 sm:text-sm">
                 Zacznij rozmowę. Mogę oprzeć się na Twoich materiałach w bibliotece oraz na plikach PDF, DOCX lub TXT,
                 które dołączysz poniżej.
               </p>
             )}
             {!loadingThread &&
-              messages.map((msg, i) => (
+              messages.map((msg, i) => {
+                const att = msg.attachments;
+                const assistantFiles = msg.role === "assistant" && att && att.length > 0;
+                const showMediaPreview = Boolean(assistantFiles && att && hasPreviewableAttachments(att));
+                return (
                 <div
                   key={msg.id ?? `local-${i}`}
-                  className={`min-w-0 rounded-xl px-3 py-2 text-sm ${
+                  className={`min-w-0 rounded-xl px-2.5 py-1.5 text-sm sm:px-3 sm:py-2 ${
                     msg.role === "user"
                       ? "ms-2 me-0 bg-accent/12 text-ink-900 sm:ms-8 dark:text-paper-100"
                       : "ms-0 me-2 border border-ink-800/10 bg-white text-ink-900 sm:me-8 dark:border-paper-100/10 dark:bg-ink-900 dark:text-paper-100"
                   }`}
                 >
-                  <span className="text-xs font-semibold uppercase tracking-wide text-ink-500 dark:text-paper-500">
+                  <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-ink-500 sm:text-xs dark:text-paper-500">
                     {msg.role === "user" ? "Ty" : "Asystent"}
                   </span>
                   <pre className="mt-1 min-w-0 whitespace-pre-wrap break-words font-sans">{msg.text}</pre>
-                  {msg.role === "user" && msg.attachments && msg.attachments.length > 0 && (
+                  {msg.role === "user" && att && att.length > 0 && (
                     <ul className="mt-2 list-inside list-disc text-xs text-ink-600 dark:text-paper-400">
-                      {msg.attachments.map((a) => (
+                      {att.map((a) => (
                         <li key={a.id}>{a.name}</li>
                       ))}
                     </ul>
                   )}
-                  {msg.role === "assistant" && msg.attachments && msg.attachments.length > 0 && (
+                  {assistantFiles && att && (
                     <div className="mt-3 border-t border-ink-800/10 pt-3 dark:border-paper-100/10">
-                      <p className="mb-2 text-xs font-medium text-ink-600 dark:text-paper-400">Pobierz plik</p>
+                      {showMediaPreview && (
+                        <ChatAttachmentPreviews
+                          attachments={att}
+                          onDownloadFile={(id) => void downloadFromChat(id)}
+                          downloadingId={downloadingId}
+                        />
+                      )}
+                      <p
+                        className={
+                          showMediaPreview
+                            ? "mb-1 mt-3 text-xs font-medium text-ink-600 dark:text-paper-400"
+                            : "mb-2 text-xs font-medium text-ink-600 dark:text-paper-400"
+                        }
+                      >
+                        {showMediaPreview ? "Pobierz oryginalne pliki" : "Pobierz plik"}
+                      </p>
+                      {showMediaPreview && (
+                        <p className="mb-2 text-xs text-ink-500 dark:text-paper-500">
+                          W podglądzie powyżej: odtwarzacz i wyraźny przycisk „Pobierz utwór” przy plikach audio. Możesz też pobrać stąd — poniżej. Sekcję podglądu zwiń w nagłówku, żeby zajmowała mniej miejsca.
+                        </p>
+                      )}
                       <div className="flex flex-wrap gap-2">
-                        {msg.attachments.map((a) => {
-                          const audio = (a.mime_type || "").startsWith("audio/");
-                          const label = audio ? "Pobierz MP3 / audio" : "Pobierz";
+                        {att.map((a) => {
+                          const isAudioFile =
+                            (a.mime_type || "").startsWith("audio/") ||
+                            /\.(wav|mp3|m4a|ogg|flac|opus|aac|webm)$/i.test(a.name);
                           return (
                             <button
                               key={a.id}
                               type="button"
                               disabled={downloadingId === a.id}
                               onClick={() => void downloadFromChat(a.id)}
-                              className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/15 disabled:opacity-50 dark:text-accent-muted"
                               title={a.name}
+                              className="inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-left text-xs font-medium text-accent hover:bg-accent/15 disabled:opacity-50 dark:text-accent-muted"
                             >
-                              {downloadingId === a.id ? "…" : `${label}: ${a.name.length > 36 ? `${a.name.slice(0, 34)}…` : a.name}`}
+                              {downloadingId === a.id ? (
+                                "Pobieranie…"
+                              ) : isAudioFile ? (
+                                <>
+                                  <DownloadGlyph className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="flex min-w-0 flex-col gap-0.5">
+                                    <span>Pobierz utwór</span>
+                                    <span
+                                      className="max-w-[min(16rem,100%)] truncate text-[0.7rem] font-normal text-ink-700 dark:text-paper-300"
+                                    >
+                                      {a.name}
+                                    </span>
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <DownloadGlyph className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="max-w-[16rem] truncate">Pobierz: {a.name}</span>
+                                </>
+                              )}
                             </button>
                           );
                         })}
@@ -1072,10 +1132,11 @@ export default function AssistantPage() {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
             {!loadingThread && (loading || chatPending != null) && (
               <div
-                className="me-2 flex min-w-0 gap-2 rounded-xl border border-accent/25 bg-accent/5 px-3 py-3 text-sm text-ink-800 sm:me-8 sm:gap-3 dark:border-accent/30 dark:bg-accent/10 dark:text-paper-100"
+                className="me-2 flex min-w-0 gap-1.5 rounded-xl border border-accent/25 bg-accent/5 px-2.5 py-2.5 text-sm text-ink-800 sm:me-8 sm:gap-3 sm:px-3 sm:py-3 dark:border-accent/30 dark:bg-accent/10 dark:text-paper-100"
                 aria-live="polite"
               >
                 <Spinner className="mt-0.5 shrink-0" />
@@ -1104,7 +1165,7 @@ export default function AssistantPage() {
           </div>
 
           {(pendingProjectCreate || pendingProjectDelete) && (
-            <div className="shrink-0 space-y-2 border-t border-ink-800/10 px-4 py-3 dark:border-paper-100/10">
+            <div className="shrink-0 space-y-2 border-t border-ink-800/10 px-3 py-2.5 sm:px-4 sm:py-3 dark:border-paper-100/10">
               {pendingProjectCreate && (
                 <div
                   className="rounded-xl border border-accent/30 bg-accent/5 px-3 py-3 text-sm text-ink-800 dark:border-accent/40 dark:bg-accent/10 dark:text-paper-100"
@@ -1217,10 +1278,10 @@ export default function AssistantPage() {
           )}
 
           {error && (
-            <p className="shrink-0 px-4 text-sm text-red-600 dark:text-red-400">{error}</p>
+            <p className="shrink-0 px-3 text-sm text-red-600 sm:px-4 dark:text-red-400">{error}</p>
           )}
 
-          <div className="shrink-0 border-t border-ink-800/10 bg-paper-50/90 px-3 pb-3 pt-2 dark:border-paper-100/10 dark:bg-ink-950/90">
+          <div className="shrink-0 border-t border-ink-800/10 bg-paper-50/90 px-2 pb-2 pt-1.5 sm:px-3 sm:pb-3 sm:pt-2 dark:border-paper-100/10 dark:bg-ink-950/90">
             <input
               ref={fileInputRef}
               type="file"
@@ -1258,7 +1319,7 @@ export default function AssistantPage() {
               )}
             </div>
             <div className="mx-auto max-w-3xl">
-              <div className="flex min-h-[52px] items-end gap-0.5 rounded-[28px] border border-ink-800/15 bg-white px-1.5 py-1.5 shadow-sm dark:border-paper-100/12 dark:bg-ink-900">
+              <div className="flex min-h-[48px] items-end gap-0.5 rounded-[24px] border border-ink-800/15 bg-white px-1 py-1 shadow-sm sm:min-h-[52px] sm:rounded-[28px] sm:px-1.5 sm:py-1.5 dark:border-paper-100/12 dark:bg-ink-900">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -1267,9 +1328,9 @@ export default function AssistantPage() {
                   }
                   title={`Załącz plik PDF, DOCX lub TXT (do ${CHAT_ATTACH_MAX}, max 50 MB — folder tej rozmowy w Materiałach).`}
                   aria-label="Załącz plik"
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full text-ink-700 hover:bg-paper-100 disabled:opacity-40 dark:text-paper-200 dark:hover:bg-ink-800"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-700 hover:bg-paper-100 disabled:opacity-40 sm:size-9 dark:text-paper-200 dark:hover:bg-ink-800"
                 >
-                  {uploadBusy ? <Spinner className="size-[18px]" /> : <IconPlusChat className="size-5" />}
+                  {uploadBusy ? <Spinner className="size-4 sm:size-[18px]" /> : <IconPlusChat className="size-[1.1rem] sm:size-5" />}
                 </button>
                 <textarea
                   ref={composerTextareaRef}
@@ -1289,7 +1350,7 @@ export default function AssistantPage() {
                   rows={1}
                   placeholder="Wiadomość…"
                   disabled={loadingThread || loading || chatPending != null || uploadBusy || voiceRecording || voiceBusy}
-                  className="min-h-[40px] max-h-[200px] w-0 min-w-0 flex-1 resize-none border-0 bg-transparent px-1 py-2 text-sm text-ink-900 outline-none ring-0 placeholder:text-ink-400 focus:ring-0 dark:text-paper-100 dark:placeholder:text-paper-500"
+                  className="min-h-[36px] max-h-[200px] w-0 min-w-0 flex-1 resize-none border-0 bg-transparent px-0.5 py-1.5 text-sm text-ink-900 outline-none ring-0 placeholder:text-ink-400 focus:ring-0 sm:min-h-[40px] sm:px-1 sm:py-2 dark:text-paper-100 dark:placeholder:text-paper-500"
                 />
                 <button
                   type="button"
@@ -1301,13 +1362,13 @@ export default function AssistantPage() {
                       : "Mów do mikrofonu — kliknij, by zacząć; kliknij ponownie, by wysłać nagranie do transkrypcji"
                   }
                   aria-label={voiceRecording ? "Zatrzymaj nagrywanie" : "Nagraj wiadomość głosową"}
-                  className={`flex size-9 shrink-0 items-center justify-center rounded-full disabled:opacity-40 ${
+                  className={`flex size-8 shrink-0 items-center justify-center rounded-full disabled:opacity-40 sm:size-9 ${
                     voiceRecording
                       ? "bg-red-500/20 text-red-600 dark:bg-red-500/25 dark:text-red-400"
                       : "text-ink-700 hover:bg-paper-100 dark:text-paper-200 dark:hover:bg-ink-800"
                   }`}
                 >
-                  {voiceBusy ? <Spinner className="size-[18px]" /> : <IconMic className="size-5" />}
+                  {voiceBusy ? <Spinner className="size-4 sm:size-[18px]" /> : <IconMic className="size-[1.1rem] sm:size-5" />}
                 </button>
                 <button
                   type="button"
@@ -1323,16 +1384,16 @@ export default function AssistantPage() {
                   }
                   title="Wyślij"
                   aria-label="Wyślij wiadomość"
-                  className={`mb-0.5 flex size-9 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-35 ${
+                  className={`mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-35 sm:size-9 ${
                     message.trim() || chatAttachments.length > 0
                       ? "bg-accent text-white hover:bg-accent-dim"
                       : "bg-ink-200 text-ink-500 dark:bg-ink-700 dark:text-paper-400"
                   }`}
                 >
                   {loading || chatPending != null ? (
-                    <Spinner className="size-[18px] border-2 border-white/40 border-t-white" />
+                    <Spinner className="size-4 border-2 border-white/40 border-t-white sm:size-[18px]" />
                   ) : (
-                    <IconArrowUp className="size-5" />
+                    <IconArrowUp className="size-[1.1rem] sm:size-5" />
                   )}
                 </button>
               </div>

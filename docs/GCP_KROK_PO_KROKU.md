@@ -235,7 +235,7 @@ Jeśli wolisz coś prostszego, często jest już **`nano`** (`nano .env`, zapis:
    - **`CORS_ORIGINS`** — zgodnie z sekcją na początku dokumentu,
    - `STORAGE_ROOT=/app/data/storage`,
    - **`ADMIN_SEED_EMAIL`**, **`ADMIN_SEED_PASSWORD`** — **przed pierwszym** `up -d`, bo start kontenera backendu odpala migracje (w tym seed admina z migracji `007`); patrz sekcja *Bezpieczeństwo* powyżej,
-   - opcjonalnie wg potrzeb: `OPENAI_API_KEY` / `EMBEDDINGS_BACKEND`, **KIE** / **Replicate** (SFX), **Langfuse** (`LANGFUSE_*`) — pełna lista komentarzy w `deploy/gcp/.env.example`.
+   - opcjonalnie wg potrzeb: `OPENAI_API_KEY` / `EMBEDDINGS_BACKEND`, **KIE**, **ElevenLabs** (SFX), **Langfuse** (`LANGFUSE_*`) — pełna lista komentarzy w `deploy/gcp/.env.example`.
 4. `chmod 600 .env`
 5. Uruchomienie:
 

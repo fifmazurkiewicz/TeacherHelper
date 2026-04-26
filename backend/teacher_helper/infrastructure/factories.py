@@ -119,20 +119,19 @@ def build_music_generator() -> MusicGeneratorPort | None:
 
 
 def build_sound_generator() -> SoundGeneratorPort | None:
-    """Replicate sound effects — ``None`` gdy brak ``REPLICATE_API_KEY``."""
+    """ElevenLabs Text to Sound (SFX) — ``None`` gdy brak ``ELEVENLABS_API_KEY``."""
     s = get_settings()
-    if not (s.replicate_api_key or "").strip():
+    if not (s.elevenlabs_api_key or "").strip():
         return None
-    from teacher_helper.infrastructure.replicate_sound import ReplicateSoundGenerator
+    from teacher_helper.infrastructure.elevenlabs_sound import ElevenLabsSoundGenerator
 
-    return ReplicateSoundGenerator(
-        api_key=s.replicate_api_key.strip(),  # type: ignore[arg-type]
-        model=s.replicate_sound_model,
-        musicgen_model_version=s.replicate_sound_musicgen_version,
-        output_format=s.replicate_sound_output_format,
-        timeout=s.replicate_sound_timeout_seconds,
-        poll_interval=s.replicate_sound_poll_interval_seconds,
-        max_duration_seconds=s.replicate_sound_max_duration_seconds,
+    return ElevenLabsSoundGenerator(
+        api_key=s.elevenlabs_api_key.strip(),  # type: ignore[arg-type]
+        model_id=s.elevenlabs_sound_model_id,
+        output_format=s.elevenlabs_sound_output_format,
+        timeout=s.elevenlabs_sound_timeout_seconds,
+        max_duration_seconds=s.elevenlabs_sound_max_duration_seconds,
+        prompt_influence=s.elevenlabs_sound_prompt_influence,
     )
 
 

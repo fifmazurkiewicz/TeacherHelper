@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     openrouter_image_timeout_seconds: float = Field(default=120.0)
     # Opcjonalnie: image_config.image_size dla modeli Gemini Image (np. 1K, 2K); puste = nie wysyłaj.
     openrouter_image_size: str | None = Field(default="1K")
+    # Ile maks. obrazów osadzamy w jednym PPTX (slajdy z include_image + image_hint) — reszta tylko tekst/placeholder
+    presentation_max_embedded_images: int = Field(default=10, ge=0, le=10)
 
     # --- Embeddingi: OpenAI (bezpośrednio) albo OpenRouter (/v1/embeddings); patrz EMBEDDINGS_BACKEND ---
     embeddings_backend: Literal["auto", "openai", "openrouter"] = "auto"
@@ -144,19 +146,22 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_origins: str = "*"
 
-    # --- Replicate — generowanie efektów dźwiękowych (POST /v1/sound/generate) ---
-    replicate_api_key: str | None = None
-    # Model w formacie "owner/name" (np. meta/musicgen); musi obsługiwać parametry musicgen.
-    replicate_sound_model: str = "meta/musicgen"
-    # Wariant modelu musicgen: stereo-large | large | melody | stereo-melody-large
-    replicate_sound_musicgen_version: str = "stereo-large"
-    # Format wyjściowy: mp3 | wav
-    replicate_sound_output_format: str = "mp3"
-    # Czas oczekiwania na zakończenie predykcji (polling).
-    replicate_sound_timeout_seconds: float = Field(default=120.0)
-    replicate_sound_poll_interval_seconds: float = Field(default=2.0)
-    # Pojedyncze wywołanie MusicGen — typowo maks. 30 s (model meta/musicgen na Replicate).
-    replicate_sound_max_duration_seconds: int = Field(default=30, ge=1, le=30)
+    # --- ElevenLabs — krótkie SFX / odgłosy (Text to Sound) ---
+    # https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert
+    elevenlabs_api_key: str | None = None
+    elevenlabs_sound_model_id: str = "eleven_text_to_sound_v2"
+    # Jako parametr query `output_format` (np. mp3_44100_128) — zob. dokumentację API.
+    elevenlabs_sound_output_format: str = "mp3_44100_128"
+    elevenlabs_sound_timeout_seconds: float = Field(default=90.0, ge=5.0)
+    elevenlabs_sound_max_duration_seconds: int = Field(default=30, ge=1, le=30)
+    elevenlabs_sound_prompt_influence: float = Field(default=0.3, ge=0.0, le=1.0)
+    # Gdy wykryto np. polski w opisie SFX, krótkie tłumaczenie na angielski przed wysyłką do ElevenLabs
+    # (wymaga OPENROUTER_API_KEY). Wyłącz, jeśli wolisz wysyłać tylko surowy tekst.
+    elevenlabs_sfx_translate_to_english: bool = True
+    elevenlabs_sfx_translate_timeout_seconds: float = Field(default=25.0, ge=3.0)
+    elevenlabs_sfx_translate_max_tokens: int = Field(default=220, ge=32, le=500)
+    # Pusty = OPENROUTER_MODULE_MODEL
+    elevenlabs_sfx_translate_model: str | None = None
 
     # --- Opcjonalne: Alerty webhook ---
     alert_webhook_url: str | None = None
@@ -175,7 +180,7 @@ class Settings(BaseSettings):
             "langfuse_secret_key",
             "kie_webhook_hmac_key",
             "tavily_api_key",
-            "replicate_api_key",
+            "elevenlabs_api_key",
         ):
             val = getattr(self, name)
             if isinstance(val, str):

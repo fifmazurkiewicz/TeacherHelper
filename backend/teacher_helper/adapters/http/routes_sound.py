@@ -1,4 +1,4 @@
-"""Generowanie krótkich efektów dźwiękowych przez Replicate (meta/musicgen).
+"""Generowanie krótkich efektów dźwiękowych przez ElevenLabs (Text to Sound).
 
 Endpoint: POST /v1/sound/generate
 """
@@ -39,7 +39,7 @@ async def generate_sound(
     if gen is None:
         raise HTTPException(
             status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Replicate nie jest skonfigurowane — ustaw REPLICATE_API_KEY w .env.",
+            detail="ElevenLabs nie jest skonfigurowane — ustaw ELEVENLABS_API_KEY w .env.",
         )
 
     pid = body.project_id
@@ -53,13 +53,13 @@ async def generate_sound(
             body.prompt, duration_seconds=body.duration_seconds, mode="sfx",
         )
     except TimeoutError as exc:
-        logger.warning("Replicate timeout for user=%s: %s", user.id, exc)
+        logger.warning("ElevenLabs timeout for user=%s: %s", user.id, exc)
         raise HTTPException(
             status.HTTP_504_GATEWAY_TIMEOUT,
             detail=f"Generowanie dźwięku przekroczyło limit czasu: {exc!s:.300}",
         ) from exc
     except Exception as exc:
-        logger.error("Replicate error for user=%s: %s", user.id, exc)
+        logger.error("ElevenLabs error for user=%s: %s", user.id, exc)
         raise HTTPException(
             status.HTTP_502_BAD_GATEWAY,
             detail=f"Błąd generowania dźwięku: {exc!s:.400}",
@@ -67,9 +67,9 @@ async def generate_sound(
 
     await asyncio.to_thread(
         record_langfuse_model_call_sync,
-        observation_name="replicate:sound_effect",
+        observation_name="elevenlabs:sound_effect",
         model=result.model,
-        provider="replicate",
+        provider="elevenlabs",
         input_data={"prompt": body.prompt, "duration_seconds": body.duration_seconds},
         output_text=f"audio bytes={len(result.audio_data)} mime={result.mime_type}",
         user_id=user.id,
@@ -84,7 +84,7 @@ async def generate_sound(
         "kind": "sfx",
         "prompt": body.prompt,
         "duration_seconds": result.duration_seconds,
-        "replicate_model": result.model,
+        "elevenlabs_model": result.model,
     }
 
     key = await _storage.put(result.audio_data, prefix=f"u/{user.id}")
