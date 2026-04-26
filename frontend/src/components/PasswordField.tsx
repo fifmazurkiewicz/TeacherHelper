@@ -1,12 +1,22 @@
 import { useId, useState } from "react";
 
 type Props = {
-  label: string;
+  /** Puste = tylko pole (np. tabela); ustaw **ariaLabel**. */
+  label?: string;
+  /** Gdy brak `label` — wymagane do dostępności. */
+  ariaLabel?: string;
   value: string;
   onChange: (value: string) => void;
   required?: boolean;
   minLength?: number;
   autoComplete?: string;
+  /** Dodatkowe klasy na `input` (np. mniejsza czcionka w adminie). */
+  inputClassName?: string;
+  /** Otoczka ikony „oko” (szerokość w tabeli admina itd.). */
+  fieldWrapperClassName?: string;
+  /** Mniejsze ikony / pole (wiersz tabeli). */
+  compact?: boolean;
+  placeholder?: string;
 };
 
 function IconEye({ className }: { className?: string }) {
@@ -52,19 +62,35 @@ function IconEyeSlash({ className }: { className?: string }) {
 
 export function PasswordField({
   label,
+  ariaLabel = "Hasło",
   value,
   onChange,
   required,
   minLength,
   autoComplete,
+  inputClassName = "",
+  fieldWrapperClassName = "",
+  compact = false,
+  placeholder,
 }: Props) {
   const id = useId();
   const [show, setShow] = useState(false);
+  const baseInput = [
+    "w-full min-w-0 rounded-md border border-ink-800/20 bg-paper-50 pl-3 dark:border-paper-100/20 dark:bg-ink-950",
+    compact ? "py-1.5 pr-9 text-xs" : "py-2 pr-11",
+    inputClassName,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const wrap = label ? "flex flex-col gap-1 text-sm" : "min-w-0 flex-1";
+
+  const iconSz = compact ? "h-4 w-4" : "h-5 w-5";
+  const btnPad = compact ? "p-1" : "p-1.5";
 
   return (
-    <div className="flex flex-col gap-1 text-sm">
-      <label htmlFor={id}>{label}</label>
-      <div className="relative">
+    <div className={wrap}>
+      {label ? <label htmlFor={id}>{label}</label> : null}
+      <div className={`relative ${fieldWrapperClassName}`.trimEnd()}>
         <input
           id={id}
           type={show ? "text" : "password"}
@@ -72,17 +98,22 @@ export function PasswordField({
           minLength={minLength}
           value={value}
           autoComplete={autoComplete}
+          placeholder={placeholder}
+          aria-label={label ? undefined : ariaLabel}
           onChange={(e) => onChange(e.target.value)}
-          className="w-full rounded-md border border-ink-800/20 bg-paper-50 py-2 pl-3 pr-11 dark:border-paper-100/20 dark:bg-ink-950"
+          className={baseInput}
         />
         <button
           type="button"
           onClick={() => setShow((s) => !s)}
-          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1.5 text-ink-600 hover:bg-ink-800/10 dark:text-paper-400 dark:hover:bg-paper-100/10"
+          className={
+            "absolute right-1 top-1/2 -translate-y-1/2 rounded text-ink-600 hover:bg-ink-800/10 dark:text-paper-400 dark:hover:bg-paper-100/10 " +
+            btnPad
+          }
           aria-label={show ? "Ukryj hasło" : "Pokaż hasło"}
           aria-pressed={show}
         >
-          {show ? <IconEyeSlash className="h-5 w-5" /> : <IconEye className="h-5 w-5" />}
+          {show ? <IconEyeSlash className={iconSz} /> : <IconEye className={iconSz} />}
         </button>
       </div>
     </div>

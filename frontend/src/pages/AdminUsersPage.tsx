@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PasswordField } from "@/components/PasswordField";
 import { api, getAdminKeyHeaders } from "@/lib/api";
 
 type AdminUser = {
@@ -151,7 +152,7 @@ export default function AdminUsersPage() {
       <div>
         <h1 className="text-2xl font-bold">Użytkownicy</h1>
         <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">
-          Role, rate limit (żądania/min), dzienny limit tokenów LLM (UTC, dotyczy czatu) i reset haseł. Przy włączonym{" "}
+          Role, rate limit (żądania/min), dzienny limit tokenów LLM (UTC, dotyczy czatu) i reset haseł (ikonka oka = podgląd wpisywanego hasła). Przy włączonym{" "}
           <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">ADMIN_API_KEY</code> ustaw też{" "}
           <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">VITE_ADMIN_API_KEY</code> we frontendzie.
         </p>
@@ -275,22 +276,34 @@ export default function AdminUsersPage() {
                     )}
                     <button
                       type="button"
-                      onClick={() => { setResetPwId(resetPwId === u.id ? null : u.id); setNewPassword(""); }}
+                      onClick={() => {
+                        setResetPwId(resetPwId === u.id ? null : u.id);
+                        setNewPassword("");
+                      }}
                       className="text-xs text-ink-600 hover:underline dark:text-paper-400"
                     >
                       Reset hasła
                     </button>
                   </div>
                   {resetPwId === u.id && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <input
-                        type="password"
+                    <div className="mt-2 flex max-w-lg flex-col gap-2 sm:flex-row sm:items-end">
+                      <PasswordField
+                        key={u.id}
+                        ariaLabel={`Nowe hasło dla ${u.email}`}
                         value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
+                        onChange={setNewPassword}
+                        minLength={8}
+                        autoComplete="new-password"
                         placeholder="Nowe hasło (min. 8 zn.)"
-                        className="w-48 rounded border border-ink-800/20 px-2 py-1 text-xs dark:border-paper-100/20 dark:bg-ink-950"
+                        compact
+                        fieldWrapperClassName="w-full min-w-[12rem] max-w-md"
                       />
-                      <button type="button" onClick={() => void resetPassword(u.id)} disabled={busy} className="text-xs text-red-600 hover:underline dark:text-red-400">
+                      <button
+                        type="button"
+                        onClick={() => void resetPassword(u.id)}
+                        disabled={busy}
+                        className="shrink-0 text-xs text-red-600 hover:underline sm:mb-1 dark:text-red-400"
+                      >
                         Resetuj
                       </button>
                     </div>
