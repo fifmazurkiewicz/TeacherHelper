@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 
 import httpx
 
+from teacher_helper.config import get_settings
 from teacher_helper.use_cases.ports import SoundGeneratorPort, SoundResult
 
 logger = logging.getLogger(__name__)
@@ -18,12 +20,89 @@ _ELEVENLABS_SOUND_URL = "https://api.elevenlabs.io/v1/sound-generation"
 _MAX_AUDIO_BYTES = 50 * 1024 * 1024  # 50 MB
 _LOG_TEXT_MAX = 4000
 
-# Angielski prefix — model dobrze rozumie EN; w promptach mamy i treść użytkownika.
+# Cały użytkowy opis w docelowym polu `text` powinien być **po angielsku**; jeśli wejście
+# ma polskie (lub inne) znaki, przed wysyłką używamy OpenRouter (patrz `elevenlabs_sfx_translate_*`).
+
+_POLISH_DIA = re.compile(r"[\u0105\u0107\u0119\u0142\u0144\u00f3\u015b\u017a\u017c\u0104\u0106\u0118\u0141\u0143\u00d3\u015a\u0179\u017b]")
+_CYRILLIC = re.compile(r"[\u0400-\u04FF]")
+
 _SFX_USER_PREFIX = (
     "Non-musical sound effect, foley, ambient or cinematic hit only. "
     "Not a song: no verse/chorus structure, no sung lead vocal, no full track. "
-    "One coherent effect. "
+    "One coherent effect. The scene line below is in English. "
 )
+
+_TRANSLATE_SYS = (
+    "You rewrite a short line into concise English for a text-to-sound effect API. "
+    "Foley, ambience, nature, impacts — not music, no song structure. "
+    "Output a single line or at most two short lines of English (sound design terms). "
+    "No quotes, no labels like 'Output:', English only."
+)
+
+
+def _likely_needs_english_sfx_line(text: str) -> bool:
+    t = (text or "").strip()
+    if not t:
+        return False
+    if _POLISH_DIA.search(t) or _CYRILLIC.search(t):
+        return True
+    return False
+
+
+def _message_text_from_completion(content: object) -> str:
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for p in content:
+            if isinstance(p, dict) and p.get("type") == "text" and "text" in p:
+                parts.append(str(p["text"]))
+            elif isinstance(p, str):
+                parts.append(p)
+        return "".join(parts).strip()
+    return str(content).strip()
+
+
+async def _translate_sfx_line_to_english(raw: str) -> str:
+    s = get_settings()
+    key = (s.openrouter_api_key or "").strip()
+    if not key or not s.elevenlabs_sfx_translate_to_english:
+        return raw
+    model = (s.elevenlabs_sfx_translate_model or "").strip() or (s.openrouter_module_model or "").strip()
+    if not model:
+        return raw
+    base = s.openrouter_base_url.rstrip("/")
+    url = f"{base}/chat/completions"
+    headers: dict[str, str] = {
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+    if (s.openrouter_http_referer or "").strip():
+        headers["HTTP-Referer"] = s.openrouter_http_referer.strip()
+    payload: dict = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": _TRANSLATE_SYS},
+            {"role": "user", "content": (raw or "").strip()[:5000]},
+        ],
+        "max_tokens": int(s.elevenlabs_sfx_translate_max_tokens),
+        "temperature": 0.15,
+    }
+    tmo = float(s.elevenlabs_sfx_translate_timeout_seconds)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(tmo, connect=15.0)) as client:
+        r = await client.post(url, json=payload, headers=headers)
+    if r.is_error:
+        raise RuntimeError(r.text[:600] or r.reason_phrase)
+    data = r.json()
+    choices = data.get("choices")
+    if not choices:
+        raise RuntimeError("OpenRouter: brak choices w odpowiedzi tłumaczenia SFX")
+    out = _message_text_from_completion((choices[0].get("message") or {}).get("content"))
+    if not (out or "").strip():
+        return raw
+    return out[:4000].strip()
 
 
 class ElevenLabsSoundGenerator(SoundGeneratorPort):
@@ -73,7 +152,30 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
         cap = self._max_duration_seconds
         duration = max(1, min(int(duration_seconds), cap))
         body_prompt = (prompt or "").strip()
-        text = f"{_SFX_USER_PREFIX}\n{body_prompt}".strip()
+        s = get_settings()
+        line_for_model = body_prompt
+        if body_prompt and _likely_needs_english_sfx_line(body_prompt) and s.elevenlabs_sfx_translate_to_english:
+            if (s.openrouter_api_key or "").strip():
+                try:
+                    line_for_model = await _translate_sfx_line_to_english(body_prompt)
+                    if line_for_model and line_for_model != body_prompt:
+                        logger.info(
+                            "ElevenLabs SFX: opis ujednolicono do EN przed API | in=%r | out=%r",
+                            body_prompt[:400],
+                            line_for_model[:500],
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "ElevenLabs SFX: tłumaczenie na EN nieudane, wysyłam oryginał: %s",
+                        str(exc)[:500],
+                    )
+                    line_for_model = body_prompt
+            else:
+                logger.info(
+                    "ElevenLabs SFX: w opisie wykryto znaki spoza typowego angielskiego, "
+                    "a OPENROUTER_API_KEY brak — wysyłam surowy opis. Ustaw OpenRouter albo opis w EN."
+                )
+        text = f"{_SFX_USER_PREFIX}\n{line_for_model}".strip()
 
         body: dict = {
             "text": text,

@@ -153,6 +153,13 @@ class Settings(BaseSettings):
     elevenlabs_sound_timeout_seconds: float = Field(default=90.0, ge=5.0)
     elevenlabs_sound_max_duration_seconds: int = Field(default=30, ge=1, le=30)
     elevenlabs_sound_prompt_influence: float = Field(default=0.3, ge=0.0, le=1.0)
+    # Gdy wykryto np. polski w opisie SFX, krótkie tłumaczenie na angielski przed wysyłką do ElevenLabs
+    # (wymaga OPENROUTER_API_KEY). Wyłącz, jeśli wolisz wysyłać tylko surowy tekst.
+    elevenlabs_sfx_translate_to_english: bool = True
+    elevenlabs_sfx_translate_timeout_seconds: float = Field(default=25.0, ge=3.0)
+    elevenlabs_sfx_translate_max_tokens: int = Field(default=220, ge=32, le=500)
+    # Pusty = OPENROUTER_MODULE_MODEL
+    elevenlabs_sfx_translate_model: str | None = None
 
     # --- Opcjonalne: Alerty webhook ---
     alert_webhook_url: str | None = None

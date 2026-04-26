@@ -90,7 +90,7 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
 - **generate_video** — storyboard/prompt wideo.
 - **generate_music** — piosenka / utwór: audio **KIE** (Suno) + opcjonalnie **OpenRouter Lyria (Gemini)**. Pole **target_duration_seconds** możesz podać jako **orientację** na długość (KIE / Lyria mają własne limity) — to **nie** przełącza na inny silnik. **SFX** (ptaki, plusk — nie piosenka) — tylko **generate_sound_effect**.
-- **generate_sound_effect** — **krótki efekt / foley** (woda, ptaki, klik…) — **ElevenLabs** Text to Sound, **nie** pełna piosenka; długość wg **duration_seconds** (limit jak w ``ELEVENLABS_SOUND_MAX_DURATION_SECONDS`` w konfiguracji, do 30 s). Wymaga ``ELEVENLABS_API_KEY``.
+- **generate_sound_effect** — **krótki efekt / foley** (woda, ptaki, klik…) — **ElevenLabs** Text to Sound, **nie** pełna piosenka; w polu **description** podawaj **zwięzły opis dźwięku po angielsku** (sound design, np. *morning forest, birds quietly chirping, distant*) — to trafia wprost do API; w odpowiedzi użytkownikowi możesz pisać po polsku. Długość wg **duration_seconds** (do ``ELEVENLABS_SOUND_MAX_DURATION_SECONDS``). Wymaga ``ELEVENLABS_API_KEY``.
 - **generate_poetry** — wiersz do recytacji.
 - **generate_presentation** — nowa prezentacja: katalogowa treść, **PPTX** + plik planu w bibliotece; pole **include_agenda** (z **ask_clarification** o agendę na okładce, patrz sekcja „Prezentacje…”). Gdy wcześniej w **tej samej turze** wywołałeś **search_library_fragments**, **dokończ** turę wywołaniem **generate_presentation** (z **material_title** i ewent. **project_id**), żeby plik faktycznie powstał. Nie wywołuj, dopóki użytkownik **nie** prosi o prezentację / slajdy (inne rozmowy tylko odpowiedź tekstem lub inne ``generate_*``).
 - **edit_presentation** — zmiana **konkretnego slajdu** w pliku z „Moje materiały” (wymaga **file_id** z listy; **slide_number** 1 = okładka, 2+ = slajd treści). Gdy użytkownik pisze np. „na slajdzie 2 zrób …”, wskaż właściwy plik (często .pptx albo plik *plan* z ostatniej generacji) i edytuj.
@@ -399,7 +399,7 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
         "parameters": {"type": "object", "properties": {
             "description": {
                 "type": "string",
-                "description": "Co słychać (np. delikatny plusk i szum wody, basen, ~5 s)",
+                "description": "Krótki opis foley/ambience **po angielsku** (np. soft water ripples, quiet pool) — generacja ElevenLabs; po polsku tylko jeśli użytkownik wymusza, wtedy i tak polecamy EN.",
             },
             "material_title": {
                 "type": "string",
