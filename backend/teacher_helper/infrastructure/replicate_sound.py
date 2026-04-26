@@ -1,7 +1,9 @@
 """Adapter Replicate — efekty dźwiękowe / foley oraz krótkie klipy (MusicGen, limit w konfiguracji).
 
-Używa modelu ``meta/musicgen`` przez Replicate Predictions API:
-  POST /v1/models/{owner}/{name}/predictions  → polling GET /v1/predictions/{id}
+Używa ujednoliconego Replicate API (2025+):
+  POST /v1/predictions  z polami ``version`` (np. ``meta/musicgen``) i ``input``  →  polling GET /v1/predictions/{id}
+
+Starszy endpoint ``/v1/models/.../predictions`` bywa zwracany jako 404 — nie używamy go.
 
 Dokumentacja: https://replicate.com/meta/musicgen
 """
@@ -49,9 +51,15 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
         max_duration_seconds: int = 30,
     ) -> None:
         self._api_key = api_key
-        owner, name = model.split("/", 1)
-        self._predict_url = f"{_REPLICATE_BASE}/models/{owner}/{name}/predictions"
-        self._model = model
+        m = (model or "").strip()
+        if not m:
+            raise ValueError("replicate_sound_model: pusty model")
+        if "/" not in m and len(m) != 64:
+            raise ValueError(
+                "replicate_sound_model: użyj 'owner/nazwa' (np. meta/musicgen) albo 64-znakowego version id"
+            )
+        self._predictions_url = f"{_REPLICATE_BASE}/predictions"
+        self._model = m
         self._musicgen_model_version = musicgen_model_version
         self._output_format = output_format
         self._timeout = timeout
@@ -74,18 +82,19 @@ class ReplicateSoundGenerator(SoundGeneratorPort):
             sfx_prompt = f"{_SHORT_MUSIC_PREFIX}\n\n{body_prompt}"
         else:
             sfx_prompt = f"{_SFX_PROMPT_PREFIX}\n\nOpis / description: {body_prompt}"
-        body = {
+        body: dict = {
+            "version": self._model,
             "input": {
                 "prompt": sfx_prompt,
                 "duration": duration,
                 "model_version": self._musicgen_model_version,
                 "output_format": self._output_format,
                 "normalization_strategy": "peak",
-            }
+            },
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
-            r = await client.post(self._predict_url, json=body, headers=self._headers())
+            r = await client.post(self._predictions_url, json=body, headers=self._headers())
             r.raise_for_status()
             prediction = r.json()
 

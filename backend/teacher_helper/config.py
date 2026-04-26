@@ -146,7 +146,7 @@ class Settings(BaseSettings):
 
     # --- Replicate — generowanie efektów dźwiękowych (POST /v1/sound/generate) ---
     replicate_api_key: str | None = None
-    # Model w formacie "owner/name" (np. meta/musicgen); musi obsługiwać parametry musicgen.
+    # W Replicate: pole `version` w POST /v1/predictions — owner/name (np. meta/musicgen) albo 64 znaków id wersji.
     replicate_sound_model: str = "meta/musicgen"
     # Wariant modelu musicgen: stereo-large | large | melody | stereo-melody-large
     replicate_sound_musicgen_version: str = "stereo-large"
