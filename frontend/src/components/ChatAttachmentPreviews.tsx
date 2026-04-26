@@ -28,6 +28,20 @@ export function hasPreviewableAttachments(attachments: ChatPreviewAttachment[] |
   return attachments.some((a) => previewKind(a) != null);
 }
 
+/** Etykieta formatu do chipa (MP3, WAV, …). */
+function audioFormatLabel(name: string, mime: string): string {
+  const n = name.toLowerCase();
+  const m = mime.toLowerCase();
+  if (n.endsWith(".mp3") || m.includes("mpeg")) return "MP3";
+  if (n.endsWith(".wav") || m.includes("wav")) return "WAV";
+  if (n.endsWith(".m4a") || m.includes("mp4") || m.includes("aac")) return "M4A";
+  if (n.endsWith(".ogg") || m.includes("ogg")) return "OGG";
+  if (n.endsWith(".flac") || m.includes("flac")) return "FLAC";
+  if (n.endsWith(".opus") || m.includes("opus")) return "OPUS";
+  if (m.startsWith("audio/")) return m.split("/")[1]?.slice(0, 6).toUpperCase() || "AUDIO";
+  return "AUDIO";
+}
+
 function IconZoom({ className }: { className?: string }) {
   return (
     <svg className={className} width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -154,6 +168,11 @@ function PreviewRow({ a, kind, parentOpen, onDownloadFile, downloadingId }: Prev
     void onDownloadFile(a.id);
   }, [a.id, a.name, onDownloadFile]);
 
+  const downloadDirect = useCallback(() => {
+    if (!onDownloadFile) return;
+    void onDownloadFile(a.id);
+  }, [a.id, onDownloadFile]);
+
   if (phase === "error") {
     return (
       <div className="text-xs text-ink-500 dark:text-paper-500">
@@ -170,31 +189,51 @@ function PreviewRow({ a, kind, parentOpen, onDownloadFile, downloadingId }: Prev
 
   if (kind === "audio" && url) {
     const busy = downloadingId === a.id;
+    const fmt = audioFormatLabel(a.name, a.mime_type);
     return (
-      <div className="min-w-0 max-w-md">
-        {onDownloadFile ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={confirmAndDownload}
-            className="mb-1 max-w-full text-left text-xs text-accent underline decoration-accent/50 underline-offset-2 hover:decoration-accent disabled:opacity-50 dark:text-accent-muted"
-            title="Kliknij, aby pobrać plik (zapytanie o potwierdzenie)"
-          >
-            {busy ? "Pobieranie…" : a.name}
-          </button>
-        ) : (
-          <p className="mb-1 truncate text-xs text-ink-500 dark:text-paper-400" title={a.name}>
+      <div className="min-w-0 max-w-lg rounded-lg border border-ink-800/12 bg-white/60 p-2.5 dark:border-paper-100/12 dark:bg-ink-900/50">
+        <div className="mb-2 flex min-w-0 items-start justify-between gap-2">
+          <p className="min-w-0 flex-1 truncate text-xs font-medium text-ink-800 dark:text-paper-100" title={a.name}>
             {a.name}
           </p>
+          <span className="shrink-0 rounded-md bg-ink-800/8 px-1.5 py-0.5 text-[0.65rem] font-medium uppercase tracking-wide text-ink-500 dark:bg-paper-100/10 dark:text-paper-400">
+            {fmt}
+          </span>
+        </div>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-3">
+          <audio
+            className="h-9 min-h-[2.25rem] w-full min-w-0 flex-1 [color-scheme:light] sm:max-w-md dark:[color-scheme:dark]"
+            src={url}
+            controls
+            controlsList="nodownload"
+            preload="metadata"
+          >
+            {a.name}
+          </audio>
+          {onDownloadFile && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={downloadDirect}
+              title={`Zapisz „${a.name}” na dysku`}
+              className="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-lg border border-accent/45 bg-accent/12 px-3 py-2 text-xs font-semibold text-accent shadow-sm transition-colors hover:bg-accent/20 disabled:cursor-not-allowed disabled:opacity-50 dark:text-accent-muted"
+            >
+              {busy ? (
+                "Pobieranie…"
+              ) : (
+                <>
+                  <IconDownload className="h-4 w-4 shrink-0" />
+                  Pobierz utwór
+                </>
+              )}
+            </button>
+          )}
+        </div>
+        {onDownloadFile && (
+          <p className="mt-1.5 text-[0.65rem] leading-snug text-ink-500 dark:text-paper-500">
+            Najpierw odsłuch w przeglądarce, albo zapisz plik — ten sam co w „Moje materiały”.
+          </p>
         )}
-        <audio
-          className="h-8 w-full max-w-md"
-          src={url}
-          controls
-          preload="metadata"
-        >
-          {a.name}
-        </audio>
       </div>
     );
   }
@@ -260,7 +299,7 @@ type Props = {
 
 /**
  * Sekcja <details> (domyślnie zwinięta): podgląd audio (wav, mp3, …) i obrazów (jpg, png, …).
- * Audio: klikalny tytuł → potwierdzenie → pobranie. Obraz: na hover (lub zawsze na wąskim ekranie) ikony powiększenia i pobrania.
+ * Audio: karta z odtwarzaczem i wyraźnym przyciskiem **Pobierz utwór** (jeden klik, bez pytania). Obraz: ikony lupy i pobrania.
  */
 export function ChatAttachmentPreviews({ attachments, onDownloadFile, downloadingId = null }: Props) {
   const idBase = useId();

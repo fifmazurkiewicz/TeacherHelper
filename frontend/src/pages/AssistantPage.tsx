@@ -27,6 +27,20 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 
 type ChatAttachment = { id: string; name: string; mime_type: string };
 
+function DownloadGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3v9m0 0l-4-4m4 4l4-4M5 20h14"
+      />
+    </svg>
+  );
+}
+
 function coerceMessageExtra(raw: unknown): Record<string, unknown> | undefined {
   if (raw == null) return undefined;
   if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
@@ -1074,24 +1088,43 @@ export default function AssistantPage() {
                       </p>
                       {showMediaPreview && (
                         <p className="mb-2 text-xs text-ink-500 dark:text-paper-500">
-                          Podgląd możesz zwinąć w nagłówku sekcji powyżej, żeby mniej zajmowała miejsce.
+                          W podglądzie powyżej: odtwarzacz i wyraźny przycisk „Pobierz utwór” przy plikach audio. Możesz też pobrać stąd — poniżej. Sekcję podglądu zwiń w nagłówku, żeby zajmowała mniej miejsca.
                         </p>
                       )}
                       <div className="flex flex-wrap gap-2">
                         {att.map((a) => {
-                          const audio =
-                            (a.mime_type || "").startsWith("audio/") || /\.(wav|mp3|m4a|ogg|flac|opus|aac)$/i.test(a.name);
-                          const label = audio ? "Pobierz audio" : "Pobierz";
+                          const isAudioFile =
+                            (a.mime_type || "").startsWith("audio/") ||
+                            /\.(wav|mp3|m4a|ogg|flac|opus|aac|webm)$/i.test(a.name);
                           return (
                             <button
                               key={a.id}
                               type="button"
                               disabled={downloadingId === a.id}
                               onClick={() => void downloadFromChat(a.id)}
-                              className="rounded-lg border border-accent/40 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent hover:bg-accent/15 disabled:opacity-50 dark:text-accent-muted"
                               title={a.name}
+                              className="inline-flex max-w-full items-center gap-2 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2 text-left text-xs font-medium text-accent hover:bg-accent/15 disabled:opacity-50 dark:text-accent-muted"
                             >
-                              {downloadingId === a.id ? "…" : `${label}: ${a.name.length > 36 ? `${a.name.slice(0, 34)}…` : a.name}`}
+                              {downloadingId === a.id ? (
+                                "Pobieranie…"
+                              ) : isAudioFile ? (
+                                <>
+                                  <DownloadGlyph className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="flex min-w-0 flex-col gap-0.5">
+                                    <span>Pobierz utwór</span>
+                                    <span
+                                      className="max-w-[min(16rem,100%)] truncate text-[0.7rem] font-normal text-ink-700 dark:text-paper-300"
+                                    >
+                                      {a.name}
+                                    </span>
+                                  </span>
+                                </>
+                              ) : (
+                                <>
+                                  <DownloadGlyph className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="max-w-[16rem] truncate">Pobierz: {a.name}</span>
+                                </>
+                              )}
                             </button>
                           );
                         })}
