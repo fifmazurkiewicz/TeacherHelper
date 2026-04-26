@@ -737,14 +737,60 @@ def _orchestrator_retry_persist_hint(user_message: str) -> str:
     )
 
 
-def _should_retry_llm_for_library_persist(completion: Any, user_message: str) -> bool:
-    """Gdy user chce plik w „Moje materiały”, a model zwrócił tylko tekst / szukanie — ponów LLM.
+def _orchestrator_retry_persist_hint_from_history(
+    user_message: str, history: list[tuple[str, str]],
+) -> str:
+    """Gdy bieżąca wiadomość to np. „hm”, wybierz hint z wcześniejszych wiadomości użytkownika."""
+    blob = " ".join((c or "") for r, c in history if r == "user").lower()
+    if "prezent" in blob or " slajd" in blob or "pptx" in blob or "powerpoint" in blob:
+        return _orchestrator_retry_persist_hint("prezentacja slajdy")
+    return _orchestrator_retry_persist_hint(user_message)
 
-    **Nie** ponawiaj, gdy jest ``prepare_create_teacher_project`` / ``prepare_delete_teacher_project`` —
-    wtedy UI pokazuje własny przycisk potwierdzenia; druga tura LLM zastąpiłaby odpowiedź i **usunęłaby token** z JSON.
-    """
-    if not _user_requires_library_persist(user_message):
+
+def _last_user_messages_ask_presentation_or_slides(history: list[tuple[str, str]]) -> bool:
+    for role, content in history:
+        if role != "user":
+            continue
+        c = (content or "").lower()
+        if "prezent" in c or " slajd" in c or " slajdów" in c or "pptx" in c or "powerpoint" in c:
+            return True
+    return False
+
+
+def _last_assistant_did_library_search_no_file(history: list[tuple[str, str]]) -> bool:
+    for role, content in reversed(history):
+        if role != "assistant":
+            continue
+        c = content or ""
+        if "przeszukał" in c.lower() and "bibliotek" in c.lower():
+            return True
+    return False
+
+
+def _user_message_is_short_persist_nudge(user_message: str) -> bool:
+    """Krótka reakcja: kontynuuj, gdzie plik, itd."""
+    t = (user_message or "").strip()
+    t_low = t.lower()
+    if not t:
         return False
+    if len(t_low) > 80:
+        return False
+    one_word = t_low in (
+        "hm", "hmm", "hem", "no", "ok", "okej", "oki", "tak", "dzięki", "dzieki",
+        "no i", "no?", "daj", "dawaj", "hę", "he",
+    )
+    short = t_low in (
+        "no i co", "i co", "i?", "a plik", "a gdzie", "a gdzie plik", "serio", "nadal nic",
+        "nie ma pliku", "brak pliku", "gdzie plik", "no dalej", "dalej", "ok to co", "no to co",
+    )
+    if one_word or short:
+        return True
+    if len(t_low) <= 20 and t_low.startswith("a "):
+        return "plik" in t_low or "prezent" in t_low or "slajd" in t_low
+    return False
+
+
+def _only_non_persist_tools_in_completion(completion: Any) -> bool:
     if not completion.tool_calls:
         return True
     names = {tc.name or "" for tc in completion.tool_calls}
@@ -758,6 +804,53 @@ def _should_retry_llm_for_library_persist(completion: Any, user_message: str) ->
         if n not in _NON_FILE_OR_SETUP_TOOLS:
             return False
     return True
+
+
+def _should_retry_after_search_nudge(
+    completion: Any, user_message: str, history: list[tuple[str, str]],
+) -> bool:
+    """Np. odpowiedź „hm” po samym wyszukaniu w bibliotece — wymuś **generate_*** w drugiej turze."""
+    if not _user_message_is_short_persist_nudge(user_message):
+        return False
+    if not _last_assistant_did_library_search_no_file(history):
+        return False
+    if not _last_user_messages_ask_presentation_or_slides(history):
+        return False
+    if not _only_non_persist_tools_in_completion(completion):
+        return False
+    return True
+
+
+def _should_retry_llm_for_library_persist(
+    completion: Any, user_message: str, history: list[tuple[str, str]] | None = None,
+) -> bool:
+    """Gdy user chce plik w „Moje materiały”, a model zwrócił tylko tekst / szukanie — ponów LLM.
+
+    **Nie** ponawiaj, gdy jest ``prepare_create_teacher_project`` / ``prepare_delete_teacher_project`` —
+    wtedy UI pokazuje własny przycisk potwierdzenia; druga tura LLM zastąpiłaby odpowiedź i **usunęłaby token** z JSON.
+    """
+    hist = history or []
+    if not completion.tool_calls:
+        if _user_requires_library_persist(user_message) or _should_retry_after_search_nudge(
+            completion, user_message, hist
+        ):
+            return True
+        return False
+    names = {tc.name or "" for tc in completion.tool_calls}
+    if names <= {"ask_clarification"}:
+        return False
+    if "prepare_create_teacher_project" in names or "prepare_delete_teacher_project" in names:
+        return False
+    for n in names:
+        if n in _PERSIST_FILE_TOOL_NAMES:
+            return False
+        if n not in _NON_FILE_OR_SETUP_TOOLS:
+            return False
+    if _user_requires_library_persist(user_message):
+        return True
+    if _should_retry_after_search_nudge(completion, user_message, hist):
+        return True
+    return False
 
 
 def _message_suggests_followup_addition(user_message: str) -> bool:
@@ -1273,11 +1366,11 @@ class ChatOrchestratorUseCase:
             completion=completion, system_text=sys_eff, user_text=user_content, dry_run=dry_run,
         )
 
-        if not dry_run and _should_retry_llm_for_library_persist(completion, message):
+        if not dry_run and _should_retry_llm_for_library_persist(completion, message, history):
             logger.info(
-                "Orchestrator: ponawiam wywołanie LLM — prośba o zapis w bibliotece bez generate_*/export_library_file.",
+                "Orchestrator: ponawiam wywołanie LLM — prośba o zapis w bibliotece lub kontynuacja (np. krótka) bez generate_*/export.",
             )
-            tool_hint = _orchestrator_retry_persist_hint(message)
+            tool_hint = _orchestrator_retry_persist_hint_from_history(message, history)
             correction = (
                 "【Wymóg systemu】 Poprzednia odpowiedź nie wywołała narzędzia zapisującego plik w „Moje materiały”. "
                 "Użytkownik oczekuje pliku. " + tool_hint
