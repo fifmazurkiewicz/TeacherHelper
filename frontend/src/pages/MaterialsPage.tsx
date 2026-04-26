@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ImageLightbox } from "@/components/ChatAttachmentPreviews";
 import {
   api,
   createProjectConfirmed,
@@ -200,6 +201,7 @@ function FileListRasterThumb({ f }: { f: ApiFile }) {
   const [shouldLoad, setShouldLoad] = useState(false);
   const [src, setSrc] = useState<string | null>(null);
   const [useFallback, setUseFallback] = useState(false);
+  const [lightbox, setLightbox] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const urlForCleanup = useRef<string | null>(null);
 
@@ -278,19 +280,32 @@ function FileListRasterThumb({ f }: { f: ApiFile }) {
         <span className="block size-8 rounded-md bg-ink-800/10 animate-pulse dark:bg-paper-100/10" />
       )}
       {src && !useFallback && (
-        <img
-          src={src}
-          alt=""
-          className="h-full w-full object-cover"
-          onError={() => {
-            if (urlForCleanup.current) {
-              URL.revokeObjectURL(urlForCleanup.current);
-              urlForCleanup.current = null;
-            }
-            setSrc(null);
-            setUseFallback(true);
-          }}
-        />
+        <>
+          <button
+            type="button"
+            className="group relative h-full w-full min-h-0 cursor-zoom-in overflow-hidden rounded-xl border-0 p-0 text-left focus:outline-none focus:ring-2 focus:ring-accent/50 focus:ring-offset-2 focus:ring-offset-paper-50 dark:focus:ring-offset-ink-900"
+            onClick={() => setLightbox(true)}
+            title="Powiększ"
+            aria-label={`Powiększ obraz: ${f.name}`}
+          >
+            <img
+              src={src}
+              alt=""
+              className="h-full w-full object-cover transition group-hover:opacity-90"
+              onError={() => {
+                if (urlForCleanup.current) {
+                  URL.revokeObjectURL(urlForCleanup.current);
+                  urlForCleanup.current = null;
+                }
+                setSrc(null);
+                setUseFallback(true);
+              }}
+            />
+          </button>
+          {lightbox && (
+            <ImageLightbox url={src} name={f.name} onClose={() => setLightbox(false)} />
+          )}
+        </>
       )}
       {!shouldLoad && !useFallback && !src && fileIcon(f.name)}
     </div>

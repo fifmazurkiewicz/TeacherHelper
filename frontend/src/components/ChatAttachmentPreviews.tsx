@@ -76,7 +76,7 @@ type ImageLightboxProps = {
   onClose: () => void;
 };
 
-function ImageLightbox({ url, name, onClose }: ImageLightboxProps) {
+export function ImageLightbox({ url, name, onClose }: ImageLightboxProps) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
