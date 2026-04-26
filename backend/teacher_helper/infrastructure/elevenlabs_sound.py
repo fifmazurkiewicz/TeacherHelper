@@ -5,7 +5,6 @@ POST ``https://api.elevenlabs.io/v1/sound-generation`` — jedna odpowiedź (aud
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 
@@ -18,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 _ELEVENLABS_SOUND_URL = "https://api.elevenlabs.io/v1/sound-generation"
 _MAX_AUDIO_BYTES = 50 * 1024 * 1024  # 50 MB
-_LOG_TEXT_MAX = 4000
 
 # Cały użytkowy opis w docelowym polu `text` powinien być **po angielsku**; jeśli wejście
 # ma polskie (lub inne) znaki, przed wysyłką używamy OpenRouter (patrz `elevenlabs_sfx_translate_*`).
@@ -158,23 +156,12 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
             if (s.openrouter_api_key or "").strip():
                 try:
                     line_for_model = await _translate_sfx_line_to_english(body_prompt)
-                    if line_for_model and line_for_model != body_prompt:
-                        logger.info(
-                            "ElevenLabs SFX: opis ujednolicono do EN przed API | in=%r | out=%r",
-                            body_prompt[:400],
-                            line_for_model[:500],
-                        )
                 except Exception as exc:
                     logger.warning(
                         "ElevenLabs SFX: tłumaczenie na EN nieudane, wysyłam oryginał: %s",
-                        str(exc)[:500],
+                        str(exc)[:400],
                     )
                     line_for_model = body_prompt
-            else:
-                logger.info(
-                    "ElevenLabs SFX: w opisie wykryto znaki spoza typowego angielskiego, "
-                    "a OPENROUTER_API_KEY brak — wysyłam surowy opis. Ustaw OpenRouter albo opis w EN."
-                )
         text = f"{_SFX_USER_PREFIX}\n{line_for_model}".strip()
 
         body: dict = {
@@ -191,19 +178,6 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
             "Accept": "application/octet-stream, application/json, */*",
         }
 
-        log_body = dict(body)
-        _full_t = log_body.get("text") or ""
-        if len(_full_t) > _LOG_TEXT_MAX:
-            log_body["text"] = (
-                _full_t[:_LOG_TEXT_MAX] + f"... [ucięte, łącznie {len(_full_t)} znaków]"
-            )
-        logger.info(
-            "ElevenLabs → POST %s | query=%s | json=%s | headers=Content-Type, Accept, xi-api-key=<ustawiony>",
-            _ELEVENLABS_SOUND_URL,
-            json.dumps(params, ensure_ascii=False),
-            json.dumps(log_body, ensure_ascii=False),
-        )
-
         try:
             async with httpx.AsyncClient(
                 timeout=httpx.Timeout(self._timeout, connect=30.0),
@@ -216,7 +190,7 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
                 )
         except httpx.TimeoutException as exc:
             raise TimeoutError(
-                f"ElevenLabs nie odpowiedział w {self._timeout:.0f} s: {exc!s:.200}"
+                f"ElevenLabs nie odpowiedział w {self._timeout:.0f} s: {str(exc)[:200]}"
             ) from exc
 
         if r.status_code >= 400:
@@ -225,28 +199,15 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
                 err_detail = str(r.json())
             except Exception:
                 pass
-            logger.warning(
-                "ElevenLabs ← HTTP %s | response=%s",
-                r.status_code,
-                err_detail[:2000] + ("..." if len(err_detail) > 2000 else ""),
-            )
+            snip = err_detail[:500] + ("..." if len(err_detail) > 500 else "")
+            logger.warning("ElevenLabs HTTP %s: %s", r.status_code, snip)
             raise RuntimeError(
                 f"ElevenLabs {r.status_code} dla {_ELEVENLABS_SOUND_URL!s}: {err_detail!r}"
             )
 
         content_type = (r.headers.get("content-type") or "").lower()
-        logger.info(
-            "ElevenLabs ← HTTP %s | Content-Type=%s | body_bytes=%d",
-            r.status_code,
-            r.headers.get("content-type"),
-            len(r.content or b""),
-        )
         if "application/json" in content_type:
             j = r.json()
-            logger.warning(
-                "ElevenLabs ← HTTP 200 ale Content-Type to JSON (oczekiwano audio): %s",
-                str(j)[:2000],
-            )
             raise RuntimeError(
                 f"ElevenLabs zwrócił JSON zamiast audio: {j!r:.800}"
             )
@@ -262,8 +223,10 @@ class ElevenLabsSoundGenerator(SoundGeneratorPort):
             mime = content_type.split(";", 1)[0].strip() or mime
 
         logger.info(
-            "ElevenLabs sound OK bytes=%d model=%s prompt=%r",
-            len(audio_bytes), self._model_id, prompt[:80],
+            "ElevenLabs SFX: model=%s bytes=%d duration_s=%d",
+            self._model_id,
+            len(audio_bytes),
+            duration,
         )
         return SoundResult(
             audio_data=audio_bytes,

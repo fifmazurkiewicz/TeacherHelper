@@ -1853,10 +1853,12 @@ class ChatOrchestratorUseCase:
     async def _embed_presentation_images(
         self, spec: dict[str, Any], user_id: UUID
     ) -> dict[int, bytes]:
-        """Do ``presentation_max_embedded_images`` (domyślnie 10) pierwszych slajdów z ``include_image`` + ``image_hint``."""
+        """Pierwsze N slajdów z ``include_image`` + ``image_hint`` (N = ``presentation_max_embedded_images``)."""
         s = get_settings()
         cap = int(s.presentation_max_embedded_images)
-        if cap <= 0 or self._image_gen is None:
+        if cap <= 0:
+            return {}
+        if self._image_gen is None:
             return {}
         out: dict[int, bytes] = {}
         work: list[tuple[int, str]] = []
@@ -1923,11 +1925,12 @@ class ChatOrchestratorUseCase:
 
         slide_imgs: dict[int, bytes] = {}
         if spec is not None:
-            if int(get_settings().presentation_max_embedded_images) > 0 and self._image_gen is not None:
+            s_pres = get_settings()
+            if int(s_pres.presentation_max_embedded_images) > 0 and self._image_gen is not None:
                 try:
                     slide_imgs = await self._embed_presentation_images(spec, user_id)
                 except Exception as exc:
-                    logger.warning("Osadzanie grafik w PPTX: %s", str(exc)[:500])
+                    logger.warning("PPTX osadzanie grafik: %s", str(exc)[:400])
             try:
                 pptx_b = spec_to_pptx_bytes(spec, slide_images=slide_imgs)
             except Exception as exc:

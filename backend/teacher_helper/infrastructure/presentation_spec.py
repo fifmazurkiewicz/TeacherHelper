@@ -377,9 +377,7 @@ def spec_to_pptx_bytes(
         st = (s.get("title") or "Slajd")[:200]
         bullets = s.get("bullets") or []
         body_lines: list[str] = list(bullets) if isinstance(bullets, list) else []
-        embed_bytes: bytes | None = None
-        if sim.get(slide_idx):
-            embed_bytes = sim[slide_idx]
+        embed_bytes: bytes | None = sim.get(slide_idx) or None
         if s.get("include_image") and not embed_bytes:
             hint = (s.get("image_hint") or "").strip()
             if hint:
@@ -418,13 +416,9 @@ def spec_to_pptx_bytes(
                 body.top = Inches(1.2)
                 body.width = Inches(5.7)
                 body.height = Inches(4.7)
-            except Exception:
-                pass
-            try:
                 stream = io.BytesIO(embed_bytes)
                 slide.shapes.add_picture(stream, Inches(6.1), Inches(1.2), height=Inches(4.65))
             except Exception:
-                # jeśli osadzenie obrazu się nie uda, slajd zostaje tylko z treścią
                 pass
 
     th = spec.get("theme")
