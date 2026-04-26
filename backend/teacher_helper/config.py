@@ -65,6 +65,8 @@ class Settings(BaseSettings):
     openrouter_image_timeout_seconds: float = Field(default=120.0)
     # Opcjonalnie: image_config.image_size dla modeli Gemini Image (np. 1K, 2K); puste = nie wysyłaj.
     openrouter_image_size: str | None = Field(default="1K")
+    # Ile maks. obrazów osadzamy w jednym PPTX (slajdy z include_image + image_hint) — reszta tylko tekst/placeholder
+    presentation_max_embedded_images: int = Field(default=10, ge=0, le=10)
 
     # --- Embeddingi: OpenAI (bezpośrednio) albo OpenRouter (/v1/embeddings); patrz EMBEDDINGS_BACKEND ---
     embeddings_backend: Literal["auto", "openai", "openrouter"] = "auto"

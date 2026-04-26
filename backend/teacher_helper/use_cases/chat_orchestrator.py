@@ -429,10 +429,9 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "generate_presentation",
         "description": (
-            "Nowa prezentacja: **PPTX** (slajd tytułowy: tytuł + krótki opis) oraz slajdy treści. Moduł zwraca JSON z **theme** (cztery kolory #RRGGBB) — model musi **dobierać i uzgadniać** paletę: kontrast tło↔tekst, spójność czcionek, "
-            "oraz (przy slajdach z grafiką) prompt ilustracji dopasowany do tych kolorów. "
-            "Grafika **nie** jest wymagana — "
-            "dla slajdów z grafiką: ``include_image: true`` + **image.suggested_prompt** spójny z motywem; bez grafiki: ``include_image: false``."
+            "Nowa prezentacja: **PPTX** (okładka + slajdy — liczba slajdów **dynamiczna**). Moduł zwraca JSON z **theme** (cztery kolory #RRGGBB) — model **uzgadnia** paletę. "
+            "Dla slajdów z ilustracją: ``include_image: true`` oraz ``image: { \"suggested_prompt\": \"...\" }`` — do **pierwszych 10** takich slajdów (w kolejności) backend wstawia **wygenerowaną grafikę** w pliku PPTX (wymaga skonfigurowanego **OpenRouter** / grafiki). "
+            "Kolejne slajdy z prośbą o grafikę: tylko opis w treści, bez pliku. Bez grafiki: ``include_image: false`` + ``image: null``."
         ),
         "parameters": {"type": "object", "properties": {
             "topic": {"type": "string", "description": "Temat / zakres merytoryczny (do promptu wewnętrznego modułu)"},
@@ -583,7 +582,9 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         "Wszystkie cztery wartości w `theme` muszą do siebie **pasować** (jeden motyw, jedna atmosfera). Zapis: `#` + 6 znaków hex (np. `#0D3B2C`).\n"
         "**Grafika (gdy `include_image` = true + `image` z `suggested_prompt`):** dopracuj prompt tak, by **kolory i styl ilustracji** były spójne z `theme` tego slajdu (i całą prezentacją). W `suggested_prompt` opisz oczekiwaną **paletę** (w tonacji tła/tekstu, bez przypadkowych neonów sprzecznych z lekcją), ewent. styl płaskiej infografiki vs realistyczny, oświetlenie, "
         "Cel: po wstawieniu obrazu obok czytelnych napisów całość ma wyglądać jak **jeden zharmonizowany** zestaw, a nie wklejony obcy plik. Gdy `include_image` = false — `image`: null.\n"
-        "Zasady: `slides` to **tylko** slajdy merytoryczne. Dopasuj liczbę slajdów do **slides_count** w Parametrach (gdy brak: sensownie 5–12). "
+        "Zasady: `slides` to **tylko** slajdy merytoryczne (liczba **dynamiczna**). Dopasuj liczbę slajdów do **slides_count** w Parametrach (gdy brak: sensownie 5–12). "
+        "Maks. **10** slajdów w tej instancji może otrzymać **faktycznie wstawiony plik obrazu** w PPTX — serwer generuje zdjęcia po kolei do pierwszych 10 wystąpień z ``include_image: true`` i niepustym ``image.suggested_prompt``; "
+        "dalsze slajdy z prośbą o grafikę zostaną tylko z opisem tekstowym. Jeśli potrzebujesz wielu ilustracji, wskaż `include_image: true` priorytetowo na 10 slajdach, na których zależy Ci najbardziej. "
         "Napisy/tekst w opisach grafik w języku prośby użytkownika."
     ),
     "study": (
@@ -1785,6 +1786,7 @@ class ChatOrchestratorUseCase:
         elif module == "presentation":
             lines.append(
                 "\nZapisałem **.pptx**, plik planu (JSON, *plan* w nazwie) oraz **PDF planu** (zarys tytułu, opis i slajdy). "
+                "W **.pptx** mogą być osadzone ilustracje (do 10) wygenerowane z planu, gdy w konfiguracji jest **OpenRouter** do grafiki. "
                 "Edycja: **edit_presentation**; dodatkowy PDF z PPTX: **export_library_file** (treść wyciągnięta ze slajdów)."
             )
         else:
@@ -1848,6 +1850,44 @@ class ChatOrchestratorUseCase:
         )
         return [fid], trunc_note
 
+    async def _embed_presentation_images(
+        self, spec: dict[str, Any], user_id: UUID
+    ) -> dict[int, bytes]:
+        """Do ``presentation_max_embedded_images`` (domyślnie 10) pierwszych slajdów z ``include_image`` + ``image_hint``."""
+        s = get_settings()
+        cap = int(s.presentation_max_embedded_images)
+        if cap <= 0 or self._image_gen is None:
+            return {}
+        out: dict[int, bytes] = {}
+        work: list[tuple[int, str]] = []
+        for i, sl in enumerate(spec.get("slides") or []):
+            if not isinstance(sl, dict):
+                continue
+            if not sl.get("include_image"):
+                continue
+            hint = (sl.get("image_hint") or "").strip()
+            if not hint:
+                continue
+            if len(work) >= cap:
+                break
+            title = (sl.get("title") or "").strip()
+            if title:
+                p = f"Ilustracja edukacyjna do slajdu (prezentacja): {title}. {hint}"
+            else:
+                p = f"Ilustracja edukacyjna do prezentacji: {hint}"
+            work.append((i, p[:8000]))
+        gen = self._image_gen
+        for idx, prompt in work:
+            try:
+                result = await gen.generate(
+                    prompt, style=None, size="1248x832", user_id=user_id
+                )
+                if result.image_data:
+                    out[idx] = result.image_data
+            except Exception as exc:
+                logger.warning("Grafika do slajdu %s: %s", idx, str(exc)[:500])
+        return out
+
     async def _handle_presentation(
         self,
         session: AsyncSession,
@@ -1881,9 +1921,15 @@ class ChatOrchestratorUseCase:
             except (json.JSONDecodeError, TypeError, ValueError):
                 spec = None
 
+        slide_imgs: dict[int, bytes] = {}
         if spec is not None:
+            if int(get_settings().presentation_max_embedded_images) > 0 and self._image_gen is not None:
+                try:
+                    slide_imgs = await self._embed_presentation_images(spec, user_id)
+                except Exception as exc:
+                    logger.warning("Osadzanie grafik w PPTX: %s", str(exc)[:500])
             try:
-                pptx_b = spec_to_pptx_bytes(spec)
+                pptx_b = spec_to_pptx_bytes(spec, slide_images=slide_imgs)
             except Exception as exc:
                 logger.exception("spec_to_pptx_bytes: %s", exc)
                 spec = None
@@ -1968,6 +2014,7 @@ class ChatOrchestratorUseCase:
             "file_stem_suffix": "slajdy",
             "companion": "json_plan",
             "companion_id": str(plan_id),
+            "pptx_embedded_image_count": len(slide_imgs),
         }
         pptx_id = await self._persist_file(
             session, user_id, project_id, "presentation",

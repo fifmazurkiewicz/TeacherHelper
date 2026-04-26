@@ -337,7 +337,15 @@ def _set_textframe_font_pt(tf: Any, pt: int) -> None:
             r.font.size = Pt(s)
 
 
-def spec_to_pptx_bytes(spec: dict[str, Any]) -> bytes:
+def spec_to_pptx_bytes(
+    spec: dict[str, Any],
+    *,
+    slide_images: dict[int, bytes] | None = None,
+) -> bytes:
+    """
+    `slide_images`: indeks (0 = pierwszy slajd merytoryczny) → bajty PNG/JPEG
+    do osadzenia po prawej; brak wpisu = sam tekst (ew. wiersz „[Propozycja grafiki: …]”).
+    """
     from pptx import Presentation
     from pptx.util import Inches, Pt
 
@@ -362,13 +370,17 @@ def spec_to_pptx_bytes(spec: dict[str, Any]) -> bytes:
             pass
 
     layout1 = prs.slide_layouts[1]
-    for s in spec.get("slides") or []:
+    sim = slide_images or {}
+    for slide_idx, s in enumerate(spec.get("slides") or []):
         if not isinstance(s, dict):
             continue
         st = (s.get("title") or "Slajd")[:200]
         bullets = s.get("bullets") or []
         body_lines: list[str] = list(bullets) if isinstance(bullets, list) else []
-        if s.get("include_image"):
+        embed_bytes: bytes | None = None
+        if sim.get(slide_idx):
+            embed_bytes = sim[slide_idx]
+        if s.get("include_image") and not embed_bytes:
             hint = (s.get("image_hint") or "").strip()
             if hint:
                 body_lines.append("")
@@ -400,6 +412,20 @@ def spec_to_pptx_bytes(spec: dict[str, Any]) -> bytes:
                 p.text = line
                 p.font.size = Pt(fs)
                 p.level = 0
+        if embed_bytes:
+            try:
+                body.left = Inches(0.4)
+                body.top = Inches(1.2)
+                body.width = Inches(5.7)
+                body.height = Inches(4.7)
+            except Exception:
+                pass
+            try:
+                stream = io.BytesIO(embed_bytes)
+                slide.shapes.add_picture(stream, Inches(6.1), Inches(1.2), height=Inches(4.65))
+            except Exception:
+                # jeśli osadzenie obrazu się nie uda, slajd zostaje tylko z treścią
+                pass
 
     th = spec.get("theme")
     spec_theme = th if isinstance(th, dict) else None
