@@ -92,7 +92,7 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **generate_music** — piosenka / utwór: gdy w narzędziu podasz **target_duration_seconds** w zakresie **1–90**, audio generuje **wyłącznie Replicate** (krótki klip; sam model zwykle max ~30 s). Gdy brak tego pola (pełna piosenka) **albo** **target_duration_seconds** **> 90** (dłużej niż 1:30) — **KIE** (Suno) + opcjonalnie **OpenRouter Lyria**. SFX bez utworu (szum, plusk…) — tylko **generate_sound_effect**.
 - **generate_sound_effect** — **SFX** (woda, deszcz, klik…), **do chwili w sekundach z limitem MusicGen (domyślnie 30 s)** — **zawsze Replicate**; **nie** piosenka. Wymaga ``REPLICATE_API_KEY``.
 - **generate_poetry** — wiersz do recytacji.
-- **generate_presentation** — nowa prezentacja: katalogowa treść, **PPTX** + plik planu w bibliotece; pole **include_agenda** (z **ask_clarification** o agendę na okładce, patrz sekcja „Prezentacje…”). Nie wywołuj, dopóki użytkownik **nie** prosi o prezentację / slajdy (inne rozmowy tylko odpowiedź tekstem lub inne ``generate_*``).
+- **generate_presentation** — nowa prezentacja: katalogowa treść, **PPTX** + plik planu w bibliotece; pole **include_agenda** (z **ask_clarification** o agendę na okładce, patrz sekcja „Prezentacje…”). Gdy wcześniej w **tej samej turze** wywołałeś **search_library_fragments**, **dokończ** turę wywołaniem **generate_presentation** (z **material_title** i ewent. **project_id**), żeby plik faktycznie powstał. Nie wywołuj, dopóki użytkownik **nie** prosi o prezentację / slajdy (inne rozmowy tylko odpowiedź tekstem lub inne ``generate_*``).
 - **edit_presentation** — zmiana **konkretnego slajdu** w pliku z „Moje materiały” (wymaga **file_id** z listy; **slide_number** 1 = okładka, 2+ = slajd treści). Gdy użytkownik pisze np. „na slajdzie 2 zrób …”, wskaż właściwy plik (często .pptx albo plik *plan* z ostatniej generacji) i edytuj.
 - **reply_to_user** — odpowiedź tekstowa bez generowania materiałów.
 
@@ -168,7 +168,7 @@ Traktuj je jako **fakt**: te pliki **już istnieją** w bibliotece użytkownika.
 4. Gdy masz wystarczające informacje → użyj odpowiedniego narzędzia generowania (z **material_title**).
 5. Możesz wywołać WIELE narzędzi jednocześnie (np. prepare_create_teacher_project + generate_music + generate_graphics). **generate_scenario** wywołaj **co najwyżej raz** w jednej turze (jedna odpowiedź) — nie zduplikuj scenariusza; inne ``generate_*`` mogą być wielokrotnie wg potrzeb.
 6. Eksport do PDF/DOCX: export_library_file (file_id z wcześniejszej wiadomości lub pominięty po wygenerowaniu pliku w tej samej odpowiedzi).
-7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące, żeby moduł dostał znalezione fragmenty w kontekście. To samo dla **search_web** przed **generate_study**.
+7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące (np. **generate_presentation** dla slajdów, **generate_study** dla opracowania), żeby moduł dostał fragmenty w kontekście. To samo dla **search_web** przed **generate_study**.
 8. Nie łącz **search_library_fragments** ani **search_web** z **reply_to_user** w jednej turze — odpowiedź tekstowa byłaby ustalana bez wglądu w wyniki. Szukaj osobno albo użyj samego **reply_to_user**, gdy wyszukiwanie nie jest potrzebne.
 9. **Katalogi (foldery):** Na początku wiadomości użytkownika masz listę jego katalogów. Gdy temat rozmowy pasuje do któregoś z nich — zawołaj **search_library_fragments** z odpowiednim **project_id** (albo doprecyzuj przez **ask_clarification**, jeśli pasuje kilka folderów albo niepewność). **Zapis** w tym samym folderze wymaga tego samego **project_id** w ``generate_*`` / ``export_library_file`` albo aktywnego katalogu rozmowy zgodnego z tym folderem.
 10. Przy **pierwszej** pełnej prośbie o przedstawienie / zestaw materiałów możesz AKTYWNIE zasugerować powiązane materiały (scenariusz → piosenka, plakat). Przy **kolejnych** wiadomościach dodawaj **tylko** to, o co użytkownik prosi w bieżącej wiadomości (patrz „Kontynuacja rozmowy”) — nie powtarzaj całego pakietu.
@@ -197,10 +197,9 @@ def _orchestrator_system_no_tavily() -> str:
         "wywołaj **generate_study** z sensownym **material_title**. Rozważ wcześniej **search_library_fragments**, jeśli temat może być w bibliotece. Gdy brakuje poziomu (klasa, przedmiot, czas), użyj **ask_clarification**.",
     )
     s = s.replace(
-        "7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące, "
-        "żeby moduł dostał znalezione fragmenty w kontekście. To samo dla **search_web** przed **generate_study**.",
-        "7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące, "
-        "żeby moduł dostał znalezione fragmenty w kontekście (tak przed **generate_study**).",
+        "7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące (np. **generate_presentation** dla slajdów, **generate_study** dla opracowania), żeby moduł dostał fragmenty w kontekście. To samo dla **search_web** przed **generate_study**.",
+        "7. Gdy w tej samej turze szukasz w bibliotece i generujesz materiał — najpierw **search_library_fragments**, potem narzędzie generujące (np. **generate_presentation** dla slajdów, **generate_study** dla opracowania), żeby moduł dostał fragmenty w kontekście. "
+        "Gdy w tej instancji brak wyszukiwania w sieci, przed **generate_study** oprzyj się na **search_library_fragments** i wiedzę modelu.",
     )
     s = s.replace(
         "8. Nie łącz **search_library_fragments** ani **search_web** z **reply_to_user** w jednej turze — odpowiedź tekstowa byłaby ustalana "
@@ -653,6 +652,8 @@ _INTENT_MODULE_TO_GENERATE_TOOL: dict[str, str] = {
 _PERSIST_FILE_TOOL_NAMES = frozenset(TOOL_TO_MODULE.keys()) | frozenset(
     {"export_library_file", "edit_presentation"},
 )
+# Wywołania w tej samej turze *po* search_library: czy później jest zapis pliku.
+_PERSIST_FILE_NAMES_FOR_SEARCH_HINT = _PERSIST_FILE_TOOL_NAMES
 
 _NON_FILE_OR_SETUP_TOOLS = frozenset({
     "ask_clarification",
@@ -667,6 +668,26 @@ _NON_FILE_OR_SETUP_TOOLS = frozenset({
 def _user_requires_library_persist(user_message: str) -> bool:
     """Czy wiadomość wyraźnie wymaga zapisu pliku w bibliotece (nie tylko tekstu w czacie)."""
     t = (user_message or "").lower()
+    # Prezentacja / slajdy / PPTX — inaczej retry po samym search_library nie działa.
+    if "prezent" in t and ("slajd" in t or "powerpoint" in t or "pptx" in t):
+        return True
+    if re.search(r"\b(wygeneruj|generuj|stwórz|utwórz|zrób|daj)\b", t) and "prezent" in t:
+        return True
+    if "katalog" in t or "folder" in t:
+        if any(
+            x in t
+            for x in (
+                "wrzu",
+                "zapisz",
+                "dodaj",
+                "prezent",
+                "slajd",
+                "materiał",
+                "material",
+                "plik",
+            )
+        ):
+            return True
     if re.search(r"\bnowy plik\b|\bnowego pliku\b|\bnowym pliku\b", t):
         return True
     if any(
@@ -692,6 +713,28 @@ def _user_requires_library_persist(user_message: str) -> bool:
     if "nowa wersja" in t and "scenariusz" in t:
         return True
     return False
+
+
+def _orchestrator_retry_persist_hint(user_message: str) -> str:
+    """Krótkie doprecyzowanie, które generate_* preferować w korekcie drugiej tury."""
+    t = (user_message or "").lower()
+    if "prezent" in t or "slajd" in t or "powerpoint" in t or "pptx" in t:
+        return (
+            "Dla **prezentacji / slajdów** wywołaj **generate_presentation** (PPTX + plan) z **material_title** "
+            "i opcjonalnie **project_id** wskazanego katalogu; w tej samej turze **po** ewentualnym "
+            "**search_library_fragments**."
+        )
+    if any(k in t for k in ("opracow", "pogłęb", "pogleb", "notatki do lekcji")):
+        return "Dla **opracowania tekstowego** użyj **generate_study** z **material_title**."
+    if any(k in t for k in ("scenariusz", "przedstaw", "jasełk", "jasel", "dialog", "sceny")):
+        return (
+            "Dla **scenariusza / przedstawienia** użyj **generate_scenario** (także ze wkomponowaną piosenką w jednym pliku), "
+            "z **material_title**."
+        )
+    return (
+        "Użyj właściwego **generate_*** (scenariusz: **generate_scenario**; inne materiały: patrz opisy narzędzi) z **nowym** "
+        "**material_title**."
+    )
 
 
 def _should_retry_llm_for_library_persist(completion: Any, user_message: str) -> bool:
@@ -1234,12 +1277,12 @@ class ChatOrchestratorUseCase:
             logger.info(
                 "Orchestrator: ponawiam wywołanie LLM — prośba o zapis w bibliotece bez generate_*/export_library_file.",
             )
+            tool_hint = _orchestrator_retry_persist_hint(message)
             correction = (
                 "【Wymóg systemu】 Poprzednia odpowiedź nie wywołała narzędzia zapisującego plik w „Moje materiały”. "
-                "Użytkownik oczekuje pliku w bibliotece. Wywołaj teraz **generate_scenario** (scenariusz, także ze "
-                "wkomponowaną piosenką — całość w jednym pliku) lub inne właściwe **generate_*** z **nowym** "
-                "**material_title**. **reply_to_user** samo w sobie **nie tworzy pliku** — nie pisz, że plik został "
-                "zapisany, dopóki nie użyjesz narzędzia."
+                "Użytkownik oczekuje pliku. " + tool_hint
+                + " **reply_to_user** i samo **search_library_fragments** **nie** zapisują pliku — nie twierdź, że plik "
+                "już powstał, dopóki nie użyjesz **generate_*** (lub **export_library_file** / **edit_presentation**)."
             )
             api_retry = [*api_messages, {"role": "user", "content": correction}]
             completion = await self._llm.complete_with_tools(
@@ -1312,7 +1355,7 @@ class ChatOrchestratorUseCase:
         tool_calls_in = list(completion.tool_calls)
         tool_calls_eff = _filter_incremental_redundant_tool_calls(user_message, history, tool_calls_in)
         sorted_calls = sorted(tool_calls_eff, key=_tool_call_sort_key)
-        for tc in sorted_calls:
+        for call_idx, tc in enumerate(sorted_calls):
             logger.debug("Processing tool call: %s (id=%s) args_keys=%s", tc.name, tc.id, list(tc.arguments.keys()))
             if tc.name == "ask_clarification":
                 needs_clarification = True
@@ -1366,10 +1409,21 @@ class ChatOrchestratorUseCase:
                 if ctx_search:
                     block = f"=== Fragmenty z biblioteki (zapytanie: {q}{scope_hint}) ===\n{ctx_search}"
                     n_fr = len(search_hits)
-                    reply_parts.append(
-                        f"Przeszukałem Twoją bibliotekę ({n_fr} fragmentów) — użyłem ich przy generowaniu; "
-                        "nie powielam surowej treści tutaj, żeby czat pozostał czytelny."
+                    later_persist = any(
+                        ((x.name or "") in _PERSIST_FILE_NAMES_FOR_SEARCH_HINT)
+                        for x in sorted_calls[call_idx + 1 :]
                     )
+                    if later_persist:
+                        reply_parts.append(
+                            f"Przeszukałem Twoją bibliotekę ({n_fr} fragmentów). "
+                            "Fragmenty są w kontekście narzędzia generującego — nie powielam surowych cytatów w czacie."
+                        )
+                    else:
+                        reply_parts.append(
+                            f"Przeszukałem Twoją bibliotekę ({n_fr} fragmentów) i dołączyłem je do kontekstu. "
+                            "Aby w „Moje materiały” trafił plik, w tej samej odpowiedzi potrzebne jest też właściwe **generate_*** "
+                            "(np. **generate_presentation**). Samo wyszukanie nic nie zapisuje."
+                        )
                     dynamic_context = f"{dynamic_context}\n{block}" if dynamic_context else block
                 else:
                     reply_parts.append(
