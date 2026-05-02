@@ -88,7 +88,8 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **export_library_file** — zapisz kopię istniejącego pliku z biblioteki jako PDF, DOCX, TXT lub PPTX (podaj file_id UUID lub pomiń, by użyć ostatniego w tej turze). **Prezentację PPTX** możesz też przekonwertować na **PDF** (zapis w bibliotece) — w PDF widać głównie treść stron, nie „sztywny” układ z PowerPoint.
 - **generate_scenario** — scenariusz przedstawienia.
 - **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
-- **generate_video** — storyboard/prompt wideo.
+- **generate_video** — generuje wideo edukacyjne przez **Veo 3.1** (Google). Wywołaj **wyłącznie** po potwierdzeniu przez użytkownika — musisz najpierw zebrać pełne informacje i wywołać **request_video_confirmation**.
+- **request_video_confirmation** — oblicza szacowany koszt wideo i prezentuje go użytkownikowi do zatwierdzenia. Wywołaj po zebraniu **wszystkich** szczegółów: postacie, opis sceny, zdarzenia, długość. **Nie wywołuj generate_video** zanim użytkownik nie potwierdzi.
 - **generate_music** — piosenka / utwór: audio **KIE** (Suno) + opcjonalnie **OpenRouter Lyria (Gemini)**. Pole **target_duration_seconds** możesz podać jako **orientację** na długość (KIE / Lyria mają własne limity) — to **nie** przełącza na inny silnik. **SFX** (ptaki, plusk — nie piosenka) — tylko **generate_sound_effect**.
 - **generate_sound_effect** — **krótki efekt / foley** (woda, ptaki, klik…) — **ElevenLabs** Text to Sound, **nie** pełna piosenka; w polu **description** podawaj **zwięzły opis dźwięku po angielsku** (sound design, np. *morning forest, birds quietly chirping, distant*) — to trafia wprost do API; w odpowiedzi użytkownikowi możesz pisać po polsku. Długość wg **duration_seconds** (do ``ELEVENLABS_SOUND_MAX_DURATION_SECONDS``). Wymaga ``ELEVENLABS_API_KEY``.
 - **generate_poetry** — wiersz do recytacji.
@@ -116,7 +117,7 @@ Wskazówki wg kontekstu (wybierz tylko pasujące):
 - **Prezentacja / plan lekcji** — klasa/przedmiot, czas, cel (wprowadzenie, powtórzenie), poziom szczegółowości, orientacyjna liczba slajdów lub „sam szkielet vs pełne notatki”; czy **agenda** (spis wątków) ma być na **pierwszym slajdzie (okładce)** — jeśli użytkownik tego **nie** rozstrzyga, użyj **ask_clarification** (zob. „Prezentacje, slajdy, PowerPoint”).
 - **Grafika** — przeznaczenie (plakat, ilustracja, okładka), styl, grupa wiekowa, orientacja, czego unikać.
 - **Muzyka / piosenka** — wiek, nastrój, czy refren vs pełny tekst, ewentualnie tempo/gatunek.
-- **Wideo / storyboard** — długość lub format (np. krótki spot), odbiorca, klimat.
+- **Wideo** — zanim cokolwiek wygenerujesz, zbierz WSZYSTKIE: postacie (imiona, wygląd), opis sceny/środowiska, kluczowe zdarzenia (co się dzieje, po kolei), długość w sekundach (4–8 s na jeden klip). Dopiero po zebraniu wywołaj **request_video_confirmation**, a po potwierdzeniu — **generate_video**.
 - **Wiersz** — forma, długość, dokładniejsza tematyka niż jedno hasło.
 - **Ogólne „zrób materiały / zadania / kartkówkę”** — doprecyzuj **co konkretnie** ma powstać w ramach dostępnych narzędzi (scenariusz, prezentacja, grafika, muzyka, wiersz, wideo) albo wyjaśnij krótko ograniczenia, potem dopytaj.
 - **Opracowanie tematu / pogłębienie wiedzy / notatki do lekcji na dany temat** — jeśli prośba jest **jasna** (konkretne hasło lub temat), wywołaj **search_web** (dopasuj zapytanie: PL, kontekst szkolny) oraz **generate_study** z sensownym **material_title**. Gdy brakuje poziomu (klasa, przedmiot, czas), użyj **ask_clarification**.
@@ -142,6 +143,22 @@ Możesz zaproponować **domyślne wartości w nawiasach** („jeśli nie odpisze
 - **Wyjątki (od razu ``generate_presentation`` bez pytania o agendę):** użytkownik napisze wprost, że chce / nie chce agendy lub spisu (np. „z agendą”, „bez spisu tylko cel lekcji”, „sam tytuł i wstęp”); albo pytanie o agendę jest **bez sensu** w kontekście (np. poprawa istniejącej prezentacji instrukcją w innym wątku).
 - W wywołaniu ``generate_presentation`` podaj **include_agenda**: ``true`` gdy użytkownik potwierdził agendę lub od początku o niej prosił; ``false`` gdy odrzucił lub od początku wyraźnie bez agendy. Model modułu umieści agendę w polu ``description`` na okładce tylko gdy **include_agenda** jest prawdą.
 - **Spójność i czytelność** merytorycznie wynika z jasnej prośby (klasa, temat) — w razie wątpliwości doprecyzuj w **ask_clarification** razem z pytaniem o agendę, bez dublowania tych samych list.
+
+## Generowanie wideo — obowiązkowy flow (4 kroki)
+
+Generowanie wideo przez Veo kosztuje realne pieniądze — **zawsze** przejdź przez ten flow:
+
+1. **Zbierz informacje** (ask_clarification, jeśli brakuje czegokolwiek):
+   - **Postacie** — imiona, krótki opis wyglądu każdej z nich
+   - **Scena/środowisko** — gdzie dzieje się akcja, tło, oświetlenie, nastrój
+   - **Zdarzenia** — co się dzieje (po kolei, od początku do końca klipu)
+   - **Długość** — czas trwania w sekundach (jeden klip Veo: 4–8 s)
+   - **Styl** (opcjonalnie) — animacja, realistyczny, kreskówka, kinematograficzny itd.
+2. **Mając komplet informacji** — wywołaj **request_video_confirmation** ze wszystkimi zebranymi danymi. NIE wywołuj generate_video zanim użytkownik nie potwierdzi.
+3. **System automatycznie wyliczy koszt** i wyświetli użytkownikowi podsumowanie z pytaniem o zgodę.
+4. **Gdy użytkownik potwierdza** (pisze „tak”, „ok”, „generuj”, „zgadzam się”, „potwierdzam”) → wywołaj **generate_video** z tymi samymi parametrami (characters, scene_description, key_events, duration_seconds, style, material_title). Gdy odmawia → reply_to_user i rezygnuj.
+
+**Zakaz:** Nie wywołuj generate_video bez uprzedniego request_video_confirmation i potwierdzenia użytkownika.
 
 ## Zapis w „Moje materiały” (nie myl z czatem)
 
@@ -350,19 +367,78 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
         }, "required": ["description", "material_title"]},
     }},
     {"type": "function", "function": {
-        "name": "generate_video",
-        "description": "Wygeneruj storyboard/prompt wideo edukacyjnego.",
+        "name": "request_video_confirmation",
+        "description": (
+            "Oblicz szacowany koszt wideo Veo 3.1 i zapytaj użytkownika o potwierdzenie. "
+            "Wywołaj PO zebraniu wszystkich informacji, PRZED generate_video. "
+            "Nigdy nie wywołuj w tej samej turze co generate_video."
+        ),
         "parameters": {"type": "object", "properties": {
-            "description": {"type": "string", "description": "Opis wideo (scena, akcja, nastrój)"},
+            "characters": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lista postaci z opisem wyglądu, np. ['Ania — dziewczynka w czerwonej sukience', 'Pies Rex — duży golden retriever']",
+            },
+            "scene_description": {
+                "type": "string",
+                "description": "Opis sceny/środowiska: gdzie, jakie tło, oświetlenie, nastrój",
+            },
+            "key_events": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lista kluczowych zdarzeń w kolejności chronologicznej",
+            },
+            "duration_seconds": {
+                "type": "integer",
+                "description": "Żądany czas trwania klipu w sekundach (4–8; Veo generuje natywnie do 8 s)",
+            },
+            "style": {
+                "type": "string",
+                "description": "Styl wizualny: animation, realistic, cartoon, cinematic, whiteboard, pastel",
+            },
+        }, "required": ["characters", "scene_description", "key_events", "duration_seconds"]},
+    }},
+    {"type": "function", "function": {
+        "name": "generate_video",
+        "description": (
+            "Generuj wideo edukacyjne przez Veo 3.1 (Google). "
+            "**Wywołaj TYLKO po potwierdzeniu przez użytkownika** (po wcześniejszym request_video_confirmation). "
+            "Wymaga pełnych informacji o filmie: postacie, scena, zdarzenia, długość."
+        ),
+        "parameters": {"type": "object", "properties": {
+            "characters": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lista postaci z opisem wyglądu",
+            },
+            "scene_description": {
+                "type": "string",
+                "description": "Szczegółowy opis sceny i środowiska",
+            },
+            "key_events": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Lista zdarzeń w kolejności chronologicznej",
+            },
             "material_title": {
                 "type": "string",
-                "description": "Tytuł pliku w bibliotece, np. Storyboard film o recyklingu",
+                "description": "Tytuł pliku w bibliotece, np. Film edukacyjny recykling klasa 3",
             },
-            "duration_seconds": {"type": "integer", "description": "Czas trwania (5-30s)"},
-            "style": {"type": "string",
-                       "description": "Styl: animation, realistic, cartoon, cinematic, whiteboard"},
+            "duration_seconds": {
+                "type": "integer",
+                "description": "Czas trwania klipu w sekundach (4–8)",
+            },
+            "style": {
+                "type": "string",
+                "description": "Styl: animation, realistic, cartoon, cinematic, whiteboard",
+            },
+            "resolution": {
+                "type": "string",
+                "enum": ["720p", "1080p", "4k"],
+                "description": "Rozdzielczość wyjściowa (domyślnie 1080p z konfiguracji serwera)",
+            },
             **_SAVE_PROJECT_ID_PROPERTY,
-        }, "required": ["description", "material_title"]},
+        }, "required": ["characters", "scene_description", "key_events", "material_title", "duration_seconds"]},
     }},
     {"type": "function", "function": {
         "name": "generate_music",
@@ -545,10 +621,17 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         'Opcjonalnie dodaj "prompt_en" — do generowania używane jest wyłącznie "prompt_image".'
     ),
     "video": (
-        "Jesteś ekspertem od wideo AI. Na podstawie opisu wygeneruj WYŁĄCZNIE JSON "
-        '(bez markdown, bez ```): {"prompt_en": "<prompt wideo po angielsku>", '
-        '"storyboard": ["<scena 1>", "<scena 2>", ...], '
-        '"style_notes": "<notatki>", "description_pl": "<opis po polsku>"}'
+        "Jesteś ekspertem od wideo AI i modelu Veo 3.1 (Google). "
+        "Na podstawie parametrów (postacie, scena, zdarzenia, styl) wygeneruj WYŁĄCZNIE JSON "
+        "(bez markdown, bez ```):\n"
+        '{"prompt_en": "<szczegółowy prompt po angielsku dla Veo 3.1: opisz każdą postać '
+        "(imię, wygląd, strój, ruch), środowisko (oświetlenie, tło, paleta barw), "
+        "kluczowe zdarzenia w kolejności, ruch kamery, nastrój, styl wizualny — "
+        'do 400 słów; unikaj ogólników, bądź wizualnie konkretny>", '
+        '"storyboard": ["<scena 1 po polsku — co widać, kto, co robi>", '
+        '"<scena 2 po polsku>", ...], '
+        '"style_notes": "<krótkie notatki o stylu i palecie barw>", '
+        '"description_pl": "<zwięzły opis całego klipu po polsku — 2–3 zdania>"}'
     ),
     "music": (
         "Tworzysz materiał muzyczny dla nauczyciela i **osobno** treść trafiającą do API Suno jako lyrics. "
@@ -667,6 +750,7 @@ _NON_FILE_OR_SETUP_TOOLS = frozenset({
     "search_web",
     "prepare_create_teacher_project",
     "prepare_delete_teacher_project",
+    "request_video_confirmation",
 })
 
 
@@ -1264,6 +1348,49 @@ def _resolve_file_stem(module: str, tool_args: dict[str, Any] | None) -> str:
     return _sanitize_filename_stem(module) or module
 
 
+def _estimate_veo_cost_usd(duration_seconds: int) -> float:
+    """Szacuje koszt generacji Veo na podstawie konfiguracji (lub domyślnej ceny per model)."""
+    s = get_settings()
+    if s.veo_price_per_second_usd is not None:
+        return float(s.veo_price_per_second_usd) * duration_seconds
+    from teacher_helper.infrastructure.veo_adapter import _MODEL_PRICE_PER_SECOND
+    price = _MODEL_PRICE_PER_SECOND.get(s.veo_model, 0.40)
+    return price * duration_seconds
+
+
+def _build_video_confirmation_message(args: dict[str, Any]) -> str:
+    """Buduje wiadomość potwierdzającą koszt i parametry wideo do wyświetlenia użytkownikowi."""
+    s = get_settings()
+    duration = max(4, min(int(args.get("duration_seconds") or 8), 8))
+    cost_usd = _estimate_veo_cost_usd(duration)
+    model_label = s.veo_model
+    resolution = s.veo_resolution
+
+    characters: list[str] = args.get("characters") or []
+    scene = (args.get("scene_description") or "").strip()
+    events: list[str] = args.get("key_events") or []
+    style = (args.get("style") or "").strip()
+
+    chars_str = "\n".join(f"  - {c}" for c in characters) if characters else "  - (brak)"
+    events_str = "\n".join(f"  {i + 1}. {e}" for i, e in enumerate(events)) if events else "  - (brak)"
+
+    lines = [
+        "## Potwierdzenie generacji wideo\n",
+        "Przed uruchomieniem generowania wideo przedstawiam szczegóły i szacowany koszt:\n",
+        f"**Model:** {model_label}  |  **Rozdzielczość:** {resolution}  |  **Czas trwania:** {duration} s",
+        f"**Szacowany koszt:** ~${cost_usd:.2f} USD\n",
+        f"**Postacie:**\n{chars_str}\n",
+        f"**Scena/środowisko:** {scene}\n",
+        f"**Zdarzenia (kolejność):**\n{events_str}",
+    ]
+    if style:
+        lines.append(f"\n**Styl wizualny:** {style}")
+    lines.append(
+        "\n---\nCzy potwierdzasz generację? Napisz **tak** aby rozpocząć, lub **nie** aby zrezygnować."
+    )
+    return "\n".join(lines)
+
+
 def _tool_call_sort_key(tc: Any) -> tuple[int, str]:
     name = tc.name or ""
     if name in ("prepare_create_teacher_project", "prepare_delete_teacher_project"):
@@ -1271,6 +1398,9 @@ def _tool_call_sort_key(tc: Any) -> tuple[int, str]:
     if name == "search_library_fragments":
         return (1, tc.id or "")
     if name == "search_web":
+        return (2, tc.id or "")
+    # request_video_confirmation musi wystąpić przed generate_video (priorytet 2)
+    if name == "request_video_confirmation":
         return (2, tc.id or "")
     if name in TOOL_TO_MODULE or name == "edit_presentation":
         return (3, tc.id or "")
@@ -1457,6 +1587,12 @@ class ChatOrchestratorUseCase:
                 clarification_question = q
                 text = f"{q}\n\nMogę też przygotować: {', '.join(suggestions)}." if suggestions else q
                 reply_parts.append(text)
+
+            elif tc.name == "request_video_confirmation":
+                needs_clarification = True
+                msg = _build_video_confirmation_message(tc.arguments)
+                clarification_question = msg
+                reply_parts.append(msg)
 
             elif tc.name == "reply_to_user":
                 raw_msg = (tc.arguments.get("message") or "").strip()
@@ -2311,23 +2447,65 @@ class ChatOrchestratorUseCase:
         llm_content: str, tool_args: dict[str, Any],
     ) -> UUID:
         prompt_data = _parse_media_json(llm_content)
-        prompt_en = prompt_data.get("prompt_en", tool_args.get("description", ""))
+        prompt_en = prompt_data.get("prompt_en", "")
+        if not prompt_en:
+            # Fallback: zbuduj prompt z parametrów narzędzia
+            characters = tool_args.get("characters") or []
+            scene = tool_args.get("scene_description", "")
+            events = tool_args.get("key_events") or []
+            parts = []
+            if characters:
+                parts.append("Characters: " + "; ".join(str(c) for c in characters))
+            if scene:
+                parts.append(f"Scene: {scene}")
+            if events:
+                parts.append("Events: " + ". ".join(str(e) for e in events))
+            prompt_en = " | ".join(parts) or tool_args.get("scene_description", "educational video")
+
+        description_pl = (
+            prompt_data.get("description_pl")
+            or tool_args.get("scene_description", "")
+        )
+        duration = max(4, min(int(tool_args.get("duration_seconds") or 8), 8))
+        style = tool_args.get("style")
+
+        # Jeśli tool_args zawiera resolution, użyj go (nadpisuje ustawienie serwera)
+        resolution_override = (tool_args.get("resolution") or "").strip() or None
+
         extra: dict[str, Any] = {
-            "module": "video", "tool_args": tool_args, "prompt_en": prompt_en,
+            "module": "video",
+            "tool_args": tool_args,
+            "prompt_en": prompt_en,
             "storyboard": prompt_data.get("storyboard", []),
-            "description_pl": prompt_data.get("description_pl", tool_args.get("description", "")),
+            "description_pl": description_pl,
+            "duration_seconds": duration,
+            "resolution": resolution_override,
         }
 
         if self._video_gen:
+            gen = self._video_gen
+            # Tymczasowo nadpisz rozdzielczość jeśli podano w argumencie
+            if resolution_override:
+                from teacher_helper.infrastructure.veo_adapter import VeoVideoGenerator
+                if isinstance(gen, VeoVideoGenerator):
+                    gen = VeoVideoGenerator(
+                        api_key=gen._api_key,
+                        model=gen._model,
+                        resolution=resolution_override,
+                        timeout=gen._timeout,
+                        poll_interval=gen._poll_interval,
+                        price_per_second_usd=gen._price_override,
+                    )
             try:
-                result = await self._video_gen.generate(
-                    prompt=prompt_en, duration_seconds=tool_args.get("duration_seconds", 5),
-                    style=tool_args.get("style"),
+                result = await gen.generate(
+                    prompt=prompt_en,
+                    duration_seconds=duration,
+                    style=style,
                 )
                 extra["generator_model"] = result.model
                 extra["video_status"] = result.status
                 if result.status == "completed" and result.video_data:
-                    index_text = f"{extra['description_pl']}\n{prompt_en}".strip()
+                    index_text = f"{description_pl}\n{prompt_en}".strip()
                     return await self._persist_file(
                         session, user_id, project_id, "video",
                         data=result.video_data, mime=result.mime_type, ext="mp4", extra=extra,
