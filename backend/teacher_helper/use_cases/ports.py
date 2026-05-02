@@ -100,13 +100,14 @@ class ImageGeneratorPort(Protocol):
 
 @runtime_checkable
 class VideoGeneratorPort(Protocol):
-    """Port generowania wideo — wymienne adaptery (Runway, Pika, Sora)."""
+    """Port generowania wideo — wymienne adaptery (Veo, Runway, Sora…)."""
 
     async def generate(
         self,
         prompt: str,
-        duration_seconds: int = 5,
+        duration_seconds: int = 8,
         style: str | None = None,
+        resolution: str | None = None,
     ) -> VideoResult: ...
 
 

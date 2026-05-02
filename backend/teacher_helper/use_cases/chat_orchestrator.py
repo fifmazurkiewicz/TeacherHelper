@@ -1349,13 +1349,14 @@ def _resolve_file_stem(module: str, tool_args: dict[str, Any] | None) -> str:
 
 
 def _estimate_veo_cost_usd(duration_seconds: int) -> float:
-    """Szacuje koszt generacji Veo na podstawie konfiguracji (lub domyślnej ceny per model)."""
+    """Szacuje koszt generacji Veo — deleguje do publicznej funkcji adaptera."""
+    from teacher_helper.infrastructure.veo_adapter import estimate_cost_usd
     s = get_settings()
-    if s.veo_price_per_second_usd is not None:
-        return float(s.veo_price_per_second_usd) * duration_seconds
-    from teacher_helper.infrastructure.veo_adapter import _MODEL_PRICE_PER_SECOND
-    price = _MODEL_PRICE_PER_SECOND.get(s.veo_model, 0.40)
-    return price * duration_seconds
+    return estimate_cost_usd(
+        model=s.veo_model,
+        duration_seconds=duration_seconds,
+        price_override=s.veo_price_per_second_usd,
+    )
 
 
 def _build_video_confirmation_message(args: dict[str, Any]) -> str:
@@ -1574,6 +1575,9 @@ class ChatOrchestratorUseCase:
         pending_project_creation: dict[str, Any] | None = None
         pending_project_deletion: dict[str, Any] | None = None
         scenario_used_this_turn = False
+        # Flaga: gdy request_video_confirmation pojawi się w tej turze,
+        # blokuje generate_video — użytkownik musi najpierw potwierdzić.
+        video_confirmation_pending = False
 
         tool_calls_in = list(completion.tool_calls)
         tool_calls_eff = _filter_incremental_redundant_tool_calls(user_message, history, tool_calls_in)
@@ -1590,6 +1594,7 @@ class ChatOrchestratorUseCase:
 
             elif tc.name == "request_video_confirmation":
                 needs_clarification = True
+                video_confirmation_pending = True
                 msg = _build_video_confirmation_message(tc.arguments)
                 clarification_question = msg
                 reply_parts.append(msg)
@@ -1817,6 +1822,16 @@ class ChatOrchestratorUseCase:
 
             elif tc.name in TOOL_TO_MODULE:
                 module = TOOL_TO_MODULE[tc.name]
+                if tc.name == "generate_video" and video_confirmation_pending:
+                    logger.info(
+                        "Zablokowano generate_video — request_video_confirmation w tej samej turze; "
+                        "czekamy na potwierdzenie użytkownika."
+                    )
+                    reply_parts.append(
+                        "Generowanie wideo zostanie uruchomione po Twojej odpowiedzi — "
+                        "potwierdź powyższe szczegóły i koszt."
+                    )
+                    continue
                 if tc.name == "generate_scenario":
                     if scenario_used_this_turn:
                         logger.info("Pominięto zduplikowane generate_scenario w tej samej turze czatu")
@@ -2483,24 +2498,12 @@ class ChatOrchestratorUseCase:
         }
 
         if self._video_gen:
-            gen = self._video_gen
-            # Tymczasowo nadpisz rozdzielczość jeśli podano w argumencie
-            if resolution_override:
-                from teacher_helper.infrastructure.veo_adapter import VeoVideoGenerator
-                if isinstance(gen, VeoVideoGenerator):
-                    gen = VeoVideoGenerator(
-                        api_key=gen._api_key,
-                        model=gen._model,
-                        resolution=resolution_override,
-                        timeout=gen._timeout,
-                        poll_interval=gen._poll_interval,
-                        price_per_second_usd=gen._price_override,
-                    )
             try:
-                result = await gen.generate(
+                result = await self._video_gen.generate(
                     prompt=prompt_en,
                     duration_seconds=duration,
                     style=style,
+                    resolution=resolution_override,
                 )
                 extra["generator_model"] = result.model
                 extra["video_status"] = result.status

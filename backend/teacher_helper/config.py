@@ -168,8 +168,8 @@ class Settings(BaseSettings):
     veo_api_key: str | None = None
     # Model Veo: "veo-3.1-fast" (tańszy, szybszy) | "veo-3.1-generate-preview" | "veo-3.0-generate-preview"
     veo_model: str = "veo-3.1-generate-preview"
-    # Rozdzielczość wyjściowa: "720p" | "1080p" | "4k"
-    veo_resolution: str = "1080p"
+    # Rozdzielczość wyjściowa
+    veo_resolution: Literal["720p", "1080p", "4k"] = "1080p"
     # Maks. czas oczekiwania na wygenerowanie wideo (sekundy)
     veo_timeout_seconds: float = Field(default=300.0, ge=30.0)
     # Odstęp między żądaniami pollingu statusu operacji Veo

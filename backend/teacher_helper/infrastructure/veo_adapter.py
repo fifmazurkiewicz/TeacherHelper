@@ -68,12 +68,14 @@ class VeoVideoGenerator:
         prompt: str,
         duration_seconds: int = 8,
         style: str | None = None,
+        resolution: str | None = None,
     ) -> VideoResult:
         duration_seconds = max(_VEO_MIN_DURATION, min(duration_seconds, _VEO_MAX_DURATION))
+        effective_resolution = resolution or self._resolution
         full_prompt = f"{prompt}. Visual style: {style}" if style else prompt
 
         try:
-            op_name = await self._start_generation(full_prompt, duration_seconds)
+            op_name = await self._start_generation(full_prompt, duration_seconds, effective_resolution)
             op_result = await self._poll_until_done(op_name)
             video_bytes = await self._download_video(op_result)
             return VideoResult(
@@ -83,7 +85,7 @@ class VeoVideoGenerator:
                 model=self._model,
                 status="completed",
                 message=(
-                    f"Wygenerowano {duration_seconds} s wideo ({self._resolution}) "
+                    f"Wygenerowano {duration_seconds} s wideo ({effective_resolution}) "
                     f"modelem {self._model}."
                 ),
             )
@@ -115,7 +117,7 @@ class VeoVideoGenerator:
     # Internals
     # ------------------------------------------------------------------
 
-    async def _start_generation(self, prompt: str, duration_seconds: int) -> str:
+    async def _start_generation(self, prompt: str, duration_seconds: int, resolution: str) -> str:
         """Wysyła żądanie startowe; zwraca nazwę operacji (do pollingu)."""
         url = f"{_GEMINI_BASE}/v1beta/models/{self._model}:predictLongRunning"
         headers = {
@@ -128,7 +130,7 @@ class VeoVideoGenerator:
                 "sampleCount": 1,
                 "durationSeconds": duration_seconds,
                 "aspectRatio": "16:9",
-                "resolution": self._resolution,
+                "resolution": resolution,
             },
         }
         async with httpx.AsyncClient(timeout=60.0) as client:
@@ -144,14 +146,15 @@ class VeoVideoGenerator:
 
     async def _poll_until_done(self, operation_name: str) -> dict[str, Any]:
         """Polluje status operacji aż do zakończenia lub timeoutu."""
-        # Jeśli operation_name zaczyna się od "operations/", dodaj prefiks v1beta
-        if operation_name.startswith("operations/"):
-            url = f"{_GEMINI_BASE}/v1beta/{operation_name}"
-        else:
-            url = f"{_GEMINI_BASE}/v1beta/{operation_name}"
+        # Gemini API zwraca nazwę operacji w jednej z dwóch form:
+        #   "operations/<id>"          → /v1beta/operations/<id>
+        #   "projects/.../operations/<id>" → /v1beta/projects/...
+        # W obu przypadkach doklejamy /v1beta/ jako prefiks, usuwając ewentualny duplikat.
+        clean = operation_name.removeprefix("v1beta/")
+        url = f"{_GEMINI_BASE}/v1beta/{clean}"
         headers = {"x-goog-api-key": self._api_key}
 
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + self._timeout
 
         async with httpx.AsyncClient(timeout=30.0) as client:
