@@ -1951,7 +1951,7 @@ class ChatOrchestratorUseCase:
             dur = tool_args.get("duration_seconds")
             res = (tool_args.get("resolution") or "").strip()
             s = get_settings()
-            dur_str = f"{_clamp_duration(dur)} s" if dur is not None else f"do {s.veo_model.split('-')[1] if '-' in s.veo_model else '8'} s"
+            dur_str = f"{_clamp_duration(dur)} s" if dur is not None else "do 8 s"
             res_str = res or s.veo_resolution
             lines.append(
                 f"\nWideo ({dur_str}, {res_str}) wygenerowane przez **{s.veo_model}** — "
