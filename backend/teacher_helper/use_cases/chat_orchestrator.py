@@ -396,6 +396,11 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
                 "type": "string",
                 "description": "Styl wizualny: animation, realistic, cartoon, cinematic, whiteboard, pastel",
             },
+            "resolution": {
+                "type": "string",
+                "enum": ["720p", "1080p", "4k"],
+                "description": "Rozdzielczość wideo; domyślnie 1080p.",
+            },
         }, "required": ["characters", "scene_description", "key_events", "duration_seconds"]},
     }},
     {"type": "function", "function": {
@@ -1348,6 +1353,16 @@ def _resolve_file_stem(module: str, tool_args: dict[str, Any] | None) -> str:
     return _sanitize_filename_stem(module) or module
 
 
+def _clamp_duration(raw: Any, default: int = 8) -> int:
+    """Bezpiecznie parsuje duration_seconds z args LLM — obsługuje None, float-string, 0."""
+    if raw is None:
+        return default
+    try:
+        return max(4, min(int(float(raw)), 8))
+    except (TypeError, ValueError):
+        return default
+
+
 def _estimate_veo_cost_usd(duration_seconds: int) -> float:
     """Szacuje koszt generacji Veo — deleguje do publicznej funkcji adaptera."""
     from teacher_helper.infrastructure.veo_adapter import estimate_cost_usd
@@ -1362,10 +1377,10 @@ def _estimate_veo_cost_usd(duration_seconds: int) -> float:
 def _build_video_confirmation_message(args: dict[str, Any]) -> str:
     """Buduje wiadomość potwierdzającą koszt i parametry wideo do wyświetlenia użytkownikowi."""
     s = get_settings()
-    duration = max(4, min(int(args.get("duration_seconds") or 8), 8))
+    duration = _clamp_duration(args.get("duration_seconds"))
     cost_usd = _estimate_veo_cost_usd(duration)
     model_label = s.veo_model
-    resolution = s.veo_resolution
+    resolution = (args.get("resolution") or "").strip() or s.veo_resolution
 
     characters: list[str] = args.get("characters") or []
     scene = (args.get("scene_description") or "").strip()
@@ -1933,7 +1948,15 @@ class ChatOrchestratorUseCase:
         elif module == "sound":
             lines.append("\nTo krótki efekt dźwiękowy (SFX z ElevenLabs) — pobierzesz go przyciskiem pod wiadomością.")
         elif module == "video":
-            lines.append("\nJeśli to wideo MP4, pobierzesz je przyciskiem pod wiadomością.")
+            dur = tool_args.get("duration_seconds")
+            res = (tool_args.get("resolution") or "").strip()
+            s = get_settings()
+            dur_str = f"{_clamp_duration(dur)} s" if dur is not None else f"do {s.veo_model.split('-')[1] if '-' in s.veo_model else '8'} s"
+            res_str = res or s.veo_resolution
+            lines.append(
+                f"\nWideo ({dur_str}, {res_str}) wygenerowane przez **{s.veo_model}** — "
+                "pobierzesz je przyciskiem pod wiadomością."
+            )
         elif module == "presentation":
             lines.append(
                 "\nZapisałem **.pptx**, plik planu (JSON, *plan* w nazwie) oraz **PDF planu** (zarys tytułu, opis i slajdy). "
@@ -2481,7 +2504,7 @@ class ChatOrchestratorUseCase:
             prompt_data.get("description_pl")
             or tool_args.get("scene_description", "")
         )
-        duration = max(4, min(int(tool_args.get("duration_seconds") or 8), 8))
+        duration = _clamp_duration(tool_args.get("duration_seconds"))
         style = tool_args.get("style")
 
         # Jeśli tool_args zawiera resolution, użyj go (nadpisuje ustawienie serwera)

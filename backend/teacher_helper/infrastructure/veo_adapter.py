@@ -55,10 +55,6 @@ class VeoVideoGenerator:
         self._poll_interval = poll_interval
         self._price_override = price_per_second_usd
 
-    @property
-    def price_per_second_usd(self) -> float:
-        return self._price_override if self._price_override is not None else _MODEL_PRICE_PER_SECOND.get(self._model, 0.40)
-
     # ------------------------------------------------------------------
     # VideoGeneratorPort.generate
     # ------------------------------------------------------------------
