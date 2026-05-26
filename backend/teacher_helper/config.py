@@ -163,6 +163,20 @@ class Settings(BaseSettings):
     # Pusty = OPENROUTER_MODULE_MODEL
     elevenlabs_sfx_translate_model: str | None = None
 
+    # --- Google Veo 3.1 (generowanie wideo przez Gemini API) ---
+    # Klucz API Google (ten sam co do Gemini, jeśli masz dostęp do Veo w swoim projekcie)
+    veo_api_key: str | None = None
+    # Model Veo: "veo-3.1-fast" (tańszy, szybszy) | "veo-3.1-generate-preview" | "veo-3.0-generate-preview"
+    veo_model: str = "veo-3.1-generate-preview"
+    # Rozdzielczość wyjściowa
+    veo_resolution: Literal["720p", "1080p", "4k"] = "1080p"
+    # Maks. czas oczekiwania na wygenerowanie wideo (sekundy)
+    veo_timeout_seconds: float = Field(default=300.0, ge=30.0)
+    # Odstęp między żądaniami pollingu statusu operacji Veo
+    veo_poll_interval_seconds: float = Field(default=10.0, ge=2.0)
+    # Cena per sekunda (USD) do szacowania kosztu — domyślnie wg modelu; ustaw, jeśli korzystasz z resellera
+    veo_price_per_second_usd: float | None = None
+
     # --- Opcjonalne: Alerty webhook ---
     alert_webhook_url: str | None = None
 
@@ -181,6 +195,7 @@ class Settings(BaseSettings):
             "kie_webhook_hmac_key",
             "tavily_api_key",
             "elevenlabs_api_key",
+            "veo_api_key",
         ):
             val = getattr(self, name)
             if isinstance(val, str):

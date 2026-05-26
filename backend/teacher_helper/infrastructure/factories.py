@@ -93,8 +93,21 @@ def build_image_generator() -> ImageGeneratorPort | None:
 
 
 def build_video_generator() -> VideoGeneratorPort | None:
-    """Brak produkcyjnych adapterów — fallback na storyboard JSON."""
-    return None
+    """Veo 3.1 (Google Gemini API) gdy ustawiony ``VEO_API_KEY`` — inaczej fallback na storyboard JSON."""
+    s = get_settings()
+    key = (s.veo_api_key or "").strip()
+    if not key:
+        return None
+    from teacher_helper.infrastructure.veo_adapter import VeoVideoGenerator
+
+    return VeoVideoGenerator(
+        api_key=key,
+        model=s.veo_model,
+        resolution=s.veo_resolution,
+        timeout=float(s.veo_timeout_seconds),
+        poll_interval=float(s.veo_poll_interval_seconds),
+        price_per_second_usd=s.veo_price_per_second_usd,
+    )
 
 
 def build_music_generator() -> MusicGeneratorPort | None:
