@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select

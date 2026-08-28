@@ -27,13 +27,13 @@ frontend/  → React 18 + Vite, Tailwind CSS
 - **Narzędzia pomocnicze:** wyszukiwanie w sieci (**Tavily**), opcjonalnie transkrypcja głosu (**xAI** STT), tokeny potwierdzające destrukcyjne akcje (JWT).
 - **Obserwowalność:** opcjonalnie **Langfuse** (trace zużycia LLM, embeddingów, generacji mediów tam gdzie zaimplementowano).
 
-## Wdrożenie (Google Cloud)
+## Wdrożenie (Vercel + Render + Supabase)
 
-**Stack:** zarządzany **PostgreSQL (Cloud SQL)**, **Compute Engine** (Ubuntu), w kontenerach **Redis + backend + wektorowy frontend (nginx)** z [`deploy/gcp/docker-compose.yml`](deploy/gcp/docker-compose.yml); **Qdrant** w **Qdrant Cloud** (URL + klucz w `.env`); **Caddy** (lub inny reverse proxy) na hoście VM → `http://127.0.0.1:8080`.
+**Stack produkcyjny:** frontend na **Vercel** (`teacherhelper.fmazurkiewicz.dev`), backend na **Render** (`api-teacherhelper.fmazurkiewicz.dev`), baza + auth + pliki w **Supabase** (Postgres + pgvector + Storage).
 
-Instrukcja krok po kroku: [docs/GCP_KROK_PO_KROKU.md](docs/GCP_KROK_PO_KROKU.md) — m.in. firewall, `DATABASE_URL`, `CORS_ORIGINS`, pierwszy start Compose oraz **szybkie wdrożenie po zmianach na branchu**. Szablon zmiennych: [`deploy/gcp/.env.example`](deploy/gcp/.env.example) (pliku `.env` **nie commituj**).
+Checklist lokalny i produkcyjny: [docs/technical/local-setup.md](docs/technical/local-setup.md). Zmienne środowiskowe (same nazwy): [docs/technical/configuration.md](docs/technical/configuration.md).
 
-**Sekrety:** prawdziwych kluczy API i haseł nie umieszczaj w repozytorium. Lokalnie hasła `teacher` / `ChangeMeAdmin123!` (PostgreSQL, seed admina z migracji) są wyłącznie do developmentu — na produkcji ustaw silne wartości i zmienne zgodnie z przewodnikiem GCP.
+Stara instrukcja GCP (`docs/GCP_KROK_PO_KROKU.md`, `deploy/gcp/`) jest **nieaktualna** — zostaje w repo tylko jako archiwum do usunięcia.
 
 ## Uruchomienie lokalne — krok po kroku
 
@@ -41,8 +41,7 @@ Instrukcja krok po kroku: [docs/GCP_KROK_PO_KROKU.md](docs/GCP_KROK_PO_KROKU.md)
 
 - **Python 3.11+** + **Poetry**
 - **Node.js 18+** i npm
-- **Ubuntu/WSL** (PostgreSQL, Qdrant, Redis)
-- **DBeaver** (opcjonalnie, do zarządzania bazą)
+- **PostgreSQL 15+** z rozszerzeniem **pgvector** (lokalnie lub Supabase Cloud dev)
 - Klucz **OpenRouter API** → https://openrouter.ai/keys
 - Klucz **OpenAI API** (embeddingi) → https://platform.openai.com/api-keys
 

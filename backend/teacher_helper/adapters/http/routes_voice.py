@@ -9,7 +9,7 @@ import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 
-from teacher_helper.adapters.http.deps import CurrentUser
+from teacher_helper.adapters.http.deps import CurrentUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.config import get_settings
 
@@ -26,11 +26,12 @@ class TranscribeResponse(BaseModel):
 
 @router.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe_audio(
+    session: DbSession,
     user: CurrentUser,
     file: UploadFile = File(...),
 ) -> TranscribeResponse:
     """Nagraj audio w przeglądarce, wyślij jako multipart — xAI zwraca tekst (język m.in. polski)."""
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
     s = get_settings()
     key = (s.xai_api_key or "").strip()
     if not key:

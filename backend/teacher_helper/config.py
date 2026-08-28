@@ -28,12 +28,20 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/teacher"
     database_url_sync: str = "postgresql+psycopg://postgres:postgres@localhost:5432/teacher"
 
-    # --- JWT ---
+    # --- JWT (legacy dev — produkcja: Supabase Auth) ---
     jwt_secret: str = "change-me-in-production-use-openssl-rand"
     jwt_algorithm: str = "HS256"
     jwt_expire_hours: int = 168
 
+    # --- Supabase Auth (produkcja) ---
+    supabase_url: str | None = None
+    supabase_jwks_url: str | None = None
+    supabase_jwt_audience: str = "authenticated"
+    supabase_service_role_key: str | None = None
+    supabase_storage_bucket: str = "teacherhelper"
+
     # --- Storage plików ---
+    storage_backend: Literal["local", "supabase"] = "local"
     storage_root: Path = Path("data/storage")
 
     # --- xAI (Grok) — transkrypcja mowy STT w Asystencie (POST /v1/voice/transcribe → api.x.ai/v1/stt) ---
@@ -100,14 +108,6 @@ class Settings(BaseSettings):
     # Opcjonalnie: klucz HMAC z https://kie.ai/settings — wtedy webhook weryfikuje X-Webhook-Signature.
     kie_webhook_hmac_key: str | None = None
 
-    # --- Qdrant ---
-    qdrant_url: str = "http://localhost:6333"
-    qdrant_api_key: str | None = None
-    qdrant_collection: str = "file_chunks"
-
-    # --- Redis ---
-    redis_url: str = "redis://localhost:6379/0"
-
     # --- Admin ---
     admin_api_key: str | None = None
     default_rate_limit_rpm: int = 100
@@ -164,6 +164,7 @@ class Settings(BaseSettings):
     elevenlabs_sfx_translate_model: str | None = None
 
     # --- Google Veo 3.1 (generowanie wideo przez Gemini API) ---
+    video_generation_enabled: bool = False
     # Klucz API Google (ten sam co do Gemini, jeśli masz dostęp do Veo w swoim projekcie)
     veo_api_key: str | None = None
     # Model Veo: "veo-3.1-fast" (tańszy, szybszy) | "veo-3.1-generate-preview" | "veo-3.0-generate-preview"
@@ -188,7 +189,6 @@ class Settings(BaseSettings):
             "openai_api_key",
             "dalle_api_key",
             "kie_api_key",
-            "qdrant_api_key",
             "admin_api_key",
             "langfuse_public_key",
             "langfuse_secret_key",
@@ -196,6 +196,7 @@ class Settings(BaseSettings):
             "tavily_api_key",
             "elevenlabs_api_key",
             "veo_api_key",
+            "supabase_service_role_key",
         ):
             val = getattr(self, name)
             if isinstance(val, str):

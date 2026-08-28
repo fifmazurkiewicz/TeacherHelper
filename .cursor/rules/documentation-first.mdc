@@ -1,0 +1,33 @@
+---
+description: Spec-driven — living plan, decisions in docs, GWT, delta; with Superpowers
+alwaysApply: true
+---
+
+# Spec-driven (documentation first)
+
+A meaningful change (feature, API, model, deploy, decision): contract first, code second. Artifacts in `docs/` and `.cursor/plans/` — this is not an unsolicited tutorial. Do not install Spec Kit / `specify` CLI.
+
+**Process how:** Superpowers (`brainstorming` → `writing-plans` → TDD / execute). **Artifact where:** this file. Graft before broad code exploration.
+
+## Living plan and decisions
+
+At the start of a session **read** the newest plan in `.cursor/plans/` and the related `docs/`. Don't guess decisions from chat memory.
+
+- **Working plan:** `.cursor/plans/YYYY-MM-DD-<feature>.md` (create one for any meaningful change that lacks a plan).
+- **Durable contract:** `docs/` (business / technical / ADR). Optional Superpowers design: `docs/superpowers/specs/` — still sync into `docs/` / ADR.
+- **Every decision taken or changed** (stack, API, skip, trade-off): update the Decisions section of the plan **and** the docs (a short ADR in `docs/technical/decisions/` or a section in the feature spec). Date + decision + why.
+- Existing project: don't rewrite docs from scratch — **delta** (ADDED / MODIFIED / REMOVED) relative to what's in the code and docs.
+
+## Order
+
+1. Superpowers skill check → Graft map if exploring code → read `docs/`, README, ADR, AGENTS.md, `.cursor/plans/`, rules (stack, secrets).
+2. **Specify** — what / why (`brainstorming` when creative). Every requirement: **Given / When / Then** (testable).
+3. **Clarify** — max 2–3 questions at once (brainstorming: one at a time). UI: `ux-ui-challenger`.
+4. **Plan** — `writing-plans`; compliant with `deployment-standard.mdc`. Save in `.cursor/plans/` and sync with `docs/`. Fix AGENTS.md if stack drifts.
+5. **Tasks** — small units; TDD (red test before the behavior implementation).
+6. **Analyze** — contradictions between spec ↔ plan ↔ tasks ↔ GWT ↔ rules. Fix, then code.
+7. **Converge** — code vs spec/GWT/docs. Fill gaps or update docs and plan. Don't close with a known discrepancy.
+
+## Exceptions
+
+Hotfix / refactor that doesn't change behavior: docs don't block; fix drift and decisions in the same session. "Code only": do it, warn about drift. Zero secrets and zero invented facts in docs.

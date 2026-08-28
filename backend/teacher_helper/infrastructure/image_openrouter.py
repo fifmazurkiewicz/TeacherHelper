@@ -168,7 +168,7 @@ class OpenRouterImageGenerator:
         try:
             return base64.standard_b64decode(ref)
         except (ValueError, binascii.Error) as exc:
-            raise RuntimeError(f"OpenRouter Image: niepoprawne dane obrazu (nie data URL, nie http, nie base64)") from exc
+            raise RuntimeError("OpenRouter Image: niepoprawne dane obrazu (nie data URL, nie http, nie base64)") from exc
 
     async def generate(
         self,

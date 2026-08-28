@@ -1,6 +1,17 @@
+import {
+  getSupabaseAccessToken,
+  getSupabaseSessionToken,
+  isSupabaseConfigured,
+  supabase,
+} from "@/lib/supabase";
+
 const TOKEN_KEY = "th_access_token";
 
 const API_BASE = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/+$/, "") ?? "/th-api";
+
+export function getApiBase(): string {
+  return API_BASE;
+}
 
 function buildUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
@@ -8,12 +19,24 @@ function buildUrl(path: string): string {
 }
 
 export function getToken(): string | null {
+  if (isSupabaseConfigured) return getSupabaseAccessToken();
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string | null): void {
+export async function setToken(token: string | null): Promise<void> {
+  if (isSupabaseConfigured) {
+    if (token == null || token === "") {
+      await supabase?.auth.signOut();
+    }
+    return;
+  }
   if (token == null || token === "") localStorage.removeItem(TOKEN_KEY);
   else localStorage.setItem(TOKEN_KEY, token);
+}
+
+async function resolveAuthToken(): Promise<string | null> {
+  if (isSupabaseConfigured) return getSupabaseSessionToken();
+  return localStorage.getItem(TOKEN_KEY);
 }
 
 export function getAdminKeyHeaders(): Record<string, string> {
@@ -47,9 +70,24 @@ async function errorText(res: Response): Promise<string> {
 
 async function authFetch(path: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
-  const tok = getToken();
+  const tok = await resolveAuthToken();
   if (tok) headers.set("Authorization", `Bearer ${tok}`);
   return fetch(buildUrl(path), { ...init, headers });
+}
+
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = window.setTimeout(resolve, ms);
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Aborted", "AbortError"));
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
 }
 
 export async function api<T>(path: string, init?: ApiInit): Promise<T> {
@@ -73,6 +111,38 @@ export async function api<T>(path: string, init?: ApiInit): Promise<T> {
 }
 
 // --- typy odpowiedzi (zgodne z backendem) ---
+
+export type ChatAcceptedResponse = {
+  job_id: string;
+  conversation_id: string;
+};
+
+export type JobStatusResponse = {
+  job_id: string;
+  status: string;
+  kind: string;
+  conversation_id: string | null;
+  result: Record<string, unknown> | null;
+  error: string | null;
+};
+
+export async function pollJobUntilDone(
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
+  const terminal = new Set(["done", "error"]);
+  while (true) {
+    if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
+    const status = await api<JobStatusResponse>(`/v1/jobs/${encodeURIComponent(jobId)}`, { signal });
+    if (terminal.has(status.status)) {
+      if (status.status === "error") {
+        throw new Error(status.error ?? "Zadanie zakończone błędem");
+      }
+      return status.result ?? {};
+    }
+    await sleep(2000, signal);
+  }
+}
 
 export type AdminStats = {
   users: number;
@@ -306,10 +376,7 @@ export async function uploadFile(
   if (opts.projectId) fd.append("project_id", opts.projectId);
   if (opts.topicId) fd.append("topic_id", opts.topicId);
   if (opts.category) fd.append("category", opts.category);
-  const headers: Record<string, string> = {};
-  const tok = getToken();
-  if (tok) headers.Authorization = `Bearer ${tok}`;
-  const res = await fetch(buildUrl("/v1/files"), { method: "POST", headers, body: fd });
+  const res = await authFetch("/v1/files", { method: "POST", body: fd });
   if (!res.ok) throw new Error(await errorText(res));
   return (await res.json()) as ApiFile;
 }
@@ -321,10 +388,7 @@ export function uploadUserFile(file: File, projectId: string): Promise<ApiFile> 
 export async function transcribeVoice(blob: Blob, filename: string): Promise<{ text: string }> {
   const fd = new FormData();
   fd.append("file", blob, filename);
-  const headers: Record<string, string> = {};
-  const tok = getToken();
-  if (tok) headers.Authorization = `Bearer ${tok}`;
-  const res = await fetch(buildUrl("/v1/voice/transcribe"), { method: "POST", headers, body: fd });
+  const res = await authFetch("/v1/voice/transcribe", { method: "POST", body: fd });
   if (!res.ok) throw new Error(await errorText(res));
   return (await res.json()) as { text: string };
 }

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from teacher_helper.config import get_settings
 from teacher_helper.use_cases.ports import ImageGeneratorPort, VideoGeneratorPort
 
 

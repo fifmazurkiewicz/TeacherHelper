@@ -1,0 +1,32 @@
+---
+description: Graft — code map before exploration; bootstrap every new repo; graft/ gitignored
+alwaysApply: true
+---
+
+# Graft (all repos)
+
+[Graft](https://github.com/nanonets/graft) — local context graph for the agent. Greenfield and brownfield. Zero runtime impact.
+
+## Obligation
+
+Before grep / reading many files: `graft map` (new / unknown repo) or `graft ask "<question>" --source` / MCP. Exhaustive: `graft grep`. Blast radius: `graft callers <symbol> --depth N`.
+
+If wiring or `graft/` is missing — **bootstrap first** (below), then map.
+
+## Bootstrap (new or unwired repo)
+
+Do this early in the first session (or when hygiene gaps are filled):
+
+1. `npx @nanonets/graft init --agents cursor --dry-run` → then without `--dry-run` (no TTY: always `--agents cursor`).
+2. `graft telemetry disable`.
+3. Ensure `.gitignore` has `/graft/` (never commit the cache). Commit wiring only: `.cursor/rules/graft.mdc`, `.cursor/mcp.json`.
+4. Structural `graft build` ($0, no key). `--deep` only intentionally; key local, never in chat.
+5. If native install fails (e.g. Windows missing VS C++ / node-gyp): keep manual wiring (rule + MCP + gitignore); note the gap in `AGENTS.md`; retry after build tools exist.
+
+## `graft build` (periodically)
+
+Queries refresh structure themselves (~3 ms). Full rebuild: start of session when `graft check` drifts; after merge / large refactor / many files; when ask/callers look stale. Not after every line.
+
+## Hygiene
+
+Don't commit `graft/`. Don't require Graft in CI or on Vercel/Render. Don't read `.env` under `--deep`.

@@ -25,12 +25,12 @@ from teacher_helper.infrastructure.music_kie import (
     download_audio_url,
     parse_task_record,
 )
-from teacher_helper.infrastructure.storage.local import LocalStorage
+from teacher_helper.infrastructure.storage.factory import get_storage
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/music/kie", tags=["music-kie"])
-_storage = LocalStorage()
+_storage = get_storage()
 
 
 @router.post("/import-by-task", response_model=FileResponse)
@@ -40,7 +40,7 @@ async def import_kie_music_by_task(
     body: KieMusicImportByTaskRequest,
 ) -> FileAssetORM:
     """Odpytuje ``record-info`` i zapisuje pierwszy dostępny MP3 w bibliotece."""
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
     task_id = body.task_id.strip()
     if not task_id:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Pusty task_id")

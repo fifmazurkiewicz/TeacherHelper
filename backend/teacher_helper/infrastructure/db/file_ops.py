@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Protocol
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -12,26 +12,24 @@ from teacher_helper.infrastructure.chunking import chunk_text
 from teacher_helper.infrastructure.db.models import (
     AiReadAuditORM,
     FileAssetORM,
-    FileChunkORM,
     FileCategory,
+    FileChunkORM,
     FileStatus,
 )
 from teacher_helper.infrastructure.embeddings import embed_text, embed_texts
-from teacher_helper.infrastructure.qdrant import delete_file_vectors, search_vectors, upsert_chunks
 from teacher_helper.infrastructure.text_extract import extract_plain_text
+from teacher_helper.infrastructure.vector_search import search_vector_chunks
 
 
 async def delete_chunks_for_file(session: AsyncSession, file_id: UUID) -> None:
     await session.execute(delete(FileChunkORM).where(FileChunkORM.file_asset_id == file_id))
-    delete_file_vectors(file_id)
 
 
-class _StorageDeletePort(Protocol):
+class _StorageDeletePort:
     async def delete(self, key: str) -> None: ...
 
 
-async def purge_file_asset(session: AsyncSession, storage: _StorageDeletePort, row: FileAssetORM) -> None:
-    """Usuwa chunki (Postgres + Qdrant), blob storage i wiersz pliku — jedna ścieżka z ``routes_files`` i przy usuwaniu projektu."""
+async def purge_file_asset(session: AsyncSession, storage: Any, row: FileAssetORM) -> None:
     await delete_chunks_for_file(session, row.id)
     await storage.delete(row.storage_key)
     await session.delete(row)
@@ -51,28 +49,16 @@ async def index_file_content(
     if not chunks:
         return
     embeddings = await embed_texts(chunks)
-    chunk_ids: list[UUID] = []
     for idx, (chunk, emb) in enumerate(zip(chunks, embeddings, strict=True)):
-        cid = uuid.uuid4()
-        chunk_ids.append(cid)
         session.add(
             FileChunkORM(
-                id=cid,
+                id=uuid.uuid4(),
                 file_asset_id=file_row.id,
                 chunk_index=idx,
                 text=chunk,
                 embedding=emb,
             )
         )
-
-    upsert_chunks(
-        file_asset_id=file_row.id,
-        user_id=file_row.user_id,
-        chunk_ids=chunk_ids,
-        texts=chunks,
-        embeddings=embeddings,
-        topic_id=file_row.topic_id,
-    )
 
 
 async def semantic_search_chunks(
@@ -83,17 +69,11 @@ async def semantic_search_chunks(
     project_id: UUID | None = None,
     topic_id: UUID | None = None,
 ) -> list[tuple[FileChunkORM, float]]:
-    """Wyszukiwanie semantyczne przez Qdrant + doładowanie ORM z PostgreSQL.
-
-    - ``topic_id`` ustawione: tylko chunki należące do tego tematu (filtr Qdrant + weryfikacja ORM).
-    - ``topic_id`` None (asystent / biblioteka): tylko pliki **bez** ``file_assets.topic_id`` — szersze
-      pobranie z Qdrant (tylko user_id), odfiltrowanie po DB, żeby nie mieszać z Omówieniem tematu.
-    """
     q_emb = await embed_text(query)
     if topic_id is not None:
-        hits = search_vectors(q_emb, user_id, top_k=top_k, topic_id=topic_id)
+        hits = await search_vector_chunks(session, user_id, q_emb, top_k=top_k, topic_id=topic_id)
     else:
-        hits = search_vectors(q_emb, user_id, top_k=min(top_k * 4, 48), topic_id=None)
+        hits = await search_vector_chunks(session, user_id, q_emb, top_k=min(top_k * 4, 48), topic_id=None)
 
     result: list[tuple[FileChunkORM, float]] = []
     for hit in hits:
@@ -103,7 +83,8 @@ async def semantic_search_chunks(
         except ValueError:
             continue
         chunk = await session.get(
-            FileChunkORM, uid,
+            FileChunkORM,
+            uid,
             options=[selectinload(FileChunkORM.file_asset)],
         )
         if chunk is None or chunk.file_asset is None:
@@ -185,7 +166,6 @@ async def persist_export_as_new_file(
     target_format: str,
     storage: Any,
 ) -> UUID:
-    """Eksportuje treść pliku źródłowego do nowego pliku w bibliotece (PDF/DOCX/TXT/PPTX)."""
     from teacher_helper.infrastructure.export import SUPPORTED_FORMATS, convert_text
     from teacher_helper.infrastructure.text_extract import extract_plain_text
 

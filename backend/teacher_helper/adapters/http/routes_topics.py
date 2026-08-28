@@ -16,7 +16,7 @@ router = APIRouter(prefix="/v1/topics", tags=["topics"])
 
 @router.post("", response_model=TopicResponse)
 async def create_topic(session: DbSession, user: CurrentUser, body: TopicCreate) -> TopicORM:
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
     row = TopicORM(
         id=uuid4(),
         user_id=user.id,
@@ -45,7 +45,7 @@ async def get_topic(session: DbSession, user: CurrentUser, topic_id: UUID) -> To
 
 @router.delete("/{topic_id}", response_model=None)
 async def delete_topic(session: DbSession, user: CurrentUser, topic_id: UUID) -> Response:
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
     row = await session.get(TopicORM, topic_id)
     if not row or row.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Temat nie znaleziony")
@@ -70,8 +70,8 @@ async def search_topic_rag(
     q: str = Query(..., min_length=1, max_length=2000, description="Zapytanie semantyczne w obrębie tematu"),
     top_k: int = Query(8, ge=1, le=32),
 ) -> list[TopicSearchHit]:
-    """Prosty RAG: Qdrant z filtrem user_id + topic_id (bez mieszania między tematami)."""
-    check_rate_limit(user)
+    """Prosty RAG: pgvector z filtrem user_id + topic_id (bez mieszania między tematami)."""
+    await check_rate_limit(session, user)
     topic = await session.get(TopicORM, topic_id)
     if not topic or topic.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Temat nie znaleziony")

@@ -26,8 +26,7 @@ export function Nav() {
   }, []);
 
   function logout() {
-    setToken(null);
-    navigate("/login");
+    void setToken(null).then(() => navigate("/login"));
   }
 
   const isAdminSection = pathname.startsWith("/admin");

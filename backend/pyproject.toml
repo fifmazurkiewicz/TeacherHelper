@@ -26,8 +26,7 @@ python-docx = ">=1.1.0,<2"
 pypdf = ">=5.0.0,<6"
 fpdf2 = ">=2.8.0,<3"
 python-pptx = ">=1.0.0,<2"
-qdrant-client = ">=1.12.0,<2"
-redis = ">=5.0.0,<6"
+pgvector = "^0.3.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = ">=8.0"
@@ -44,6 +43,8 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+# E501: długie stringi promptów (chat_orchestrator) i migracje; E402: main.py (logging przed importem app)
+ignore = ["E501", "E402"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
