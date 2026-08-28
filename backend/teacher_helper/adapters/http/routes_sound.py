@@ -15,8 +15,8 @@ from teacher_helper.adapters.http.deps import CurrentUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import FileResponse, SoundGenerateRequest
 from teacher_helper.infrastructure.db.file_ops import index_file_content
-from teacher_helper.infrastructure.db.models import FileAssetORM, FileCategory, FileStatus, ProjectORM
 from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync
+from teacher_helper.infrastructure.db.models import FileAssetORM, FileCategory, FileStatus, ProjectORM
 from teacher_helper.infrastructure.factories import build_sound_generator
 from teacher_helper.infrastructure.storage.factory import get_storage
 

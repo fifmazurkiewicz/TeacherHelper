@@ -43,6 +43,8 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+# E501: długie stringi promptów (chat_orchestrator) i migracje; E402: main.py (logging przed importem app)
+ignore = ["E501", "E402"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

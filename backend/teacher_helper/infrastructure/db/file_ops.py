@@ -2,20 +2,18 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-
-from sqlalchemy import delete
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from teacher_helper.infrastructure.chunking import chunk_text
 from teacher_helper.infrastructure.db.models import (
     AiReadAuditORM,
     FileAssetORM,
-    FileChunkORM,
     FileCategory,
+    FileChunkORM,
     FileStatus,
 )
 from teacher_helper.infrastructure.embeddings import embed_text, embed_texts

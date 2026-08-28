@@ -1,6 +1,6 @@
 """Lokalny serwer API — uruchom z katalogu ``backend`` albo z debuggera (konfiguracja „Backend API”).
 
-Przykład: ``.venv\\Scripts\\python.exe run_dev.py``  
+Przykład: ``.venv\\Scripts\\python.exe run_dev.py``
 ``UVICORN_RELOAD=1`` włącza hot-reload (słabo w połączeniu z debuggerem).
 """
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 
+from teacher_helper.infrastructure.db.models import MessageORM
 from teacher_helper.infrastructure.factories import (
     build_image_generator,
     build_llm_client,
@@ -13,7 +14,6 @@ from teacher_helper.infrastructure.factories import (
     build_summary_llm_client,
     build_video_generator,
 )
-from teacher_helper.infrastructure.db.models import MessageORM
 from teacher_helper.infrastructure.storage.factory import get_storage
 from teacher_helper.use_cases.chat_orchestrator import ChatOrchestratorUseCase
 

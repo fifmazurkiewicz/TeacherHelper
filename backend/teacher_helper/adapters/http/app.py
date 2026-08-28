@@ -6,6 +6,7 @@ import traceback
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from teacher_helper.adapters.http.routes_admin import router as admin_router
@@ -14,16 +15,15 @@ from teacher_helper.adapters.http.routes_chat import router as chat_router
 from teacher_helper.adapters.http.routes_conversations import router as conversations_router
 from teacher_helper.adapters.http.routes_files import router as files_router
 from teacher_helper.adapters.http.routes_intent import router as intent_router
+from teacher_helper.adapters.http.routes_jobs import router as jobs_router
 from teacher_helper.adapters.http.routes_kie import router as kie_webhook_router
 from teacher_helper.adapters.http.routes_music_kie import router as music_kie_router
-from teacher_helper.adapters.http.routes_sound import router as sound_router
 from teacher_helper.adapters.http.routes_projects import router as projects_router
+from teacher_helper.adapters.http.routes_sound import router as sound_router
 from teacher_helper.adapters.http.routes_topics import router as topics_router
-from teacher_helper.adapters.http.routes_jobs import router as jobs_router
 from teacher_helper.adapters.http.routes_voice import router as voice_router
 from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.db.session import async_session_factory
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 

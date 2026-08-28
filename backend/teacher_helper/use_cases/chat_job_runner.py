@@ -7,9 +7,9 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import select
 
-from teacher_helper.adapters.http.chat_services import _llm_summary, orchestrator as _orchestrator, message_pair_for_orchestrator_llm
+from teacher_helper.adapters.http.chat_services import _llm_summary, message_pair_for_orchestrator_llm
+from teacher_helper.adapters.http.chat_services import orchestrator as _orchestrator
 from teacher_helper.adapters.http.schemas import ChatRequest, CreatedFileBrief
-from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.alert_webhook import send_alert_webhook
 from teacher_helper.infrastructure.db.models import ConversationORM, FileAssetORM, MessageORM
 from teacher_helper.infrastructure.db.session import async_session_factory

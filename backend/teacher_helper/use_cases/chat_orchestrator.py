@@ -14,13 +14,23 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from teacher_helper.infrastructure.export import text_to_pdf, text_to_pptx
+from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.db.file_ops import (
     category_for_module,
     index_file_content,
     load_attached_context,
     persist_export_as_new_file,
     semantic_search_chunks,
+)
+from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync, record_llm_usage_event
+from teacher_helper.infrastructure.db.models import FileAssetORM, FileStatus, ProjectORM
+from teacher_helper.infrastructure.export import text_to_pdf, text_to_pptx
+from teacher_helper.infrastructure.lyria_openrouter import OpenRouterLyriaMusicGenerator
+from teacher_helper.infrastructure.music_kie import (
+    KIE_STATUSES_WITH_POSSIBLE_AUDIO,
+    KIE_TERMINAL_FAIL_STATUSES,
+    download_audio_url,
+    parse_task_record,
 )
 from teacher_helper.infrastructure.presentation_spec import (
     ensure_theme_persisted,
@@ -32,18 +42,14 @@ from teacher_helper.infrastructure.presentation_spec import (
     spec_to_pptx_bytes,
     spec_to_readable_plan_text,
 )
-from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync, record_llm_usage_event
-from teacher_helper.infrastructure.music_kie import (
-    KIE_STATUSES_WITH_POSSIBLE_AUDIO,
-    KIE_TERMINAL_FAIL_STATUSES,
-    download_audio_url,
-    parse_task_record,
-)
-from teacher_helper.infrastructure.db.models import FileAssetORM, FileStatus, ProjectORM
 from teacher_helper.infrastructure.storage.local import LocalStorage
-from teacher_helper.config import get_settings
-from teacher_helper.infrastructure.lyria_openrouter import OpenRouterLyriaMusicGenerator
 from teacher_helper.infrastructure.web_search import format_hits_for_llm, run_web_search
+from teacher_helper.security.resource_confirmation import (
+    ACTION_DELETE_PROJECT,
+    RESOURCE_PROJECT,
+    create_project_creation_token,
+    create_resource_confirmation_token,
+)
 from teacher_helper.use_cases.ports import (
     ImageGeneratorPort,
     LlmClientPort,
@@ -52,12 +58,6 @@ from teacher_helper.use_cases.ports import (
     SoundGeneratorPort,
     ToolDefinition,
     VideoGeneratorPort,
-)
-from teacher_helper.security.resource_confirmation import (
-    ACTION_DELETE_PROJECT,
-    RESOURCE_PROJECT,
-    create_project_creation_token,
-    create_resource_confirmation_token,
 )
 
 logger = logging.getLogger(__name__)

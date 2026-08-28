@@ -6,7 +6,6 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import select
 
 from teacher_helper.adapters.http.deps import CurrentUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
