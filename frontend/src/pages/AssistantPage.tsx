@@ -11,11 +11,13 @@ import {
   listConversationMessages,
   listConversations,
   patchConversation,
+  pollJobUntilDone,
   setToken,
   transcribeVoice,
   uploadUserFile,
   type ApiChatMessage,
   type ApiConversation,
+  type ChatAcceptedResponse,
   type PendingProjectAction,
 } from "@/lib/api";
 import {
@@ -606,11 +608,13 @@ export default function AssistantPage() {
       if (conversationId) body.conversation_id = conversationId;
       const ids = args.attachmentsSnapshot.map((a) => a.id);
       if (ids.length) body.attached_file_ids = ids;
-      const res = await api<AssistantChatResponse>("/v1/chat", {
+      const accepted = await api<ChatAcceptedResponse>("/v1/chat", {
         method: "POST",
         json: body,
         signal,
       });
+      const resultPayload = await pollJobUntilDone(accepted.job_id, signal);
+      const res = resultPayload as unknown as AssistantChatResponse;
       try {
         const raw = sessionStorage.getItem(ASSISTANT_UI_STORAGE_KEY);
         if (raw) {
@@ -811,8 +815,7 @@ export default function AssistantPage() {
   }
 
   function logout() {
-    setToken(null);
-    navigate("/login");
+    void setToken(null).then(() => navigate("/login"));
   }
 
   function onSidebarResizePointerDown(e: React.PointerEvent<HTMLDivElement>) {

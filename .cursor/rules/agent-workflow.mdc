@@ -1,0 +1,44 @@
+---
+description: Agent session, DoD, worktree, AGENTS.md, CI, Graft+Superpowers bootstrap
+alwaysApply: true
+---
+
+# Agent workflow (all projects)
+
+Applies to greenfield and brownfield. Fill hygiene gaps while in the repo (or ask in one line if that's the only diff).
+
+## Process stack (global)
+
+1. **Superpowers** — process skills before action (`superpowers.mdc`).
+2. **Graft** — code map before broad exploration; bootstrap if unwired (`graft.mdc`).
+3. **Spec-driven** — `documentation-first.mdc` + `deployment-standard.mdc`.
+
+## New / empty repo — bootstrap once
+
+When the repo lacks wiring, add in the same session (minimal):
+
+- Copy or ensure project `.cursor/rules/` includes at least: `graft.mdc`, `superpowers.mdc`, `documentation-first.mdc`, `deployment-standard.mdc`, `env-secrets.mdc`, `agent-workflow.mdc` (from `~/.cursor/rules/`).
+- Graft: init + MCP (`.cursor/mcp.json`) + `/graft/` in `.gitignore` / `.cursorignore`.
+- `AGENTS.md` (Commands + stack), `.env.example`, Dependabot when touching CI.
+- Do **not** wait for the user to ask for Graft/Superpowers — they are global constitution.
+
+## Session
+
+- One feature = **new chat**. Prior context: `@Chats`, plan, docs — not 80 turns.
+- Off the plan: **revert**, clarify, restart — don't prompt-patch a bad run.
+- Parallel agents: **git worktree**. Default: one agent, one directory.
+- UI: verify in the browser (screenshot / smoke).
+
+## Definition of Done
+
+Fresh command output from `AGENTS.md` (test / lint / build). No entry: use CI. Frontend `build` alone is not enough when tests exist. Auth / permissions: **security-review** or Bugbot before merge. Use `verification-before-completion` before claiming done.
+
+## AGENTS.md and ignore
+
+Root `AGENTS.md`: **Commands** + stack matching `deployment-standard.mdc`. Monorepo: nested `frontend/` / `backend/` AGENTS when those dirs exist.
+
+Every repo: `.cursorignore` + `.gitignore` block secrets (`.env`, `.env.*` except `!.env.example`, `credentials.json`, `secrets.toml`) and `/graft/`.
+
+## CI
+
+New repo or when touching CI: Dependabot + secret scanning. Deploy/backup/tests = GitHub Actions. Cursor Automations only on user request — don't duplicate CI.

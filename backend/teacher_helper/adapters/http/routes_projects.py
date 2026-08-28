@@ -16,7 +16,7 @@ from teacher_helper.adapters.http.schemas import ProjectCreate, ProjectResponse
 from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.db.file_ops import purge_file_asset
 from teacher_helper.infrastructure.db.models import FileAssetORM, ProjectORM
-from teacher_helper.infrastructure.storage.local import LocalStorage
+from teacher_helper.infrastructure.storage.factory import get_storage
 from teacher_helper.security.resource_confirmation import (
     ACTION_DELETE_PROJECT,
     RESOURCE_PROJECT,
@@ -140,7 +140,7 @@ async def download_project_archive(
     project_id: UUID,
 ) -> Response:
     """Pobiera wszystkie pliki katalogu jako jedno archiwum ZIP (płaska struktura w podfolderze nazwanego jak projekt)."""
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
     p = await session.get(ProjectORM, project_id)
     if not p or p.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Projekt nie znaleziony")
@@ -169,7 +169,7 @@ async def download_project_archive(
                 f"({lim_mb} MB). Pobierz wybrane pliki pojedynczo."
             ),
         )
-    storage = LocalStorage()
+    storage = get_storage()
     buf = io.BytesIO()
     folder = _safe_archive_folder_name(p.name)
     seen_names: dict[str, int] = {}
@@ -278,7 +278,7 @@ async def delete_project(
         FileAssetORM.user_id == user.id,
     )
     file_rows = list((await session.scalars(stmt)).all())
-    storage = LocalStorage()
+    storage = get_storage()
     for frow in file_rows:
         await purge_file_asset(session, storage, frow)
     await session.delete(p)

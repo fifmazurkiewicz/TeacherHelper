@@ -20,7 +20,7 @@ from teacher_helper.infrastructure.db.models import (
     ProjectORM,
     TopicORM,
 )
-from teacher_helper.infrastructure.storage.local import LocalStorage
+from teacher_helper.infrastructure.storage.factory import get_storage
 from teacher_helper.security.resource_confirmation import (
     ACTION_DELETE_FILE,
     ACTION_REINDEX_FILE,
@@ -30,7 +30,7 @@ from teacher_helper.security.resource_confirmation import (
 )
 
 router = APIRouter(prefix="/v1/files", tags=["files"])
-_storage = LocalStorage()
+_storage = get_storage()
 
 
 def _content_disposition_attachment(filename: str) -> str:
@@ -61,7 +61,7 @@ async def upload_file(
     topic_id: str | None = Form(None),
     category: str | None = Form(None),
 ) -> FileAssetORM:
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
     pid: UUID | None = None
     tid: UUID | None = None
     if project_id:
@@ -125,7 +125,7 @@ async def list_files(
 
 @router.post("/move", response_model=list[FileResponse])
 async def move_files(session: DbSession, user: CurrentUser, body: MoveFilesRequest) -> list[FileAssetORM]:
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
     target_pid = body.project_id
     if target_pid is not None:
         proj = await session.get(ProjectORM, target_pid)

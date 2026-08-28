@@ -592,6 +592,8 @@ def get_tool_definitions() -> list[ToolDefinition]:
     out: list[ToolDefinition] = []
     for d in _ALL_TOOL_DEFINITIONS:
         name = d.get("function", {}).get("name", "")
+        if name in ("generate_video", "request_video_confirmation") and not get_settings().video_generation_enabled:
+            continue
         if name == "search_web" and not _tavily_enabled():
             continue
         if name == "generate_study" and not _tavily_enabled():

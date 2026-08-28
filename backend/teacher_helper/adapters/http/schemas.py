@@ -158,6 +158,20 @@ class CreatedFileBrief(BaseModel):
     mime_type: str
 
 
+class ChatAcceptedResponse(BaseModel):
+    job_id: UUID
+    conversation_id: UUID
+
+
+class JobStatusResponse(BaseModel):
+    job_id: UUID
+    status: str
+    kind: str
+    conversation_id: UUID | None = None
+    result: dict | None = None
+    error: str | None = None
+
+
 class ChatResponse(BaseModel):
     reply: str
     conversation_id: UUID

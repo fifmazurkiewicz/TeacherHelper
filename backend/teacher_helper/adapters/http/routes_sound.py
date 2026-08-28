@@ -18,12 +18,12 @@ from teacher_helper.infrastructure.db.file_ops import index_file_content
 from teacher_helper.infrastructure.db.models import FileAssetORM, FileCategory, FileStatus, ProjectORM
 from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync
 from teacher_helper.infrastructure.factories import build_sound_generator
-from teacher_helper.infrastructure.storage.local import LocalStorage
+from teacher_helper.infrastructure.storage.factory import get_storage
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/sound", tags=["sound"])
-_storage = LocalStorage()
+_storage = get_storage()
 
 
 @router.post("/generate", response_model=FileResponse)
@@ -33,7 +33,7 @@ async def generate_sound(
     body: SoundGenerateRequest,
 ) -> FileAssetORM:
     """Generuje krótki efekt dźwiękowy (SFX, do 10 s), nie piosenkę — zapis w bibliotece."""
-    check_rate_limit(user)
+    await check_rate_limit(session, user)
 
     gen = build_sound_generator()
     if gen is None:

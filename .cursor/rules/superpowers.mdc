@@ -1,0 +1,35 @@
+---
+description: Superpowers — process skills before action (all repos, always)
+alwaysApply: true
+---
+
+# Superpowers (all repos)
+
+Plugin **Superpowers** is mandatory process. User instructions override skills; skills override default improvisation.
+
+## Before any response or action
+
+1. Check available skills. If a skill might apply (~1% chance) — **Read the skill file and follow it** before exploring, clarifying, or coding.
+2. Announce: `Using [skill] to [purpose]`.
+3. Process skills first, then domain/implementation skills.
+
+## Common triggers
+
+| Situation | Skill first |
+|---|---|
+| New feature / creative work / behavior change | `brainstorming` → approval → `writing-plans` |
+| Bug / unexpected failure / flaky test | `systematic-debugging` |
+| Multi-step plan ready to execute | `executing-plans` or `subagent-driven-development` |
+| About to claim "done" / fixed / passing | `verification-before-completion` |
+| Starting feature isolation | `using-git-worktrees` |
+| Implementation complete, next step unclear | `finishing-a-development-branch` |
+| Writing/editing a skill | `writing-skills` |
+
+Entry skill for "how to use skills": `using-superpowers`.
+
+## With this constitution
+
+- **Docs layout** stays `documentation-first.mdc`: durable contract in `docs/`, working plan in `.cursor/plans/`. Superpowers design docs may live under `docs/superpowers/specs/` — still sync decisions into `docs/` / ADR.
+- **Stack / deploy**: `deployment-standard.mdc`.
+- **Code map before broad exploration**: `graft.mdc` (after the relevant Superpowers skill says how to proceed).
+- Skip Superpowers only when the user explicitly says so.
