@@ -12,6 +12,19 @@ _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _ROOT_ENV_FILE = _PROJECT_ROOT / ".env"
 
 
+def normalize_postgres_url(url: str, driver: str) -> str:
+    """Map bare Supabase/Heroku URLs to the installed SQLAlchemy driver."""
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url.removeprefix("postgres://")
+    if url.startswith("postgresql+psycopg2://"):
+        url = "postgresql+psycopg://" + url.removeprefix("postgresql+psycopg2://")
+    if url.startswith(f"postgresql+{driver}://"):
+        return url
+    if url.startswith("postgresql://"):
+        return f"postgresql+{driver}://" + url.removeprefix("postgresql://")
+    return url
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,
@@ -180,6 +193,12 @@ class Settings(BaseSettings):
 
     # --- Opcjonalne: Alerty webhook ---
     alert_webhook_url: str | None = None
+
+    @model_validator(mode="after")
+    def _normalize_database_urls(self) -> Self:
+        self.database_url = normalize_postgres_url(self.database_url, "asyncpg")
+        self.database_url_sync = normalize_postgres_url(self.database_url_sync, "psycopg")
+        return self
 
     @model_validator(mode="after")
     def _strip_secret_strings(self) -> Self:
