@@ -150,11 +150,15 @@ class Settings(BaseSettings):
     admin_emails: str = ""
     default_rate_limit_rpm: int = 100
 
-    # --- Limity tokenów ---
-    llm_daily_token_soft_limit: int | None = None
-    llm_daily_token_hard_limit: int | None = None
-    # Gdy użytkownik nie ma własnego llm_daily_token_limit w bazie — stosowany limit dzienny (UTC) na czat.
-    default_user_llm_daily_token_limit: int = Field(default=25000, ge=1, le=2_000_000_000)
+    # --- Limity kosztu LLM (USD, miesiąc kalendarzowy UTC) — wszystkie modele per użytkownik ---
+    llm_monthly_cost_soft_limit_usd: float | None = None
+    llm_monthly_cost_hard_limit_usd: float | None = None
+    # Gdy użytkownik nie ma własnego limitu w bazie — stosowany miesięczny limit (UTC) w USD.
+    default_user_llm_monthly_cost_limit_usd: float = Field(default=10.0, ge=0.01, le=100_000.0)
+    # Szacunkowy koszt (USD) gdy API nie zwraca ceny — opcjonalne nadpisanie.
+    kie_music_estimated_cost_usd: float = Field(default=0.10, ge=0.0)
+    openrouter_lyria_estimated_cost_usd: float = Field(default=0.16, ge=0.0)
+    elevenlabs_sfx_estimated_cost_usd: float = Field(default=0.02, ge=0.0)
 
     # --- Kontekst rozmowy (zwijanie długich wątków) ---
     chat_summary_enabled: bool = Field(default=True)

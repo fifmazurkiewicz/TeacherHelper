@@ -22,7 +22,11 @@ from teacher_helper.infrastructure.db.file_ops import (
     persist_export_as_new_file,
     semantic_search_chunks,
 )
-from teacher_helper.infrastructure.db.llm_usage import record_langfuse_model_call_sync, record_llm_usage_event
+from teacher_helper.infrastructure.db.llm_usage import (
+    record_langfuse_model_call_sync,
+    record_llm_usage_event,
+    record_usage_log,
+)
 from teacher_helper.infrastructure.db.models import FileAssetORM, FileStatus, ProjectORM
 from teacher_helper.infrastructure.export import text_to_pdf, text_to_pptx
 from teacher_helper.infrastructure.lyria_openrouter import OpenRouterLyriaMusicGenerator
@@ -61,6 +65,35 @@ from teacher_helper.use_cases.ports import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _record_model_cost_usd(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    provider: str,
+    model: str,
+    call_kind: str,
+    module_name: str | None,
+    cost_usd: float | None,
+    prompt_tokens: int | None = None,
+    completion_tokens: int | None = None,
+    total_tokens: int | None = None,
+) -> None:
+    if cost_usd is None and prompt_tokens is None and completion_tokens is None:
+        return
+    await record_usage_log(
+        session,
+        user_id=user_id,
+        provider=provider,
+        model=model,
+        call_kind=call_kind,
+        module_name=module_name,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=total_tokens,
+        cost_usd=cost_usd,
+    )
 
 
 def _tavily_enabled() -> bool:
@@ -2027,7 +2060,7 @@ class ChatOrchestratorUseCase:
         return [fid], trunc_note
 
     async def _embed_presentation_images(
-        self, spec: dict[str, Any], user_id: UUID
+        self, session: AsyncSession, spec: dict[str, Any], user_id: UUID
     ) -> dict[int, bytes]:
         """Pierwsze N slajdów z ``include_image`` + ``image_hint`` (N = ``presentation_max_embedded_images``)."""
         s = get_settings()
@@ -2062,6 +2095,16 @@ class ChatOrchestratorUseCase:
                 )
                 if result.image_data:
                     out[idx] = result.image_data
+                    if result.cost_usd is not None:
+                        await _record_model_cost_usd(
+                            session,
+                            user_id=user_id,
+                            provider="openrouter",
+                            model=result.model,
+                            call_kind="module",
+                            module_name="presentation_image",
+                            cost_usd=result.cost_usd,
+                        )
             except Exception as exc:
                 logger.warning("Grafika do slajdu %s: %s", idx, str(exc)[:500])
         return out
@@ -2104,7 +2147,7 @@ class ChatOrchestratorUseCase:
             s_pres = get_settings()
             if int(s_pres.presentation_max_embedded_images) > 0 and self._image_gen is not None:
                 try:
-                    slide_imgs = await self._embed_presentation_images(spec, user_id)
+                    slide_imgs = await self._embed_presentation_images(session, spec, user_id)
                 except Exception as exc:
                     logger.warning("PPTX osadzanie grafik: %s", str(exc)[:400])
             try:
@@ -2380,6 +2423,7 @@ class ChatOrchestratorUseCase:
         cap = int(get_settings().elevenlabs_sound_max_duration_seconds)
         cap = max(1, min(cap, 30))
         dur = max(1, min(cap, dur))
+        s = get_settings()
         try:
             result = await gen.generate(desc, duration_seconds=dur, mode="sfx")
         except TimeoutError as exc:
@@ -2399,6 +2443,16 @@ class ChatOrchestratorUseCase:
             user_id=user_id,
             metadata={"call_kind": "sound_effect", "module": "sound"},
             usage=None,
+            cost_usd=s.elevenlabs_sfx_estimated_cost_usd,
+        )
+        await _record_model_cost_usd(
+            session,
+            user_id=user_id,
+            provider="elevenlabs",
+            model=result.model,
+            call_kind="module",
+            module_name="sound",
+            cost_usd=s.elevenlabs_sfx_estimated_cost_usd,
         )
         ext = "mp3" if result.mime_type == "audio/mpeg" else "wav"
         extra: dict[str, Any] = {
@@ -2454,6 +2508,16 @@ class ChatOrchestratorUseCase:
                     size=tool_args.get("size", "1024x1024"),
                     user_id=user_id,
                 )
+                if result.cost_usd is not None:
+                    await _record_model_cost_usd(
+                        session,
+                        user_id=user_id,
+                        provider="openrouter",
+                        model=result.model,
+                        call_kind="module",
+                        module_name="graphics",
+                        cost_usd=result.cost_usd,
+                    )
                 extra["revised_prompt"] = result.revised_prompt
                 extra["generator_model"] = result.model
                 index_text = (
@@ -2635,6 +2699,15 @@ class ChatOrchestratorUseCase:
                 extra["kie_response"] = result.payload
                 if result.ok and result.task_id:
                     extra["kie_task_id"] = result.task_id
+                    await _record_model_cost_usd(
+                        session,
+                        user_id=user_id,
+                        provider="kie.ai",
+                        model=s.kie_music_model,
+                        call_kind="module",
+                        module_name="music_kie",
+                        cost_usd=s.kie_music_estimated_cost_usd,
+                    )
                 if not result.ok:
                     extra["kie_error"] = (result.error_detail or "")[:1200]
             except Exception as exc:
@@ -2730,6 +2803,15 @@ class ChatOrchestratorUseCase:
                     extra[f"lyria_audio_variant_{variant_index}_bytes"] = len(audio_b)
                     lyria_wav_files.append((variant_index, audio_b))
                     lyria_saved += 1
+                    await _record_model_cost_usd(
+                        session,
+                        user_id=user_id,
+                        provider="openrouter",
+                        model=s.openrouter_music_model,
+                        call_kind="module",
+                        module_name="music_lyria",
+                        cost_usd=s.openrouter_lyria_estimated_cost_usd,
+                    )
             if lyria_traces:
                 extra["lyria_traces_compact"] = lyria_traces
             if lyria_errors:

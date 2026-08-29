@@ -12,6 +12,7 @@ from uuid import UUID
 import httpx
 
 from teacher_helper.infrastructure.db.llm_usage import (
+    cost_from_openrouter_response,
     record_langfuse_model_call_sync,
     usage_from_openrouter_chat_response,
 )
@@ -116,8 +117,9 @@ class OpenRouterImageGenerator:
         byte_len: int,
         revised: str | None,
         user_id: UUID | None,
-    ) -> None:
+    ) -> float | None:
         usage = usage_from_openrouter_chat_response(data)
+        cost_usd = cost_from_openrouter_response(data)
         out = f"image_binary bytes={byte_len}"
         if revised:
             out += f" revised_excerpt={revised[:500]!r}"
@@ -131,7 +133,9 @@ class OpenRouterImageGenerator:
             user_id=user_id,
             metadata={"call_kind": "image_generation"},
             usage=usage,
+            cost_usd=cost_usd,
         )
+        return cost_usd
 
     @staticmethod
     def _build_prompt(prompt: str, style: str | None) -> str:
@@ -240,13 +244,14 @@ class OpenRouterImageGenerator:
                 if isinstance(content, str):
                     text_parts = content
                 rev = text_parts[:500] if text_parts else None
-                await self._trace_langfuse_image_success(data, full_prompt, len(image_data), rev, user_id)
+                cost_usd = await self._trace_langfuse_image_success(data, full_prompt, len(image_data), rev, user_id)
                 return ImageResult(
                     image_data=image_data,
                     mime_type="image/png",
                     prompt_used=prompt,
                     model=self._model,
                     revised_prompt=rev,
+                    cost_usd=cost_usd,
                 )
             image_ref = _first_image_url_from_message_content(content)
             if not image_ref:
@@ -278,13 +283,14 @@ class OpenRouterImageGenerator:
                 mime = image_ref[5:semi] or mime
 
         rev = text_parts[:500] if text_parts else None
-        await self._trace_langfuse_image_success(data, full_prompt, len(image_bytes), rev, user_id)
+        cost_usd = await self._trace_langfuse_image_success(data, full_prompt, len(image_bytes), rev, user_id)
         return ImageResult(
             image_data=image_bytes,
             mime_type=mime,
             prompt_used=prompt,
             model=self._model,
             revised_prompt=rev,
+            cost_usd=cost_usd,
         )
 
     @staticmethod

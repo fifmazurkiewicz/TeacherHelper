@@ -18,8 +18,8 @@ from teacher_helper.infrastructure.system_incidents import (
 )
 from teacher_helper.infrastructure.usage_limits import (
     build_limit_alerts,
-    per_user_llm_token_stats,
-    sum_llm_total_tokens_today,
+    per_user_llm_cost_stats,
+    sum_llm_cost_usd_month,
 )
 from teacher_helper.security import hash_password
 
@@ -42,23 +42,23 @@ class AdminUserResponse(BaseModel):
     display_name: str | None
     role: str
     rate_limit_rpm: int | None
-    llm_daily_token_limit: int | None
-    effective_llm_daily_token_limit: int | None
-    uses_site_default_llm_daily_limit: bool
+    llm_monthly_cost_limit_usd: float | None
+    effective_llm_monthly_cost_limit_usd: float | None
+    uses_site_default_llm_monthly_limit: bool
     created_at: datetime
 
 
 def _admin_user_response(u: UserORM) -> AdminUserResponse:
     s = get_settings()
-    raw = u.llm_daily_token_limit
+    raw = u.llm_monthly_cost_limit_usd
     if raw is None:
-        eff: int | None = int(s.default_user_llm_daily_token_limit)
+        eff: float | None = float(s.default_user_llm_monthly_cost_limit_usd)
         uses_default = True
     elif raw == 0:
         eff = None
         uses_default = False
     else:
-        eff = int(raw)
+        eff = float(raw)
         uses_default = False
     return AdminUserResponse(
         id=u.id,
@@ -66,17 +66,17 @@ def _admin_user_response(u: UserORM) -> AdminUserResponse:
         display_name=u.display_name,
         role=u.role.value,
         rate_limit_rpm=u.rate_limit_rpm,
-        llm_daily_token_limit=raw,
-        effective_llm_daily_token_limit=eff,
-        uses_site_default_llm_daily_limit=uses_default,
+        llm_monthly_cost_limit_usd=float(raw) if raw is not None else None,
+        effective_llm_monthly_cost_limit_usd=eff,
+        uses_site_default_llm_monthly_limit=uses_default,
         created_at=u.created_at,
     )
 
 
 class UpdateUserRequest(BaseModel):
     rate_limit_rpm: int | None = Field(None, ge=1, le=10000)
-    # 0 = brak limitu per konto (tylko limity globalne); NULL w bazie = domyślny z DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT
-    llm_daily_token_limit: int | None = Field(None, ge=0, le=2_000_000_000)
+    # 0 = brak limitu per konto (tylko limity globalne); NULL w bazie = domyślny z DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD
+    llm_monthly_cost_limit_usd: float | None = Field(None, ge=0, le=100_000.0)
     role: str | None = None
 
 
@@ -120,8 +120,8 @@ async def update_user(
         target.rate_limit_rpm = body.rate_limit_rpm
 
     updates = body.model_dump(exclude_unset=True)
-    if "llm_daily_token_limit" in updates:
-        target.llm_daily_token_limit = updates["llm_daily_token_limit"]
+    if "llm_monthly_cost_limit_usd" in updates:
+        target.llm_monthly_cost_limit_usd = updates["llm_monthly_cost_limit_usd"]
 
     await session.commit()
     await session.refresh(target)
@@ -146,19 +146,19 @@ async def clear_user_rate_limit(
     return _admin_user_response(target)
 
 
-@router.delete("/users/{user_id}/llm-daily-token-limit", response_model=AdminUserResponse)
-async def clear_user_llm_daily_token_limit(
+@router.delete("/users/{user_id}/llm-monthly-cost-limit", response_model=AdminUserResponse)
+async def clear_user_llm_monthly_cost_limit(
     session: DbSession,
     admin: AdminUser,
     user_id: UUID,
     x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
 ) -> AdminUserResponse:
-    """Usuwa indywidualny limit — obowiązuje domyślny z konfiguracji (DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT)."""
+    """Usuwa indywidualny limit — obowiązuje domyślny z konfiguracji (DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD)."""
     _check_admin_key(x_admin_key)
     target = await session.get(UserORM, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Użytkownik nie znaleziony")
-    target.llm_daily_token_limit = None
+    target.llm_monthly_cost_limit_usd = None
     await session.commit()
     await session.refresh(target)
     return _admin_user_response(target)
@@ -220,6 +220,8 @@ async def admin_monitoring(
     sum_completion = await session.scalar(select(func.coalesce(func.sum(LlmUsageLogORM.completion_tokens), 0))) or 0
     sum_total = await session.scalar(select(func.coalesce(func.sum(LlmUsageLogORM.total_tokens), 0))) or 0
 
+    sum_cost = await session.scalar(select(func.coalesce(func.sum(LlmUsageLogORM.cost_usd), 0))) or 0
+
     by_model_rows = await session.execute(
         select(
             LlmUsageLogORM.model,
@@ -228,6 +230,7 @@ async def admin_monitoring(
             func.coalesce(func.sum(LlmUsageLogORM.prompt_tokens), 0).label("prompt_tokens"),
             func.coalesce(func.sum(LlmUsageLogORM.completion_tokens), 0).label("completion_tokens"),
             func.coalesce(func.sum(LlmUsageLogORM.total_tokens), 0).label("total_tokens"),
+            func.coalesce(func.sum(LlmUsageLogORM.cost_usd), 0).label("cost_usd"),
         )
         .group_by(LlmUsageLogORM.model, LlmUsageLogORM.provider)
         .order_by(func.count(LlmUsageLogORM.id).desc())
@@ -236,7 +239,7 @@ async def admin_monitoring(
         {
             "model": r.model, "provider": r.provider, "calls": int(r.calls),
             "prompt_tokens": int(r.prompt_tokens), "completion_tokens": int(r.completion_tokens),
-            "total_tokens": int(r.total_tokens),
+            "total_tokens": int(r.total_tokens), "cost_usd": float(r.cost_usd or 0),
         }
         for r in by_model_rows.all()
     ]
@@ -248,6 +251,7 @@ async def admin_monitoring(
             func.coalesce(func.sum(LlmUsageLogORM.prompt_tokens), 0).label("prompt_tokens"),
             func.coalesce(func.sum(LlmUsageLogORM.completion_tokens), 0).label("completion_tokens"),
             func.coalesce(func.sum(LlmUsageLogORM.total_tokens), 0).label("total_tokens"),
+            func.coalesce(func.sum(LlmUsageLogORM.cost_usd), 0).label("cost_usd"),
         )
         .group_by(LlmUsageLogORM.call_kind, LlmUsageLogORM.module_name)
         .order_by(LlmUsageLogORM.call_kind, LlmUsageLogORM.module_name)
@@ -256,14 +260,14 @@ async def admin_monitoring(
         {
             "call_kind": r.call_kind, "module_name": r.module_name, "calls": int(r.calls),
             "prompt_tokens": int(r.prompt_tokens), "completion_tokens": int(r.completion_tokens),
-            "total_tokens": int(r.total_tokens),
+            "total_tokens": int(r.total_tokens), "cost_usd": float(r.cost_usd or 0),
         }
         for r in by_route_rows.all()
     ]
 
     langfuse_on = bool(s.langfuse_public_key and s.langfuse_secret_key)
-    tokens_today = await sum_llm_total_tokens_today(session, include_dry_run=False)
-    limit_alerts = build_limit_alerts(tokens_today)
+    cost_month = await sum_llm_cost_usd_month(session, include_dry_run=False)
+    limit_alerts = build_limit_alerts(cost_month)
     has_critical_limit = any(a.get("severity") == "critical" for a in limit_alerts)
     if has_critical_limit and s.alert_webhook_url:
         since = datetime.now(timezone.utc) - timedelta(minutes=15)
@@ -272,18 +276,19 @@ async def admin_monitoring(
             await record_system_incident(
                 session, event_type="alert_webhook_llm_limit", severity="info",
                 title="Wysłano webhook (przekroczenie limitu LLM)",
-                detail={"alerts": limit_alerts, "tokens_today": tokens_today},
+                detail={"alerts": limit_alerts, "cost_month_usd": cost_month},
             )
-            await send_alert_webhook({"event": "llm_limit_critical", "severity": "critical", "tokens_today": tokens_today, "alerts": limit_alerts})
+            await send_alert_webhook({"event": "llm_limit_critical", "severity": "critical", "cost_month_usd": cost_month, "alerts": limit_alerts})
             await session.commit()
     incidents = await list_recent_incidents(session, limit=40)
-    per_user_tokens = await per_user_llm_token_stats(session)
+    per_user_costs = await per_user_llm_cost_stats(session)
 
     return {
         "application": {"users": users or 0, "files": files or 0, "ai_read_audits": audits or 0},
         "alerts": {
-            "operational": limit_alerts, "tokens_today_utc": tokens_today,
-            "soft_limit": s.llm_daily_token_soft_limit, "hard_limit": s.llm_daily_token_hard_limit,
+            "operational": limit_alerts, "cost_month_usd": cost_month,
+            "soft_limit_usd": s.llm_monthly_cost_soft_limit_usd,
+            "hard_limit_usd": s.llm_monthly_cost_hard_limit_usd,
             "webhook_configured": bool(s.alert_webhook_url),
             "hint": "Alerty limitów są odświeżane przy każdym GET /v1/admin/monitoring; webhook dla sytuacji krytycznej max. raz na 15 min.",
         },
@@ -296,8 +301,12 @@ async def admin_monitoring(
         "llm_usage": {
             "total_calls": int(total_calls), "total_prompt_tokens": int(sum_prompt),
             "total_completion_tokens": int(sum_completion), "total_tokens_recorded": int(sum_total),
+            "total_cost_usd": float(sum_cost),
             "by_model": by_model, "by_call_kind_and_module": by_call_route,
-            "description": "Każde wywołanie LLM jest zapisywane w tabeli llm_usage_log. Tokeny pochodzą z odpowiedzi API; stub nie raportuje tokenów.",
+            "description": (
+                "Każde wywołanie modelu (LLM, obraz, embedding, muzyka…) jest zapisywane w llm_usage_log. "
+                "Koszt USD pochodzi z odpowiedzi OpenRouter (usage.cost) lub szacunków konfiguracyjnych."
+            ),
         },
         "langfuse": {
             "enabled": langfuse_on, "host": s.langfuse_host, "dashboard_url": s.langfuse_host.rstrip("/") + "/",
@@ -305,11 +314,11 @@ async def admin_monitoring(
                      else "Uzupełnij LANGFUSE_* w .env, aby duplikować zdarzenia LLM do chmurowego observability."),
         },
         "langgraph": {"role": "LangGraph — w przyszłości orchestrator można przenieść do LangGraph."},
-        "per_user_llm_tokens": per_user_tokens,
-        "per_user_llm_tokens_hint": (
-            "Tokeny bez dry-run. „Dziś” i „miesiąc” — kalendarz UTC. "
-            "Limit / dzień: własny, domyślny (DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT) lub brak (wartość 0 w bazie = tylko limity globalne). "
-            "POST /v1/chat."
+        "per_user_llm_costs": per_user_costs,
+        "per_user_llm_costs_hint": (
+            "Koszt USD bez dry-run. „Dziś” i „miesiąc” — kalendarz UTC. "
+            "Limit / miesiąc: własny, domyślny (DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD) lub brak (0 w bazie). "
+            "Dotyczy wszystkich modeli na konto użytkownika."
         ),
     }
 

@@ -132,6 +132,13 @@ class OpenRouterLlmClient:
         pt = usage.get("prompt_tokens")
         ct = usage.get("completion_tokens")
         tt = usage.get("total_tokens")
+        cost = usage.get("cost")
+        cost_usd: float | None = None
+        if cost is not None:
+            try:
+                cost_usd = float(cost)
+            except (TypeError, ValueError):
+                cost_usd = None
         return LlmCompletion(
             text=text,
             provider="openrouter",
@@ -139,6 +146,7 @@ class OpenRouterLlmClient:
             prompt_tokens=int(pt) if pt is not None else None,
             completion_tokens=int(ct) if ct is not None else None,
             total_tokens=int(tt) if tt is not None else None,
+            cost_usd=cost_usd,
             tool_calls=parsed_tools,
             finish_reason=finish,
         )

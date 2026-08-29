@@ -5,9 +5,9 @@ type Monitoring = {
   application: { users: number; files: number; ai_read_audits: number };
   alerts: {
     operational: { code: string; severity: string; message: string }[];
-    tokens_today_utc: number;
-    soft_limit: number | null;
-    hard_limit: number | null;
+    cost_month_usd: number;
+    soft_limit_usd: number | null;
+    hard_limit_usd: number | null;
     webhook_configured: boolean;
     hint: string;
   };
@@ -24,6 +24,7 @@ type Monitoring = {
     total_prompt_tokens: number;
     total_completion_tokens: number;
     total_tokens_recorded: number;
+    total_cost_usd: number;
     by_model: {
       model: string;
       provider: string;
@@ -31,6 +32,7 @@ type Monitoring = {
       prompt_tokens: number;
       completion_tokens: number;
       total_tokens: number;
+      cost_usd: number;
     }[];
     by_call_kind_and_module: {
       call_kind: string;
@@ -39,23 +41,36 @@ type Monitoring = {
       prompt_tokens: number;
       completion_tokens: number;
       total_tokens: number;
+      cost_usd: number;
     }[];
     description: string;
   };
   langfuse: { enabled: boolean; host: string; dashboard_url: string; hint: string };
   langgraph: { role: string };
-  per_user_llm_tokens?: {
+  per_user_llm_costs?: {
     user_id: string;
     email: string;
+    cost_today_usd: number;
+    cost_month_usd: number;
+    cost_all_time_usd: number;
     tokens_today_utc: number;
-    tokens_month_utc: number;
     tokens_all_time: number;
-    llm_daily_token_limit: number | null;
-    effective_llm_daily_token_limit: number | null;
-    uses_site_default_llm_daily_limit: boolean;
+    llm_monthly_cost_limit_usd: number | null;
+    effective_llm_monthly_cost_limit_usd: number | null;
+    uses_site_default_llm_monthly_limit: boolean;
   }[];
-  per_user_llm_tokens_hint?: string;
+  per_user_llm_costs_hint?: string;
 };
+
+function formatUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return new Intl.NumberFormat("pl-PL", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(value);
+}
 
 export default function AdminMonitoringPage() {
   const [data, setData] = useState<Monitoring | null>(null);
@@ -99,7 +114,7 @@ export default function AdminMonitoringPage() {
       <div>
         <h1 className="text-2xl font-bold">Monitoring (admin)</h1>
         <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">
-          Alerty limitów, incydenty (błędy LLM, blokady), zużycie tokenów oraz opcjonalny webhook.
+          Alerty limitów, incydenty (błędy LLM, blokady), koszt LLM (USD) oraz opcjonalny webhook.
         </p>
         <button type="button" onClick={() => reload()} className="mt-2 text-sm text-accent hover:underline">
           Odśwież dane
@@ -140,12 +155,12 @@ export default function AdminMonitoringPage() {
             )}
           </section>
 
-          {data.per_user_llm_tokens && (
+          {data.per_user_llm_costs && (
           <section className="rounded-xl border border-ink-800/15 bg-white p-4 dark:border-paper-100/10 dark:bg-ink-900">
-            <h2 className="mb-2 font-semibold">Tokeny LLM wg użytkownika</h2>
+            <h2 className="mb-2 font-semibold">Koszt LLM wg użytkownika (USD)</h2>
             <p className="mb-3 text-xs text-ink-500">
-              {data.per_user_llm_tokens_hint ??
-                "Suma tokenów (bez dry-run): dzisiaj i bieżący miesiąc w UTC, oraz od początku. Kolumna „Limit/dzień” to indywidualny limit z panelu Użytkownicy (POST /v1/chat)."}
+              {data.per_user_llm_costs_hint ??
+                "Suma kosztu wszystkich modeli (bez dry-run): dzisiaj i bieżący miesiąc w UTC. Limit edytujesz w Użytkownicy."}
             </p>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-left text-sm">
@@ -155,23 +170,23 @@ export default function AdminMonitoringPage() {
                     <th className="py-2 pr-4 font-medium">Dziś (UTC)</th>
                     <th className="py-2 pr-4 font-medium">Miesiąc (UTC)</th>
                     <th className="py-2 pr-4 font-medium">Łącznie</th>
-                    <th className="py-2 font-medium">Limit / dzień</th>
+                    <th className="py-2 font-medium">Limit / miesiąc</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {data.per_user_llm_tokens.map((row) => (
+                  {data.per_user_llm_costs.map((row) => (
                     <tr key={row.user_id} className="border-b border-ink-800/10 dark:border-paper-100/10">
                       <td className="py-2 pr-4 font-mono text-xs">{row.email}</td>
-                      <td className="py-2 pr-4">{row.tokens_today_utc.toLocaleString("pl-PL")}</td>
-                      <td className="py-2 pr-4">{row.tokens_month_utc.toLocaleString("pl-PL")}</td>
-                      <td className="py-2 pr-4">{row.tokens_all_time.toLocaleString("pl-PL")}</td>
+                      <td className="py-2 pr-4">{formatUsd(row.cost_today_usd)}</td>
+                      <td className="py-2 pr-4">{formatUsd(row.cost_month_usd)}</td>
+                      <td className="py-2 pr-4">{formatUsd(row.cost_all_time_usd)}</td>
                       <td className="py-2">
-                        {row.effective_llm_daily_token_limit === null && !row.uses_site_default_llm_daily_limit ? (
+                        {row.effective_llm_monthly_cost_limit_usd === null && !row.uses_site_default_llm_monthly_limit ? (
                           <span className="text-ink-500">Brak (konto)</span>
                         ) : (
                           <>
-                            <span>{(row.effective_llm_daily_token_limit ?? 0).toLocaleString("pl-PL")}</span>
-                            {row.uses_site_default_llm_daily_limit && (
+                            <span>{formatUsd(row.effective_llm_monthly_cost_limit_usd)}</span>
+                            {row.uses_site_default_llm_monthly_limit && (
                               <span className="ml-1 text-xs text-ink-400">(domyślny)</span>
                             )}
                           </>
@@ -181,7 +196,7 @@ export default function AdminMonitoringPage() {
                   ))}
                 </tbody>
               </table>
-              {data.per_user_llm_tokens.length === 0 && (
+              {data.per_user_llm_costs.length === 0 && (
                 <p className="text-sm text-ink-500">Brak użytkowników.</p>
               )}
             </div>
@@ -192,9 +207,9 @@ export default function AdminMonitoringPage() {
             <h2 className="mb-2 font-semibold">Alerty operacyjne</h2>
             <p className="mb-2 text-xs text-ink-500">{data.alerts.hint}</p>
             <ul className="mb-3 text-sm">
-              <li>Tokeny dziś (UTC): <strong>{data.alerts.tokens_today_utc}</strong></li>
-              <li>Limit miękki: {data.alerts.soft_limit ?? "—"}</li>
-              <li>Limit twardy: {data.alerts.hard_limit ?? "—"}</li>
+              <li>Koszt w miesiącu (UTC): <strong>{formatUsd(data.alerts.cost_month_usd)}</strong></li>
+              <li>Limit miękki: {data.alerts.soft_limit_usd != null ? formatUsd(data.alerts.soft_limit_usd) : "—"}</li>
+              <li>Limit twardy: {data.alerts.hard_limit_usd != null ? formatUsd(data.alerts.hard_limit_usd) : "—"}</li>
               <li>Webhook: {data.alerts.webhook_configured ? "skonfigurowany" : "brak ALERT_WEBHOOK_URL"}</li>
             </ul>
             {data.alerts.operational.length === 0 ? (
@@ -241,8 +256,9 @@ export default function AdminMonitoringPage() {
           <section className="rounded-xl border border-ink-800/15 bg-white p-4 dark:border-paper-100/10 dark:bg-ink-900">
             <h2 className="mb-1 font-semibold">LLM — sumy</h2>
             <p className="mb-3 text-xs text-ink-500">{data.llm_usage.description}</p>
-            <ul className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <ul className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-5">
               <li>Wywołania: <strong>{data.llm_usage.total_calls}</strong></li>
+              <li>Koszt (USD): <strong>{formatUsd(data.llm_usage.total_cost_usd)}</strong></li>
               <li>Tokeny wejścia: <strong>{data.llm_usage.total_prompt_tokens}</strong></li>
               <li>Tokeny wyjścia: <strong>{data.llm_usage.total_completion_tokens}</strong></li>
               <li>Tokeny (suma): <strong>{data.llm_usage.total_tokens_recorded}</strong></li>
@@ -260,7 +276,8 @@ export default function AdminMonitoringPage() {
                     <th className="py-2 pr-4 font-medium">Zapytania</th>
                     <th className="py-2 pr-4 font-medium">Prompt</th>
                     <th className="py-2 pr-4 font-medium">Completion</th>
-                    <th className="py-2 font-medium">Razem</th>
+                    <th className="py-2 pr-4 font-medium">Tokeny</th>
+                    <th className="py-2 font-medium">Koszt (USD)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -271,7 +288,8 @@ export default function AdminMonitoringPage() {
                       <td className="py-2 pr-4">{row.calls}</td>
                       <td className="py-2 pr-4">{row.prompt_tokens}</td>
                       <td className="py-2 pr-4">{row.completion_tokens}</td>
-                      <td className="py-2">{row.total_tokens}</td>
+                      <td className="py-2 pr-4">{row.total_tokens}</td>
+                      <td className="py-2">{formatUsd(row.cost_usd)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -296,7 +314,8 @@ export default function AdminMonitoringPage() {
                     <th className="py-2 pr-4 font-medium">Zapytania</th>
                     <th className="py-2 pr-4 font-medium">Prompt</th>
                     <th className="py-2 pr-4 font-medium">Completion</th>
-                    <th className="py-2 font-medium">Razem</th>
+                    <th className="py-2 pr-4 font-medium">Tokeny</th>
+                    <th className="py-2 font-medium">Koszt (USD)</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -307,7 +326,8 @@ export default function AdminMonitoringPage() {
                       <td className="py-2 pr-4">{row.calls}</td>
                       <td className="py-2 pr-4">{row.prompt_tokens}</td>
                       <td className="py-2 pr-4">{row.completion_tokens}</td>
-                      <td className="py-2">{row.total_tokens}</td>
+                      <td className="py-2 pr-4">{row.total_tokens}</td>
+                      <td className="py-2">{formatUsd(row.cost_usd)}</td>
                     </tr>
                   ))}
                 </tbody>

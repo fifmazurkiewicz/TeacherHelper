@@ -48,7 +48,7 @@ async def index_file_content(
     chunks = chunk_text(text)
     if not chunks:
         return
-    embeddings = await embed_texts(chunks)
+    embeddings = await embed_texts(chunks, user_id=file_row.user_id, session=session)
     for idx, (chunk, emb) in enumerate(zip(chunks, embeddings, strict=True)):
         session.add(
             FileChunkORM(
@@ -69,7 +69,7 @@ async def semantic_search_chunks(
     project_id: UUID | None = None,
     topic_id: UUID | None = None,
 ) -> list[tuple[FileChunkORM, float]]:
-    q_emb = await embed_text(query)
+    q_emb = await embed_text(query, user_id=user_id, session=session)
     if topic_id is not None:
         hits = await search_vector_chunks(session, user_id, q_emb, top_k=top_k, topic_id=topic_id)
     else:

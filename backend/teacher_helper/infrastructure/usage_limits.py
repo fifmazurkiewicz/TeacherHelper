@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException, status
 from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,65 +22,85 @@ def utc_month_start() -> datetime:
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-async def sum_llm_total_tokens_today(session: AsyncSession, *, include_dry_run: bool = False) -> int:
+def _cost_sum_expr():
+    return func.coalesce(LlmUsageLogORM.cost_usd, 0)
+
+
+async def sum_llm_cost_usd_today(session: AsyncSession, *, include_dry_run: bool = False) -> float:
     start = utc_day_start()
-    stmt = select(func.coalesce(func.sum(LlmUsageLogORM.total_tokens), 0)).where(
+    stmt = select(func.coalesce(func.sum(_cost_sum_expr()), 0)).where(
         LlmUsageLogORM.created_at >= start,
     )
     if not include_dry_run:
         stmt = stmt.where(LlmUsageLogORM.dry_run.is_(False))
     val = await session.scalar(stmt)
-    return int(val or 0)
+    return float(val or 0)
 
 
-def effective_user_llm_daily_token_limit(user: UserORM, settings: Settings | None = None) -> int | None:
-    """Limit tokenów LLM / dobę (UTC) dla czatu: wartość z konta, domyślna z konfiguracji, albo None = brak limitu per konto (tylko globalne limity)."""
+async def sum_llm_cost_usd_month(session: AsyncSession, *, include_dry_run: bool = False) -> float:
+    start = utc_month_start()
+    stmt = select(func.coalesce(func.sum(_cost_sum_expr()), 0)).where(
+        LlmUsageLogORM.created_at >= start,
+    )
+    if not include_dry_run:
+        stmt = stmt.where(LlmUsageLogORM.dry_run.is_(False))
+    val = await session.scalar(stmt)
+    return float(val or 0)
+
+
+def effective_user_llm_monthly_cost_limit_usd(user: UserORM, settings: Settings | None = None) -> float | None:
+    """Limit kosztu LLM / miesiąc kalendarzowy (UTC) w USD."""
     s = settings or get_settings()
-    raw = user.llm_daily_token_limit
+    raw = user.llm_monthly_cost_limit_usd
     if raw is None:
-        return int(s.default_user_llm_daily_token_limit)
+        return float(s.default_user_llm_monthly_cost_limit_usd)
     if raw == 0:
         return None
-    return int(raw)
+    return float(raw)
 
 
-async def sum_llm_total_tokens_today_for_user(
+async def sum_llm_cost_usd_month_for_user(
     session: AsyncSession,
     user_id: UUID,
     *,
     include_dry_run: bool = False,
-) -> int:
-    start = utc_day_start()
-    tok = func.coalesce(LlmUsageLogORM.total_tokens, 0)
+) -> float:
+    start = utc_month_start()
     stmt = (
-        select(func.coalesce(func.sum(tok), 0))
+        select(func.coalesce(func.sum(_cost_sum_expr()), 0))
         .where(LlmUsageLogORM.user_id == user_id)
         .where(LlmUsageLogORM.created_at >= start)
     )
     if not include_dry_run:
         stmt = stmt.where(LlmUsageLogORM.dry_run.is_(False))
     val = await session.scalar(stmt)
-    return int(val or 0)
+    return float(val or 0)
 
 
-async def per_user_llm_token_stats(session: AsyncSession) -> list[dict[str, Any]]:
-    """Dla każdego konta: suma tokenów dzień / miesiąc kalendarzowy (UTC) / cały czas (bez dry-run)."""
+async def per_user_llm_cost_stats(session: AsyncSession) -> list[dict[str, Any]]:
+    """Dla każdego konta: koszt USD dzień / miesiąc (UTC) / cały czas (bez dry-run)."""
     s = get_settings()
     day_start = utc_day_start()
     month_start = utc_month_start()
+    cost = _cost_sum_expr()
     tok = func.coalesce(LlmUsageLogORM.total_tokens, 0)
 
     sub = (
         select(
             LlmUsageLogORM.user_id.label("uid"),
             func.coalesce(
+                func.sum(case((LlmUsageLogORM.created_at >= day_start, cost), else_=0)),
+                0,
+            ).label("cost_today_usd"),
+            func.coalesce(
+                func.sum(case((LlmUsageLogORM.created_at >= month_start, cost), else_=0)),
+                0,
+            ).label("cost_month_usd"),
+            func.coalesce(func.sum(cost), 0).label("cost_all_usd"),
+            func.coalesce(
                 func.sum(case((LlmUsageLogORM.created_at >= day_start, tok), else_=0)),
                 0,
             ).label("tokens_today"),
-            func.coalesce(
-                func.sum(case((LlmUsageLogORM.created_at >= month_start, tok), else_=0)),
-                0,
-            ).label("tokens_month"),
             func.coalesce(func.sum(tok), 0).label("tokens_all"),
         )
         .where(LlmUsageLogORM.user_id.isnot(None))
@@ -91,9 +112,11 @@ async def per_user_llm_token_stats(session: AsyncSession) -> list[dict[str, Any]
         select(
             UserORM.id,
             UserORM.email,
-            UserORM.llm_daily_token_limit,
+            UserORM.llm_monthly_cost_limit_usd,
+            sub.c.cost_today_usd,
+            sub.c.cost_month_usd,
+            sub.c.cost_all_usd,
             sub.c.tokens_today,
-            sub.c.tokens_month,
             sub.c.tokens_all,
         )
         .outerjoin(sub, UserORM.id == sub.c.uid)
@@ -102,57 +125,91 @@ async def per_user_llm_token_stats(session: AsyncSession) -> list[dict[str, Any]
     rows = (await session.execute(stmt)).all()
     out: list[dict[str, Any]] = []
     for r in rows:
-        raw = r.llm_daily_token_limit
+        raw = r.llm_monthly_cost_limit_usd
         if raw is None:
-            eff: int | None = int(s.default_user_llm_daily_token_limit)
+            eff: float | None = float(s.default_user_llm_monthly_cost_limit_usd)
             uses_default = True
         elif raw == 0:
             eff = None
             uses_default = False
         else:
-            eff = int(raw)
+            eff = float(raw)
             uses_default = False
         out.append(
             {
                 "user_id": str(r.id),
                 "email": r.email,
+                "cost_today_usd": float(r.cost_today_usd or 0),
+                "cost_month_usd": float(r.cost_month_usd or 0),
+                "cost_all_time_usd": float(r.cost_all_usd or 0),
                 "tokens_today_utc": int(r.tokens_today or 0),
-                "tokens_month_utc": int(r.tokens_month or 0),
                 "tokens_all_time": int(r.tokens_all or 0),
-                "llm_daily_token_limit": raw,
-                "effective_llm_daily_token_limit": eff,
-                "uses_site_default_llm_daily_limit": uses_default,
+                "llm_monthly_cost_limit_usd": float(raw) if raw is not None else None,
+                "effective_llm_monthly_cost_limit_usd": eff,
+                "uses_site_default_llm_monthly_limit": uses_default,
             }
         )
     return out
 
 
-def build_limit_alerts(tokens_today: int) -> list[dict]:
+def build_limit_alerts(cost_month_usd: float) -> list[dict]:
     s = get_settings()
     alerts: list[dict] = []
-    if s.llm_daily_token_hard_limit is not None and tokens_today >= s.llm_daily_token_hard_limit:
+    hard = s.llm_monthly_cost_hard_limit_usd
+    soft = s.llm_monthly_cost_soft_limit_usd
+    if hard is not None and cost_month_usd >= hard:
         alerts.append(
             {
-                "code": "LLM_DAILY_TOKENS_HARD",
+                "code": "LLM_MONTHLY_COST_HARD",
                 "severity": "critical",
                 "message": (
-                    f"Przekroczono twardy limit dzienny tokenów LLM: {tokens_today} ≥ {s.llm_daily_token_hard_limit}."
+                    f"Przekroczono twardy miesięczny limit kosztu LLM: ${cost_month_usd:.4f} ≥ ${hard:.2f}."
                 ),
-                "tokens_today": tokens_today,
-                "hard_limit": s.llm_daily_token_hard_limit,
+                "cost_month_usd": cost_month_usd,
+                "hard_limit_usd": hard,
             }
         )
-    elif s.llm_daily_token_soft_limit is not None and tokens_today >= s.llm_daily_token_soft_limit:
+    elif soft is not None and cost_month_usd >= soft:
         alerts.append(
             {
-                "code": "LLM_DAILY_TOKENS_SOFT",
+                "code": "LLM_MONTHLY_COST_SOFT",
                 "severity": "warning",
                 "message": (
-                    f"Zużycie tokenów LLM (dzisiaj UTC, bez dry-run): {tokens_today} ≥ limit miękki "
-                    f"{s.llm_daily_token_soft_limit}."
+                    f"Zużycie kosztu LLM (miesiąc UTC, bez dry-run): ${cost_month_usd:.4f} ≥ limit miękki "
+                    f"${soft:.2f}."
                 ),
-                "tokens_today": tokens_today,
-                "soft_limit": s.llm_daily_token_soft_limit,
+                "cost_month_usd": cost_month_usd,
+                "soft_limit_usd": soft,
             }
         )
     return alerts
+
+
+async def assert_user_within_monthly_cost_limit(
+    session: AsyncSession,
+    user: UserORM,
+    settings: Settings | None = None,
+) -> None:
+    """Sprawdza globalny i per-użytkownik limit kosztu LLM (miesiąc UTC). Rzuca HTTP 429 przy przekroczeniu."""
+    s = settings or get_settings()
+    cost_month = await sum_llm_cost_usd_month(session, include_dry_run=False)
+    if s.llm_monthly_cost_hard_limit_usd is not None and cost_month >= s.llm_monthly_cost_hard_limit_usd:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Miesięczny limit kosztu LLM (cała aplikacja) został wyczerpany. "
+                "Spróbuj w kolejnym miesiącu (UTC) lub skontaktuj się z administratorem."
+            ),
+        )
+
+    eff_user_monthly = effective_user_llm_monthly_cost_limit_usd(user, s)
+    if eff_user_monthly is not None:
+        user_cost_month = await sum_llm_cost_usd_month_for_user(session, user.id, include_dry_run=False)
+        if user_cost_month >= eff_user_monthly:
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    f"Osiągnięto miesięczny limit kosztu LLM (${eff_user_monthly:.2f}, UTC) dla Twojego konta. "
+                    "Skontaktuj się z administratorem lub spróbuj w kolejnym miesiącu."
+                ),
+            )

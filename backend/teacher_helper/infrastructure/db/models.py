@@ -3,9 +3,10 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import datetime
+from decimal import Decimal
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -43,8 +44,8 @@ class UserORM(Base):
     )
     display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     rate_limit_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # NULL = domyślny limit z konfiguracji; 0 = brak limitu per konto (tylko limity globalne); >0 = własny sufit.
-    llm_daily_token_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # NULL = domyślny limit USD/miesiąc z konfiguracji; 0 = brak limitu per konto; >0 = własny sufit (USD, UTC).
+    llm_monthly_cost_limit_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     projects: Mapped[list[ProjectORM]] = relationship(back_populates="owner", cascade="all, delete-orphan")
@@ -194,6 +195,7 @@ class LlmUsageLogORM(Base):
     prompt_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     completion_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_usd: Mapped[Decimal | None] = mapped_column(Numeric(16, 8), nullable=True)
     dry_run: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

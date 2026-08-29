@@ -24,6 +24,7 @@ class LlmCompletion:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    cost_usd: float | None = None
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: str | None = None
 
@@ -70,6 +71,7 @@ class ImageResult:
     prompt_used: str
     model: str
     revised_prompt: str | None = None
+    cost_usd: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

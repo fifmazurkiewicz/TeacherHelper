@@ -59,3 +59,8 @@ Graft CLI is broken on Windows (missing native build / `@nanonets/graft/dist/cli
 - Audio: SFX ≤30 s → ElevenLabs; utwory/piosenki → KIE (+ opcjonalnie Lyria przez OpenRouter).
 - Szablon zmiennych: kanoniczny plik to `.env.example` w katalogu głównym repozytorium.
 - Google OAuth (dev): Authorized JavaScript origins — `http://localhost:18080` i `http://127.0.0.1:18080`; redirect URI to callback Supabase, nie frontend.
+- Render + Supabase: pooler (`*.pooler.supabase.com`), nie direct `db.*.supabase.co` (IPv6); `DATABASE_URL` → transaction port 6543 (`+asyncpg`); `DATABASE_URL_SYNC` → session port 5432 (`+psycopg`).
+- Rejestracja bez whitelisty maili (Supabase Auth); rola admin tylko przez `ADMIN_EMAILS` po logowaniu.
+- Panel admina: `ADMIN_API_KEY` (Render) = `VITE_ADMIN_API_KEY` (Vercel; wymaga rebuildu frontendu).
+- Domyślny limit LLM: **$10/miesiąc UTC** na użytkownika (`DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD`) — wszystkie modele, koszt w USD.
+- Domyślne modele OpenRouter: `google/gemini-3.1-flash-lite-preview` (orchestrator), `google/gemini-3-flash-preview` (moduły).

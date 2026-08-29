@@ -8,11 +8,21 @@ type AdminUser = {
   display_name: string | null;
   role: string;
   rate_limit_rpm: number | null;
-  llm_daily_token_limit: number | null;
-  effective_llm_daily_token_limit: number | null;
-  uses_site_default_llm_daily_limit: boolean;
+  llm_monthly_cost_limit_usd: number | null;
+  effective_llm_monthly_cost_limit_usd: number | null;
+  uses_site_default_llm_monthly_limit: boolean;
   created_at: string;
 };
+
+function formatUsd(value: number | null | undefined): string {
+  if (value === null || value === undefined) return "—";
+  return new Intl.NumberFormat("pl-PL", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
@@ -20,8 +30,8 @@ export default function AdminUsersPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editRpm, setEditRpm] = useState("");
-  const [editingTokenId, setEditingTokenId] = useState<string | null>(null);
-  const [editTokenLimit, setEditTokenLimit] = useState("");
+  const [editingCostId, setEditingCostId] = useState<string | null>(null);
+  const [editCostLimit, setEditCostLimit] = useState("");
   const [resetPwId, setResetPwId] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,31 +79,31 @@ export default function AdminUsersPage() {
     }
   }
 
-  async function saveTokenLimit(userId: string) {
+  async function saveCostLimit(userId: string) {
     setError(null);
     setSuccess(null);
     setBusy(true);
     try {
-      const raw = editTokenLimit.trim();
+      const raw = editCostLimit.trim();
       if (raw === "") {
-        await api(`/v1/admin/users/${userId}/llm-daily-token-limit`, {
+        await api(`/v1/admin/users/${userId}/llm-monthly-cost-limit`, {
           method: "DELETE",
           headers: getAdminKeyHeaders(),
         });
       } else {
-        const limit = parseInt(raw, 10);
+        const limit = parseFloat(raw.replace(",", "."));
         if (isNaN(limit) || limit < 0) {
-          setError("Podaj liczbę całkowitą ≥ 0 (0 = brak limitu na konto) albo zostaw puste dla domyślnego z konfiguracji.");
+          setError("Podaj kwotę ≥ 0 (0 = brak limitu na konto) albo zostaw puste dla domyślnego z serwera.");
           return;
         }
         await api(`/v1/admin/users/${userId}`, {
           method: "PATCH",
           headers: getAdminKeyHeaders(),
-          json: { llm_daily_token_limit: limit },
+          json: { llm_monthly_cost_limit_usd: limit },
         });
       }
-      setEditingTokenId(null);
-      setSuccess("Limit tokenów / dobę zapisany.");
+      setEditingCostId(null);
+      setSuccess("Limit kosztu LLM / miesiąc zapisany.");
       reload();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Błąd");
@@ -152,7 +162,7 @@ export default function AdminUsersPage() {
       <div>
         <h1 className="text-2xl font-bold">Użytkownicy</h1>
         <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">
-          Role, rate limit (żądania/min), dzienny limit tokenów LLM (UTC, dotyczy czatu) i reset haseł (ikonka oka = podgląd wpisywanego hasła). Przy włączonym{" "}
+          Role, rate limit (żądania/min), miesięczny limit kosztu LLM w USD (UTC, wszystkie modele) i reset haseł. Przy włączonym{" "}
           <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">ADMIN_API_KEY</code> ustaw też{" "}
           <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">VITE_ADMIN_API_KEY</code> we frontendzie.
         </p>
@@ -172,7 +182,7 @@ export default function AdminUsersPage() {
               <th className="px-4 py-3 font-medium">Nazwa</th>
               <th className="px-4 py-3 font-medium">Rola</th>
               <th className="px-4 py-3 font-medium">Rate limit (req/min)</th>
-              <th className="px-4 py-3 font-medium">Limit tokenów / dobę (UTC)</th>
+              <th className="px-4 py-3 font-medium">Limit kosztu LLM / miesiąc (USD)</th>
               <th className="px-4 py-3 font-medium">Akcje</th>
             </tr>
           </thead>
@@ -217,30 +227,30 @@ export default function AdminUsersPage() {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  {editingTokenId === u.id ? (
+                  {editingCostId === u.id ? (
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                       <input
-                        type="number"
-                        min={0}
-                        value={editTokenLimit}
-                        onChange={(e) => setEditTokenLimit(e.target.value)}
+                        type="text"
+                        inputMode="decimal"
+                        value={editCostLimit}
+                        onChange={(e) => setEditCostLimit(e.target.value)}
                         placeholder="0 lub puste"
                         title="0 = brak limitu na konto; puste + Zapisz = domyślny z serwera"
                         className="w-36 rounded border border-ink-800/20 px-2 py-1 text-xs dark:border-paper-100/20 dark:bg-ink-950"
                       />
-                      <button type="button" onClick={() => void saveTokenLimit(u.id)} disabled={busy} className="text-xs text-accent hover:underline">
+                      <button type="button" onClick={() => void saveCostLimit(u.id)} disabled={busy} className="text-xs text-accent hover:underline">
                         Zapisz
                       </button>
-                      <button type="button" onClick={() => setEditingTokenId(null)} className="text-xs text-ink-500 hover:underline">
+                      <button type="button" onClick={() => setEditingCostId(null)} className="text-xs text-ink-500 hover:underline">
                         Anuluj
                       </button>
                     </div>
-                  ) : u.effective_llm_daily_token_limit === null && !u.uses_site_default_llm_daily_limit ? (
+                  ) : u.effective_llm_monthly_cost_limit_usd === null && !u.uses_site_default_llm_monthly_limit ? (
                     <span className="text-ink-600 dark:text-paper-300">Brak limitu (konto)</span>
                   ) : (
                     <span>
-                      <strong>{(u.effective_llm_daily_token_limit ?? 0).toLocaleString("pl-PL")}</strong>
-                      {u.uses_site_default_llm_daily_limit && (
+                      <strong>{formatUsd(u.effective_llm_monthly_cost_limit_usd)}</strong>
+                      {u.uses_site_default_llm_monthly_limit && (
                         <span className="ml-1 text-ink-400">(domyślny)</span>
                       )}
                     </span>
@@ -251,27 +261,27 @@ export default function AdminUsersPage() {
                     {editingId !== u.id && (
                       <button
                         type="button"
-                        onClick={() => { setEditingTokenId(null); setEditingId(u.id); setEditRpm(u.rate_limit_rpm?.toString() ?? ""); }}
+                        onClick={() => { setEditingCostId(null); setEditingId(u.id); setEditRpm(u.rate_limit_rpm?.toString() ?? ""); }}
                         className="text-xs text-accent hover:underline"
                       >
                         Zmień limit
                       </button>
                     )}
-                    {editingTokenId !== u.id && (
+                    {editingCostId !== u.id && (
                       <button
                         type="button"
                         onClick={() => {
                           setEditingId(null);
-                          setEditingTokenId(u.id);
-                          setEditTokenLimit(
-                            u.llm_daily_token_limit === null || u.llm_daily_token_limit === undefined
+                          setEditingCostId(u.id);
+                          setEditCostLimit(
+                            u.llm_monthly_cost_limit_usd === null || u.llm_monthly_cost_limit_usd === undefined
                               ? ""
-                              : String(u.llm_daily_token_limit),
+                              : String(u.llm_monthly_cost_limit_usd),
                           );
                         }}
                         className="text-xs text-accent hover:underline"
                       >
-                        Limit tokenów
+                        Limit kosztu
                       </button>
                     )}
                     <button

@@ -5,12 +5,16 @@ import hashlib
 import logging
 import math
 from typing import Literal, Sequence
+from uuid import UUID
 
 import httpx
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from teacher_helper.config import Settings, get_settings
 from teacher_helper.infrastructure.db.llm_usage import (
+    cost_from_openrouter_response,
     record_langfuse_model_call_sync,
+    record_usage_log,
     usage_from_embeddings_response,
 )
 
@@ -46,7 +50,12 @@ def _openrouter_headers(s: Settings) -> dict[str, str]:
     return h
 
 
-async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
+async def embed_texts(
+    texts: Sequence[str],
+    *,
+    user_id: UUID | None = None,
+    session: AsyncSession | None = None,
+) -> list[list[float]]:
     """Embeddingi: OpenAI, OpenRouter (/v1/embeddings) lub deterministyczny stub."""
     global _skip_openai_embeddings
     s = get_settings()
@@ -61,6 +70,8 @@ async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
             s,
             model=s.openrouter_embedding_model,
             dimensions=s.embedding_dim,
+            user_id=user_id,
+            session=session,
         )
     try:
         return await _openai_embed_batched(
@@ -87,12 +98,19 @@ async def embed_texts(texts: Sequence[str]) -> list[list[float]]:
                 s,
                 model=s.openrouter_embedding_model,
                 dimensions=s.embedding_dim,
+                user_id=user_id,
+                session=session,
             )
         raise
 
 
-async def embed_text(text: str) -> list[float]:
-    result = await embed_texts([text])
+async def embed_text(
+    text: str,
+    *,
+    user_id: UUID | None = None,
+    session: AsyncSession | None = None,
+) -> list[float]:
+    result = await embed_texts([text], user_id=user_id, session=session)
     return result[0]
 
 
@@ -159,6 +177,9 @@ async def _openrouter_embed_batched(
     s: Settings,
     model: str,
     dimensions: int,
+    *,
+    user_id: UUID | None = None,
+    session: AsyncSession | None = None,
 ) -> list[list[float]]:
     if not s.openrouter_api_key:
         raise RuntimeError("OpenRouter embeddings wymagają OPENROUTER_API_KEY")
@@ -182,6 +203,7 @@ async def _openrouter_embed_batched(
         payload = r.json()
         batch_vectors = _embeddings_response_vectors(payload)
         usage = usage_from_embeddings_response(payload) if isinstance(payload, dict) else None
+        cost_usd = cost_from_openrouter_response(payload) if isinstance(payload, dict) else None
         await asyncio.to_thread(
             record_langfuse_model_call_sync,
             observation_name="openrouter:embeddings",
@@ -189,10 +211,25 @@ async def _openrouter_embed_batched(
             provider="openrouter",
             input_data={"batch_size": len(batch), "sample": (batch[0][:500] if batch else "")},
             output_text=f"vectors={len(batch_vectors)} dim={len(batch_vectors[0]) if batch_vectors else 0}",
-            user_id=None,
+            user_id=user_id,
             metadata={"call_kind": "embeddings"},
             usage=usage,
+            cost_usd=cost_usd,
         )
+        if session is not None and user_id is not None and cost_usd is not None:
+            pt = usage.get("prompt_tokens") if usage else None
+            tt = usage.get("total_tokens") if usage else None
+            await record_usage_log(
+                session,
+                user_id=user_id,
+                provider="openrouter",
+                model=model,
+                call_kind="embeddings",
+                module_name=None,
+                prompt_tokens=pt,
+                total_tokens=tt,
+                cost_usd=cost_usd,
+            )
         for i, emb in enumerate(batch_vectors):
             all_embeddings[start + i] = emb
     return all_embeddings
