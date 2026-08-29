@@ -8,7 +8,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from teacher_helper.config import get_settings
+from teacher_helper.config import get_settings, parse_admin_emails
 from teacher_helper.infrastructure.db.models import UserORM, UserRole
 from teacher_helper.infrastructure.db.session import async_session_factory
 from teacher_helper.security import decode_user_id
@@ -25,9 +25,29 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 DbSession = Annotated[AsyncSession, Depends(get_db_session)]
 
 
+def _resolve_role_for_email(email: str) -> UserRole:
+    allowed = parse_admin_emails(get_settings().admin_emails)
+    if not allowed:
+        return UserRole.teacher
+    return UserRole.admin if email.strip().lower() in allowed else UserRole.teacher
+
+
+def _apply_admin_email_policy(user: UserORM, email: str) -> None:
+    allowed = parse_admin_emails(get_settings().admin_emails)
+    if not allowed:
+        return
+    normalized = email.strip().lower()
+    if normalized in allowed:
+        user.role = UserRole.admin
+    elif user.role == UserRole.admin:
+        user.role = UserRole.teacher
+
+
 async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str | None) -> UserORM:
     user = await session.get(UserORM, user_id)
     if user is not None:
+        if email:
+            _apply_admin_email_policy(user, email)
         return user
     if not email:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Brak e-mail w tokenie — nie można utworzyć profilu")
@@ -35,7 +55,7 @@ async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str 
         id=user_id,
         email=email.lower(),
         hashed_password=None,
-        role=UserRole.teacher,
+        role=_resolve_role_for_email(email),
     )
     session.add(user)
     await session.flush()

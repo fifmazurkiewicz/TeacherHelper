@@ -5,7 +5,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision = "011_standard_deploy"
-down_revision = "010_user_llm_daily_token_limit"
+down_revision = "010"
 branch_labels = None
 depends_on = None
 

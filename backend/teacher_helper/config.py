@@ -123,6 +123,8 @@ class Settings(BaseSettings):
 
     # --- Admin ---
     admin_api_key: str | None = None
+    # Gdy ustawione — tylko te e-maile mają rolę admin (reszta zdegradowana do teacher przy logowaniu).
+    admin_emails: str = ""
     default_rate_limit_rpm: int = 100
 
     # --- Limity tokenów ---
@@ -227,3 +229,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+def parse_admin_emails(raw: str) -> frozenset[str]:
+    return frozenset(part.strip().lower() for part in raw.split(",") if part.strip())

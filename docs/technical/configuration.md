@@ -19,6 +19,7 @@ Plik `.env` backendu wczytywany jest z **korzenia repozytorium** (nie z `backend
 | `STORAGE_BACKEND` | `local` (dev) lub `supabase` (prod) |
 | `VIDEO_GENERATION_ENABLED` | `true` / `false` — flaga Veo |
 | `SKIP_ADMIN_SEED` | `1` na produkcji — pomija seed admina |
+| `ADMIN_EMAILS` | Puste = bez auto-przypisania; np. `fifmazurkiewicz@gmail.com` — tylko te e-maile są adminem (Supabase Auth) |
 
 ### Frontend (prefiks `VITE_`)
 
