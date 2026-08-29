@@ -295,6 +295,16 @@ function IconArrowUp({ className }: { className?: string }) {
   );
 }
 
+function IconMenu({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <circle cx="12" cy="5" r="2" />
+      <circle cx="12" cy="12" r="2" />
+      <circle cx="12" cy="19" r="2" />
+    </svg>
+  );
+}
+
 function IconChevronLeft({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -370,6 +380,7 @@ export default function AssistantPage() {
   const [projectConfirmBusy, setProjectConfirmBusy] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialSidebarWidth);
   const [historyCollapsed, setHistoryCollapsed] = useState(readInitialHistoryCollapsed);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const sidebarResizeRef = useRef<{
     pointerId: number;
     startX: number;
@@ -865,7 +876,7 @@ export default function AssistantPage() {
             <button
               type="button"
               onClick={() => setHistoryCollapsed(false)}
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-ink-800/20 bg-paper-50 px-1.5 py-1 text-[0.7rem] font-medium text-ink-800 hover:bg-paper-100 sm:gap-1 sm:px-2 sm:py-1.5 sm:text-sm dark:border-paper-100/20 dark:bg-ink-900 dark:text-paper-200 dark:hover:bg-ink-800"
+              className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-ink-800/20 bg-paper-50 px-2 py-2.5 text-[0.7rem] font-medium text-ink-800 hover:bg-paper-100 sm:gap-1 sm:px-2 sm:py-1.5 sm:text-sm dark:border-paper-100/20 dark:bg-ink-900 dark:text-paper-200 dark:hover:bg-ink-800"
               aria-expanded="false"
               title="Pokaż listę rozmów"
             >
@@ -875,17 +886,18 @@ export default function AssistantPage() {
           )}
           <span className="min-w-0 truncate text-[0.8125rem] font-semibold text-accent sm:text-base">Teacher Helper</span>
         </div>
-        <div className="flex min-w-0 flex-1 justify-end sm:shrink-0 sm:flex-initial">
-          <div className="flex max-w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto text-xs [scrollbar-width:none] sm:gap-2 sm:text-sm [&::-webkit-scrollbar]:hidden">
+        <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
+          {/* Desktop: pełna nawigacja */}
+          <div className="hidden max-w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto text-sm sm:flex [&::-webkit-scrollbar]:hidden">
             <Link
               to="/materials"
-              className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+              className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
             >
               Materiały
             </Link>
             <Link
               to="/profile"
-              className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+              className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
             >
               Profil
             </Link>
@@ -893,26 +905,104 @@ export default function AssistantPage() {
               <>
                 <Link
                   to="/admin/monitoring"
-                  className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+                  className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
                 >
                   Monitoring
                 </Link>
                 <Link
                   to="/admin/users"
-                  className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+                  className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
                 >
                   Użytkownicy
                 </Link>
               </>
             )}
-            <ThemeToggle className="shrink-0 rounded-md px-1.5 py-1 sm:px-2 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800" />
+            <ThemeToggle className="shrink-0 rounded-md px-2 py-1.5 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800" />
             <button
               type="button"
               onClick={logout}
-              className="shrink-0 whitespace-nowrap rounded-md px-1.5 py-1 sm:px-2 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+              className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
             >
               Wyloguj
             </button>
+          </div>
+          {/* Mobile: menu ⋮ */}
+          <div className="relative sm:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen((o) => !o)}
+              className="inline-flex size-11 items-center justify-center rounded-md text-ink-700 hover:bg-paper-100 dark:text-paper-200 dark:hover:bg-ink-800"
+              aria-expanded={mobileMenuOpen}
+              aria-haspopup="menu"
+              aria-label="Menu aplikacji"
+            >
+              <IconMenu className="size-5" />
+            </button>
+            {mobileMenuOpen && (
+              <>
+                <button
+                  type="button"
+                  className="fixed inset-0 z-40 cursor-default bg-transparent"
+                  aria-label="Zamknij menu"
+                  onClick={() => setMobileMenuOpen(false)}
+                />
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-ink-800/15 bg-white py-1 shadow-lg dark:border-paper-100/10 dark:bg-ink-900"
+                >
+                  <Link
+                    role="menuitem"
+                    to="/materials"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
+                  >
+                    Materiały
+                  </Link>
+                  <Link
+                    role="menuitem"
+                    to="/profile"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
+                  >
+                    Profil
+                  </Link>
+                  {isAdmin && (
+                    <>
+                      <Link
+                        role="menuitem"
+                        to="/admin/monitoring"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
+                      >
+                        Monitoring
+                      </Link>
+                      <Link
+                        role="menuitem"
+                        to="/admin/users"
+                        onClick={() => setMobileMenuOpen(false)}
+                        className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
+                      >
+                        Użytkownicy
+                      </Link>
+                    </>
+                  )}
+                  <div className="border-t border-ink-800/10 px-4 py-2 dark:border-paper-100/10">
+                    <ThemeToggle className="rounded-md py-2 text-sm text-ink-600 dark:text-paper-300" />
+                  </div>
+                  <button
+                    role="menuitem"
+                    type="button"
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      logout();
+                    }}
+                    className="block w-full px-4 py-3 text-left text-sm text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
+                  >
+                    Wyloguj
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -1036,7 +1126,7 @@ export default function AssistantPage() {
         )}
 
         <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-paper-50 dark:bg-ink-950">
-          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 sm:space-y-3 sm:p-4">
+          <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain p-3 sm:space-y-3 sm:p-4">
             {loadingThread && (
               <p className="text-xs text-ink-500 sm:text-sm">Wczytywanie rozmowy…</p>
             )}
@@ -1284,7 +1374,7 @@ export default function AssistantPage() {
             <p className="shrink-0 px-3 text-sm text-red-600 sm:px-4 dark:text-red-400">{error}</p>
           )}
 
-          <div className="shrink-0 border-t border-ink-800/10 bg-paper-50/90 px-2 pb-2 pt-1.5 sm:px-3 sm:pb-3 sm:pt-2 dark:border-paper-100/10 dark:bg-ink-950/90">
+          <div className="shrink-0 border-t border-ink-800/10 bg-paper-50/90 px-2 pb-[max(0.5rem,var(--vvs-bottom,env(safe-area-inset-bottom,0px)))] pt-1.5 sm:px-3 sm:pb-3 sm:pt-2 dark:border-paper-100/10 dark:bg-ink-950/90">
             <input
               ref={fileInputRef}
               type="file"
@@ -1322,7 +1412,7 @@ export default function AssistantPage() {
               )}
             </div>
             <div className="mx-auto max-w-3xl">
-              <div className="flex min-h-[48px] items-end gap-0.5 rounded-[24px] border border-ink-800/15 bg-white px-1 py-1 shadow-sm sm:min-h-[52px] sm:rounded-[28px] sm:px-1.5 sm:py-1.5 dark:border-paper-100/12 dark:bg-ink-900">
+              <div className="flex min-h-[52px] items-end gap-0.5 rounded-[26px] border border-ink-800/15 bg-white px-1 py-1 shadow-sm sm:min-h-[52px] sm:rounded-[28px] sm:px-1.5 sm:py-1.5 dark:border-paper-100/12 dark:bg-ink-900">
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -1331,9 +1421,9 @@ export default function AssistantPage() {
                   }
                   title={`Załącz plik PDF, DOCX lub TXT (do ${CHAT_ATTACH_MAX}, max 50 MB — folder tej rozmowy w Materiałach).`}
                   aria-label="Załącz plik"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full text-ink-700 hover:bg-paper-100 disabled:opacity-40 sm:size-9 dark:text-paper-200 dark:hover:bg-ink-800"
+                  className="flex size-11 shrink-0 items-center justify-center rounded-full text-ink-700 hover:bg-paper-100 disabled:opacity-40 sm:size-9 dark:text-paper-200 dark:hover:bg-ink-800"
                 >
-                  {uploadBusy ? <Spinner className="size-4 sm:size-[18px]" /> : <IconPlusChat className="size-[1.1rem] sm:size-5" />}
+                  {uploadBusy ? <Spinner className="size-5 sm:size-[18px]" /> : <IconPlusChat className="size-5 sm:size-5" />}
                 </button>
                 <textarea
                   ref={composerTextareaRef}
@@ -1353,7 +1443,7 @@ export default function AssistantPage() {
                   rows={1}
                   placeholder="Wiadomość…"
                   disabled={loadingThread || loading || chatPending != null || uploadBusy || voiceRecording || voiceBusy}
-                  className="min-h-[36px] max-h-[200px] w-0 min-w-0 flex-1 resize-none border-0 bg-transparent px-0.5 py-1.5 text-sm text-ink-900 outline-none ring-0 placeholder:text-ink-400 focus:ring-0 sm:min-h-[40px] sm:px-1 sm:py-2 dark:text-paper-100 dark:placeholder:text-paper-500"
+                  className="min-h-[44px] max-h-[200px] w-0 min-w-0 flex-1 resize-none border-0 bg-transparent px-0.5 py-2.5 text-base text-ink-900 outline-none ring-0 placeholder:text-ink-400 focus:ring-0 sm:min-h-[40px] sm:px-1 sm:py-2 sm:text-sm dark:text-paper-100 dark:placeholder:text-paper-500"
                 />
                 <button
                   type="button"
@@ -1365,13 +1455,13 @@ export default function AssistantPage() {
                       : "Mów do mikrofonu — kliknij, by zacząć; kliknij ponownie, by wysłać nagranie do transkrypcji"
                   }
                   aria-label={voiceRecording ? "Zatrzymaj nagrywanie" : "Nagraj wiadomość głosową"}
-                  className={`flex size-8 shrink-0 items-center justify-center rounded-full disabled:opacity-40 sm:size-9 ${
+                  className={`flex size-11 shrink-0 items-center justify-center rounded-full disabled:opacity-40 sm:size-9 ${
                     voiceRecording
                       ? "bg-red-500/20 text-red-600 dark:bg-red-500/25 dark:text-red-400"
                       : "text-ink-700 hover:bg-paper-100 dark:text-paper-200 dark:hover:bg-ink-800"
                   }`}
                 >
-                  {voiceBusy ? <Spinner className="size-4 sm:size-[18px]" /> : <IconMic className="size-[1.1rem] sm:size-5" />}
+                  {voiceBusy ? <Spinner className="size-5 sm:size-[18px]" /> : <IconMic className="size-5 sm:size-5" />}
                 </button>
                 <button
                   type="button"
@@ -1387,16 +1477,16 @@ export default function AssistantPage() {
                   }
                   title="Wyślij"
                   aria-label="Wyślij wiadomość"
-                  className={`mb-0.5 flex size-8 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-35 sm:size-9 ${
+                  className={`mb-0.5 flex size-11 shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-35 sm:size-9 ${
                     message.trim() || chatAttachments.length > 0
                       ? "bg-accent text-white hover:bg-accent-dim"
                       : "bg-ink-200 text-ink-500 dark:bg-ink-700 dark:text-paper-400"
                   }`}
                 >
                   {loading || chatPending != null ? (
-                    <Spinner className="size-4 border-2 border-white/40 border-t-white sm:size-[18px]" />
+                    <Spinner className="size-5 border-2 border-white/40 border-t-white sm:size-[18px]" />
                   ) : (
-                    <IconArrowUp className="size-[1.1rem] sm:size-5" />
+                    <IconArrowUp className="size-5 sm:size-5" />
                   )}
                 </button>
               </div>

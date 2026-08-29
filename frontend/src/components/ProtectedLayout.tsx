@@ -3,6 +3,7 @@ import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { getToken } from "@/lib/api";
 import { AssistantActivityProvider } from "@/context/AssistantActivityContext";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
+import { useChatShell } from "@/hooks/useChatShell";
 import { AssistantBackgroundChatBanner } from "./AssistantBackgroundChatBanner";
 import { Nav } from "./Nav";
 
@@ -11,6 +12,7 @@ type AuthState = "loading" | "authenticated" | "unauthenticated";
 export function ProtectedLayout() {
   const { pathname } = useLocation();
   const chatLayout = pathname === "/assistant";
+  useChatShell(chatLayout);
   const [authState, setAuthState] = useState<AuthState>("loading");
 
   useEffect(() => {
@@ -59,7 +61,7 @@ export function ProtectedLayout() {
   return (
     <AssistantActivityProvider>
       {chatLayout ? (
-        <div className="flex h-screen flex-col overflow-hidden bg-paper-50 dark:bg-ink-950">
+        <div className="chat-app-shell flex min-h-0 flex-col overflow-hidden bg-paper-50 dark:bg-ink-950">
           <Outlet />
         </div>
       ) : (

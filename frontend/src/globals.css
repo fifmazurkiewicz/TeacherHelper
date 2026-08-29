@@ -13,3 +13,14 @@
 body {
   @apply min-h-screen overflow-x-hidden bg-paper-50 text-ink-950 antialiased dark:bg-ink-950 dark:text-paper-100;
 }
+
+html.chat-shell-active,
+html.chat-shell-active body {
+  overflow: hidden;
+  height: 100%;
+}
+
+.chat-app-shell {
+  height: var(--vvh, 100dvh);
+  height: 100dvh;
+}
