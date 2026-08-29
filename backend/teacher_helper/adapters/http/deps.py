@@ -6,6 +6,7 @@ from uuid import UUID
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teacher_helper.config import get_settings, parse_admin_emails
@@ -58,7 +59,16 @@ async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str 
         role=_resolve_role_for_email(email),
     )
     session.add(user)
-    await session.flush()
+    try:
+        await session.flush()
+    except IntegrityError:
+        await session.rollback()
+        user = await session.get(UserORM, user_id)
+        if user is None:
+            raise
+        if email:
+            _apply_admin_email_policy(user, email)
+        return user
     return user
 
 

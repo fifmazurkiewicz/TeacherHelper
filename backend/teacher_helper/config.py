@@ -25,6 +25,29 @@ def normalize_postgres_url(url: str, driver: str) -> str:
     return url
 
 
+def uses_transaction_pooler(database_url: str) -> bool:
+    """Supavisor / PgBouncer (transaction mode) — port 6543 or pooler host."""
+    lower = database_url.lower()
+    return ":6543" in lower or "pooler" in lower
+
+
+def asyncpg_connect_args(database_url: str) -> dict[str, int]:
+    """PgBouncer transaction pooling breaks asyncpg prepared statements."""
+    if uses_transaction_pooler(database_url):
+        return {"statement_cache_size": 0}
+    return {}
+
+
+def async_database_url(database_url: str) -> str:
+    """Disable SQLAlchemy-level prepared statement cache for Supavisor/PgBouncer."""
+    if not uses_transaction_pooler(database_url):
+        return database_url
+    if "prepared_statement_cache_size=" in database_url:
+        return database_url
+    sep = "&" if "?" in database_url else "?"
+    return f"{database_url}{sep}prepared_statement_cache_size=0"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=_ROOT_ENV_FILE,
