@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
@@ -16,10 +17,12 @@ from teacher_helper.use_cases.ports import LlmCompletion
 
 logger = logging.getLogger(__name__)
 
+_langfuse_singleton: Any = None
+
 
 @dataclass(frozen=True)
 class LangfuseTraceContext:
-    """Grupowanie trace'ów Langfuse w jednej sesji rozmowy (Faza A)."""
+    """Grupowanie obserwacji Langfuse w jednej sesji rozmowy."""
 
     conversation_id: UUID | None = None
     project_id: UUID | None = None
@@ -51,24 +54,88 @@ def _merge_langfuse_metadata(
     return out
 
 
-def _langfuse_trace_kwargs(
-    *,
+def _langfuse_client() -> Any | None:
+    """Singleton Langfuse SDK v3 (OpenTelemetry)."""
+    global _langfuse_singleton
+    s = get_settings()
+    if not s.langfuse_public_key or not s.langfuse_secret_key:
+        return None
+    if _langfuse_singleton is None:
+        from langfuse import Langfuse
+
+        _langfuse_singleton = Langfuse(
+            public_key=s.langfuse_public_key,
+            secret_key=s.langfuse_secret_key,
+            base_url=s.langfuse_host.rstrip("/"),
+            environment="production",
+        )
+    return _langfuse_singleton
+
+
+def _langfuse_attr_context(
     user_id: UUID | None,
     trace_context: LangfuseTraceContext | None,
-    metadata: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    kw: dict[str, Any] = {
-        "name": "TeacherHelper",
-        "user_id": str(user_id) if user_id else None,
-    }
-    if trace_context is not None:
-        sid = trace_context.session_id()
-        if sid:
-            kw["session_id"] = sid
-    merged = _merge_langfuse_metadata(metadata, trace_context)
-    if merged:
-        kw["metadata"] = merged
-    return kw
+) -> AbstractContextManager[Any]:
+    from langfuse import propagate_attributes
+
+    uid = str(user_id) if user_id else None
+    sid = trace_context.session_id() if trace_context else None
+    if uid or sid:
+        return propagate_attributes(user_id=uid, session_id=sid)
+    return nullcontext()
+
+
+def _usage_details_from_tokens(usage: dict[str, int] | None) -> dict[str, int] | None:
+    if not usage:
+        return None
+    out: dict[str, int] = {}
+    if usage.get("prompt_tokens") is not None:
+        out["input"] = int(usage["prompt_tokens"])
+    if usage.get("completion_tokens") is not None:
+        out["output"] = int(usage["completion_tokens"])
+    if usage.get("total_tokens") is not None:
+        out["total"] = int(usage["total_tokens"])
+    return out or None
+
+
+def _completion_usage_details(completion: LlmCompletion) -> dict[str, int] | None:
+    out: dict[str, int] = {}
+    if completion.prompt_tokens is not None:
+        out["input"] = completion.prompt_tokens
+    if completion.completion_tokens is not None:
+        out["output"] = completion.completion_tokens
+    tt = completion.resolved_total_tokens()
+    if tt is not None:
+        out["total"] = tt
+    return out or None
+
+
+def langfuse_auth_check_sync() -> bool:
+    lf = _langfuse_client()
+    if lf is None:
+        return False
+    try:
+        return bool(lf.auth_check())
+    except Exception:
+        logger.exception("Langfuse: auth_check nie powiódł się")
+        return False
+
+
+def send_langfuse_test_event_sync() -> dict[str, Any]:
+    lf = _langfuse_client()
+    if lf is None:
+        return {"ok": False, "reason": "missing_keys"}
+    try:
+        with lf.start_as_current_observation(as_type="span", name="teacherhelper-admin-test") as span:
+            span.update(
+                input={"source": "admin_test"},
+                output={"status": "ok", "service": "TeacherHelper"},
+            )
+        lf.flush()
+        return {"ok": True, "auth_check": bool(lf.auth_check())}
+    except Exception as exc:
+        logger.exception("Langfuse: test event nie powiódł się")
+        return {"ok": False, "reason": str(exc)[:300]}
 
 
 def _to_decimal_usd(value: float | Decimal | None) -> Decimal | None:
@@ -165,21 +232,13 @@ def record_langfuse_model_call_sync(
     trace_context: LangfuseTraceContext | None = None,
 ) -> None:
     """Langfuse dla wywołań spoza standardowego ``LlmCompletion`` (obrazy, embeddingi, audio, KIE)."""
-    s = get_settings()
-    if not s.langfuse_public_key or not s.langfuse_secret_key:
+    lf = _langfuse_client()
+    if lf is None:
         return
     try:
-        from langfuse import Langfuse
-
-        lf = Langfuse(
-            public_key=s.langfuse_public_key,
-            secret_key=s.langfuse_secret_key,
-            host=s.langfuse_host.rstrip("/"),
-        )
         meta = _merge_langfuse_metadata({"provider": provider, **(metadata or {})}, trace_context)
         if cost_usd is not None:
             meta["cost_usd"] = cost_usd
-        trace = lf.trace(**_langfuse_trace_kwargs(user_id=user_id, trace_context=trace_context, metadata=meta))
         if isinstance(input_data, str):
             inp: Any = input_data[:12000]
         else:
@@ -187,28 +246,18 @@ def record_langfuse_model_call_sync(
                 inp = json.dumps(input_data, ensure_ascii=False)[:12000]
             except (TypeError, ValueError):
                 inp = str(input_data)[:12000]
-        gen = trace.generation(
-            name=observation_name,
-            model=model,
-            input=inp,
-            output=output_text[:32000],
-            metadata=meta,
-        )
-        end_fn = getattr(gen, "end", None)
-        if callable(end_fn):
-            if usage:
-                try:
-                    end_fn(usage=usage)
-                except TypeError:
-                    end_fn(
-                        usage={
-                            "promptTokens": usage.get("prompt_tokens", 0),
-                            "completionTokens": usage.get("completion_tokens", 0),
-                            "totalTokens": usage.get("total_tokens", 0),
-                        }
-                    )
-            else:
-                end_fn()
+        with _langfuse_attr_context(user_id, trace_context):
+            with lf.start_as_current_observation(
+                as_type="generation",
+                name=observation_name,
+                model=model,
+                input=inp,
+            ) as gen:
+                gen.update(
+                    output=output_text[:32000],
+                    metadata=meta,
+                    usage_details=_usage_details_from_tokens(usage),
+                )
         lf.flush()
     except Exception:
         logger.exception("Langfuse: zapis %s nie powiódł się", observation_name)
@@ -226,66 +275,34 @@ def _emit_langfuse_sync(
     output_text: str,
     trace_context: LangfuseTraceContext | None = None,
 ) -> None:
-    s = get_settings()
-    if not s.langfuse_public_key or not s.langfuse_secret_key:
+    lf = _langfuse_client()
+    if lf is None:
         return
     try:
-        from langfuse import Langfuse
-
-        lf = Langfuse(
-            public_key=s.langfuse_public_key,
-            secret_key=s.langfuse_secret_key,
-            host=s.langfuse_host.rstrip("/"),
-        )
-        trace = lf.trace(
-            **_langfuse_trace_kwargs(
-                user_id=user_id,
-                trace_context=trace_context,
-                metadata={
-                    "call_kind": call_kind,
-                    "module_name": module_name or "",
-                    "provider": completion.provider,
-                    "cost_usd": completion.cost_usd,
-                },
-            )
-        )
-        gen = trace.generation(
-            name=observation_name,
-            model=completion.model,
-            input=[
-                {"role": "system", "content": system_text[:12000]},
-                {"role": "user", "content": user_text[:12000]},
-            ],
-            output=output_text[:32000],
-            metadata={
-                "provider": completion.provider,
+        meta = _merge_langfuse_metadata(
+            {
                 "call_kind": call_kind,
+                "module_name": module_name or "",
+                "provider": completion.provider,
                 "cost_usd": completion.cost_usd,
             },
+            trace_context,
         )
-        usage: dict[str, int] = {}
-        if completion.prompt_tokens is not None:
-            usage["prompt_tokens"] = completion.prompt_tokens
-        if completion.completion_tokens is not None:
-            usage["completion_tokens"] = completion.completion_tokens
-        tt = completion.resolved_total_tokens()
-        if tt is not None:
-            usage["total_tokens"] = tt
-        end_fn = getattr(gen, "end", None)
-        if callable(end_fn):
-            if usage:
-                try:
-                    end_fn(usage=usage)
-                except TypeError:
-                    end_fn(
-                        usage={
-                            "promptTokens": usage.get("prompt_tokens", 0),
-                            "completionTokens": usage.get("completion_tokens", 0),
-                            "totalTokens": usage.get("total_tokens", 0),
-                        }
-                    )
-            else:
-                end_fn()
+        with _langfuse_attr_context(user_id, trace_context):
+            with lf.start_as_current_observation(
+                as_type="generation",
+                name=observation_name,
+                model=completion.model,
+                input=[
+                    {"role": "system", "content": system_text[:12000]},
+                    {"role": "user", "content": user_text[:12000]},
+                ],
+            ) as gen:
+                gen.update(
+                    output=(output_text or "")[:32000],
+                    metadata=meta,
+                    usage_details=_completion_usage_details(completion),
+                )
         lf.flush()
     except Exception:
         logger.exception("Langfuse: zapis obserwacji nie powiódł się")

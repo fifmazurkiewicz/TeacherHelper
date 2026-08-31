@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 from teacher_helper.adapters.http.deps import AdminUser, DbSession
 from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.alert_webhook import send_alert_webhook
+from teacher_helper.infrastructure.db.llm_usage import langfuse_auth_check_sync, send_langfuse_test_event_sync
 from teacher_helper.infrastructure.db.models import AiReadAuditORM, FileAssetORM, LlmUsageLogORM, UserORM
 from teacher_helper.infrastructure.system_incidents import (
     count_recent_incidents,
@@ -340,12 +341,16 @@ async def admin_monitoring(
             ),
         },
         "langfuse": {
-            "enabled": langfuse_on, "host": s.langfuse_host, "dashboard_url": s.langfuse_host.rstrip("/") + "/",
-            "hint": ("Langfuse włączony — generacje trafiają do dashboard; rozmowy w czacie grupowane w Sessions (session_id = conversation_id)." if langfuse_on
-                     else "Uzupełnij LANGFUSE_* w .env, aby duplikować zdarzenia LLM do chmurowego observability."),
-        },
-        "langgraph": {
-            "role": "Orchestrator czatu: custom Python (ChatOrchestratorUseCase), nie LangGraph — decyzja ADR no-langgraph.",
+            "enabled": langfuse_on,
+            "host": s.langfuse_host,
+            "dashboard_url": s.langfuse_host.rstrip("/") + "/",
+            "auth_ok": langfuse_auth_check_sync() if langfuse_on else False,
+            "hint": (
+                "Langfuse włączony — obserwacje w Tracing (environment: production); "
+                "rozmowy w Sessions (session_id = conversation_id). Użyj „Test Langfuse”."
+                if langfuse_on
+                else "Uzupełnij LANGFUSE_* w .env, aby wysyłać obserwacje LLM do Langfuse Cloud."
+            ),
         },
         "per_user_llm_costs": per_user_costs,
         "per_user_llm_costs_hint": (
@@ -354,6 +359,20 @@ async def admin_monitoring(
             "Dotyczy wszystkich modeli na konto użytkownika."
         ),
     }
+
+
+@router.post("/alerts/test-langfuse")
+async def admin_test_langfuse(
+    _session: DbSession,
+    user: AdminUser,
+    x_admin_key: str | None = Header(None, alias="X-Admin-Key"),
+) -> dict:
+    _check_admin_key(x_admin_key)
+    s = get_settings()
+    if not s.langfuse_public_key or not s.langfuse_secret_key:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Brak LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY")
+    result = send_langfuse_test_event_sync()
+    return {"host": s.langfuse_host, **result}
 
 
 @router.post("/alerts/test-webhook")

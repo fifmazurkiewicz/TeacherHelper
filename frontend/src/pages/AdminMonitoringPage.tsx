@@ -45,8 +45,7 @@ type Monitoring = {
     }[];
     description: string;
   };
-  langfuse: { enabled: boolean; host: string; dashboard_url: string; hint: string };
-  langgraph: { role: string };
+  langfuse: { enabled: boolean; host: string; dashboard_url: string; auth_ok: boolean; hint: string };
   per_user_llm_costs?: {
     user_id: string;
     email: string;
@@ -77,6 +76,7 @@ export default function AdminMonitoringPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [webhookMsg, setWebhookMsg] = useState<string | null>(null);
+  const [langfuseMsg, setLangfuseMsg] = useState<string | null>(null);
 
   function reload() {
     setError(null);
@@ -106,6 +106,27 @@ export default function AdminMonitoringPage() {
       setWebhookMsg(r.sent ? "Testowy webhook wysłany." : "Webhook zwrócił błąd (sprawdź logi serwera).");
     } catch (e) {
       setWebhookMsg(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function testLangfuse() {
+    setLangfuseMsg(null);
+    try {
+      const r = await api<{ ok: boolean; auth_check?: boolean; reason?: string }>(
+        "/v1/admin/alerts/test-langfuse",
+        { method: "POST", headers: getAdminKeyHeaders() },
+      );
+      if (r.ok) {
+        setLangfuseMsg(
+          r.auth_check
+            ? "Testowa obserwacja wysłana. Sprawdź Tracing w Langfuse (filtr: environment production, ostatnie 15 min)."
+            : "Wysłano test, ale auth_check=false — sprawdź klucze i region (EU vs US).",
+        );
+      } else {
+        setLangfuseMsg(r.reason ?? "Langfuse test nie powiódł się.");
+      }
+    } catch (e) {
+      setLangfuseMsg(e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -339,23 +360,34 @@ export default function AdminMonitoringPage() {
             <h2 className="mb-2 font-semibold">Langfuse</h2>
             <p className="text-sm">
               Status: <strong>{data.langfuse.enabled ? "włączony (klucze w .env)" : "wyłączony"}</strong>
+              {data.langfuse.enabled && (
+                <>
+                  {" "}
+                  · auth: <strong>{data.langfuse.auth_ok ? "OK" : "błąd"}</strong>
+                </>
+              )}
             </p>
             <p className="mt-2 text-sm text-ink-600 dark:text-paper-400">{data.langfuse.hint}</p>
             {data.langfuse.enabled && (
-              <a
-                href={data.langfuse.dashboard_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-3 inline-block text-sm text-accent hover:underline"
-              >
-                Otwórz dashboard Langfuse
-              </a>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <a
+                  href={data.langfuse.dashboard_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-accent hover:underline"
+                >
+                  Otwórz dashboard Langfuse
+                </a>
+                <button
+                  type="button"
+                  onClick={() => void testLangfuse()}
+                  className="rounded-md border border-ink-800/20 px-3 py-1.5 text-sm dark:border-paper-100/20"
+                >
+                  Test Langfuse
+                </button>
+              </div>
             )}
-          </section>
-
-          <section className="rounded-xl border border-ink-800/10 bg-paper-100/80 p-4 dark:border-paper-100/10 dark:bg-ink-800/50">
-            <h2 className="mb-2 text-sm font-semibold text-ink-700 dark:text-paper-300">Orchestrator czatu</h2>
-            <p className="text-sm text-ink-700 dark:text-paper-300">{data.langgraph.role}</p>
+            {langfuseMsg && <p className="mt-2 text-xs text-ink-600 dark:text-paper-400">{langfuseMsg}</p>}
           </section>
         </>
       )}

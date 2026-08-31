@@ -21,7 +21,7 @@ aiofiles = ">=23.2.1"
 bcrypt = ">=4.0.0,<5"
 email-validator = ">=2.0.0,<3"
 python-jose = {version = ">=3.3.0,<4", extras = ["cryptography"]}
-langfuse = ">=2.59.0,<3"
+langfuse = ">=3.0.0,<4"
 python-docx = ">=1.1.0,<2"
 pypdf = ">=5.0.0,<6"
 fpdf2 = ">=2.8.0,<3"

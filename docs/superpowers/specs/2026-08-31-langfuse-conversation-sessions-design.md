@@ -39,5 +39,4 @@ Administrator (i developer) widzi w Langfuse **jedną sesję = jedna rozmowa** (
 ## Decyzje
 
 - **Źródło sesji:** `conversation_id` z Postgres (nie nowe ID).
-- **LangGraph:** poza zakresem Fazy A.
 - **llm_usage_log:** bez `conversation_id` w tej fazie (insight w Langfuse, nie w panelu admina).

@@ -71,6 +71,6 @@ Szczegóły wdrożenia: `.cursor/plans/2026-08-28-standard-deploy.md`.
 |---|---|
 | `LANGFUSE_PUBLIC_KEY` | Klucz publiczny projektu Langfuse |
 | `LANGFUSE_SECRET_KEY` | Klucz secret (tylko backend) |
-| `LANGFUSE_HOST` | Domyślnie `https://cloud.langfuse.com` |
+| `LANGFUSE_HOST` | Domyślnie `https://cloud.langfuse.com` (SDK v3: `base_url`; region US: `https://us.cloud.langfuse.com`) |
 
-Gdy klucze są ustawione, wywołania LLM z czatu trafiają do Langfuse z `session_id = conversation_id` (jedna sesja = jedna rozmowa). Szczegóły: `docs/superpowers/specs/2026-08-31-langfuse-conversation-sessions-design.md`.
+Obserwacje z backendu mają `environment=production` — w UI Langfuse ustaw filtr Environment na **production** (lub „All”). Test: `POST /v1/admin/alerts/test-langfuse`.
