@@ -11,6 +11,9 @@ type AdminUser = {
   llm_monthly_cost_limit_usd: number | null;
   effective_llm_monthly_cost_limit_usd: number | null;
   uses_site_default_llm_monthly_limit: boolean;
+  llm_cost_month_usd: number;
+  llm_tokens_month: number;
+  llm_monthly_limit_reached: boolean;
   created_at: string;
 };
 
@@ -20,8 +23,12 @@ function formatUsd(value: number | null | undefined): string {
     style: "currency",
     currency: "USD",
     minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+    maximumFractionDigits: 4,
   }).format(value);
+}
+
+function formatTokens(value: number): string {
+  return new Intl.NumberFormat("pl-PL").format(value);
 }
 
 export default function AdminUsersPage() {
@@ -162,7 +169,8 @@ export default function AdminUsersPage() {
       <div>
         <h1 className="text-2xl font-bold">Użytkownicy</h1>
         <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">
-          Role, rate limit (żądania/min), miesięczny limit kosztu LLM w USD (UTC, wszystkie modele) i reset haseł. Przy włączonym{" "}
+          Role, rate limit (żądania/min), bieżące zużycie LLM (koszt i tokeny w miesiącu UTC), miesięczny limit kosztu w USD
+          (wszystkie modele) i reset haseł. Przy włączonym{" "}
           <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">ADMIN_API_KEY</code> ustaw też{" "}
           <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">VITE_ADMIN_API_KEY</code> we frontendzie.
         </p>
@@ -175,13 +183,14 @@ export default function AdminUsersPage() {
       {success && <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-200">{success}</p>}
 
       <div className="overflow-x-auto rounded-xl border border-ink-800/15 bg-white dark:border-paper-100/10 dark:bg-ink-900">
-        <table className="w-full min-w-[960px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-ink-800/15 dark:border-paper-100/15">
               <th className="px-4 py-3 font-medium">E-mail</th>
               <th className="px-4 py-3 font-medium">Nazwa</th>
               <th className="px-4 py-3 font-medium">Rola</th>
               <th className="px-4 py-3 font-medium">Rate limit (req/min)</th>
+              <th className="px-4 py-3 font-medium">Zużycie LLM (miesiąc UTC)</th>
               <th className="px-4 py-3 font-medium">Limit kosztu LLM / miesiąc (USD)</th>
               <th className="px-4 py-3 font-medium">Akcje</th>
             </tr>
@@ -225,6 +234,25 @@ export default function AdminUsersPage() {
                       {u.rate_limit_rpm ?? <span className="text-ink-400">domyślny</span>}
                     </span>
                   )}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="space-y-0.5">
+                    <div className={u.llm_monthly_limit_reached ? "font-medium text-red-600 dark:text-red-400" : ""}>
+                      {formatUsd(u.llm_cost_month_usd)}
+                      {u.effective_llm_monthly_cost_limit_usd !== null && (
+                        <span className="text-ink-500 dark:text-paper-400">
+                          {" "}
+                          / {formatUsd(u.effective_llm_monthly_cost_limit_usd)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-ink-500 dark:text-paper-400">
+                      {formatTokens(u.llm_tokens_month)} tokenów
+                    </div>
+                    {u.llm_monthly_limit_reached && (
+                      <div className="text-xs font-medium text-red-600 dark:text-red-400">Limit wyczerpany</div>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-3">
                   {editingCostId === u.id ? (

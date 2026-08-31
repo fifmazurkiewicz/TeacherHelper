@@ -77,6 +77,64 @@ async def sum_llm_cost_usd_month_for_user(
     return float(val or 0)
 
 
+async def llm_usage_month_by_user_id(
+    session: AsyncSession,
+    *,
+    include_dry_run: bool = False,
+) -> dict[UUID, dict[str, float | int]]:
+    """Bieżący miesiąc kalendarzowy UTC: koszt USD i suma tokenów per user_id (bez dry-run domyślnie)."""
+    month_start = utc_month_start()
+    cost = _cost_sum_expr()
+    tok = func.coalesce(LlmUsageLogORM.total_tokens, 0)
+    stmt = (
+        select(
+            LlmUsageLogORM.user_id.label("uid"),
+            func.coalesce(func.sum(cost), 0).label("cost_month_usd"),
+            func.coalesce(func.sum(tok), 0).label("tokens_month"),
+        )
+        .where(LlmUsageLogORM.user_id.isnot(None))
+        .where(LlmUsageLogORM.created_at >= month_start)
+    )
+    if not include_dry_run:
+        stmt = stmt.where(LlmUsageLogORM.dry_run.is_(False))
+    stmt = stmt.group_by(LlmUsageLogORM.user_id)
+    rows = (await session.execute(stmt)).all()
+    return {
+        r.uid: {
+            "cost_month_usd": float(r.cost_month_usd or 0),
+            "tokens_month": int(r.tokens_month or 0),
+        }
+        for r in rows
+    }
+
+
+async def user_llm_usage_month(
+    session: AsyncSession,
+    user_id: UUID,
+    *,
+    include_dry_run: bool = False,
+) -> dict[str, float | int]:
+    """Bieżący miesiąc UTC dla jednego użytkownika."""
+    month_start = utc_month_start()
+    cost = _cost_sum_expr()
+    tok = func.coalesce(LlmUsageLogORM.total_tokens, 0)
+    stmt = (
+        select(
+            func.coalesce(func.sum(cost), 0).label("cost_month_usd"),
+            func.coalesce(func.sum(tok), 0).label("tokens_month"),
+        )
+        .where(LlmUsageLogORM.user_id == user_id)
+        .where(LlmUsageLogORM.created_at >= month_start)
+    )
+    if not include_dry_run:
+        stmt = stmt.where(LlmUsageLogORM.dry_run.is_(False))
+    row = (await session.execute(stmt)).one()
+    return {
+        "cost_month_usd": float(row.cost_month_usd or 0),
+        "tokens_month": int(row.tokens_month or 0),
+    }
+
+
 async def per_user_llm_cost_stats(session: AsyncSession) -> list[dict[str, Any]]:
     """Dla każdego konta: koszt USD dzień / miesiąc (UTC) / cały czas (bez dry-run)."""
     s = get_settings()
@@ -101,6 +159,10 @@ async def per_user_llm_cost_stats(session: AsyncSession) -> list[dict[str, Any]]
                 func.sum(case((LlmUsageLogORM.created_at >= day_start, tok), else_=0)),
                 0,
             ).label("tokens_today"),
+            func.coalesce(
+                func.sum(case((LlmUsageLogORM.created_at >= month_start, tok), else_=0)),
+                0,
+            ).label("tokens_month"),
             func.coalesce(func.sum(tok), 0).label("tokens_all"),
         )
         .where(LlmUsageLogORM.user_id.isnot(None))
@@ -117,6 +179,7 @@ async def per_user_llm_cost_stats(session: AsyncSession) -> list[dict[str, Any]]
             sub.c.cost_month_usd,
             sub.c.cost_all_usd,
             sub.c.tokens_today,
+            sub.c.tokens_month,
             sub.c.tokens_all,
         )
         .outerjoin(sub, UserORM.id == sub.c.uid)
@@ -143,6 +206,7 @@ async def per_user_llm_cost_stats(session: AsyncSession) -> list[dict[str, Any]]
                 "cost_month_usd": float(r.cost_month_usd or 0),
                 "cost_all_time_usd": float(r.cost_all_usd or 0),
                 "tokens_today_utc": int(r.tokens_today or 0),
+                "tokens_month_utc": int(r.tokens_month or 0),
                 "tokens_all_time": int(r.tokens_all or 0),
                 "llm_monthly_cost_limit_usd": float(raw) if raw is not None else None,
                 "effective_llm_monthly_cost_limit_usd": eff,

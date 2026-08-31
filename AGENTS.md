@@ -56,10 +56,10 @@ Graft CLI is broken on Windows (missing native build / `@nanonets/graft/dist/cli
 - RAG (pgvector): wyszukiwanie fragmentów biblioteki w czacie oraz semantyczne omówienie tematu (Topic Studio); zastąpił Qdrant.
 - Produkcja: baza Supabase od zera (bez migracji danych z GCP); seed admina wyłączany przez `SKIP_ADMIN_SEED=1`.
 - Generowanie wideo domyślnie wyłączone (`VIDEO_GENERATION_ENABLED=false`); kod Veo zostaje w repo.
-- Audio: SFX ≤30 s → ElevenLabs; utwory/piosenki → KIE (+ opcjonalnie Lyria przez OpenRouter).
-- Szablon zmiennych: kanoniczny plik to `.env.example` w katalogu głównym repozytorium.
+- Audio: SFX ≤30 s → ElevenLabs; utwory/piosenki → KIE (Lyria przez OpenRouter ~$0.16/wywołanie — droższa od KIE).
+- Mobile czat (`/assistant`): `useChatShell` + `--vvh` z `visualViewport` (nie `100vh`); safe-area na composerze; admin na telefonie w menu ⋮.
 - Google OAuth (dev): Authorized JavaScript origins — `http://localhost:18080` i `http://127.0.0.1:18080`; redirect URI to callback Supabase, nie frontend.
-- Render + Supabase: pooler (`*.pooler.supabase.com`), nie direct `db.*.supabase.co` (IPv6); `DATABASE_URL` → transaction port 6543 (`+asyncpg`); `DATABASE_URL_SYNC` → session port 5432 (`+psycopg`).
+- Render + Supabase: pooler (`*.pooler.supabase.com`), nie direct `db.*.supabase.co` (IPv6); `DATABASE_URL` → port 6543 (`+asyncpg`); `DATABASE_URL_SYNC` → 5432 (`+psycopg`); migracje Alembic auto przy starcie kontenera (`entrypoint.sh`).
 - Rejestracja bez whitelisty maili (Supabase Auth); rola admin tylko przez `ADMIN_EMAILS` po logowaniu.
 - Panel admina: `ADMIN_API_KEY` (Render) = `VITE_ADMIN_API_KEY` (Vercel; wymaga rebuildu frontendu).
 - Domyślny limit LLM: **$10/miesiąc UTC** na użytkownika (`DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD`) — wszystkie modele, koszt w USD.

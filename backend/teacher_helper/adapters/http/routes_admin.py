@@ -18,8 +18,10 @@ from teacher_helper.infrastructure.system_incidents import (
 )
 from teacher_helper.infrastructure.usage_limits import (
     build_limit_alerts,
+    llm_usage_month_by_user_id,
     per_user_llm_cost_stats,
     sum_llm_cost_usd_month,
+    user_llm_usage_month,
 )
 from teacher_helper.security import hash_password
 
@@ -45,10 +47,18 @@ class AdminUserResponse(BaseModel):
     llm_monthly_cost_limit_usd: float | None
     effective_llm_monthly_cost_limit_usd: float | None
     uses_site_default_llm_monthly_limit: bool
+    llm_cost_month_usd: float = 0.0
+    llm_tokens_month: int = 0
+    llm_monthly_limit_reached: bool = False
     created_at: datetime
 
 
-def _admin_user_response(u: UserORM) -> AdminUserResponse:
+def _admin_user_response(
+    u: UserORM,
+    *,
+    llm_cost_month_usd: float = 0.0,
+    llm_tokens_month: int = 0,
+) -> AdminUserResponse:
     s = get_settings()
     raw = u.llm_monthly_cost_limit_usd
     if raw is None:
@@ -60,6 +70,7 @@ def _admin_user_response(u: UserORM) -> AdminUserResponse:
     else:
         eff = float(raw)
         uses_default = False
+    limit_reached = eff is not None and llm_cost_month_usd >= eff
     return AdminUserResponse(
         id=u.id,
         email=u.email,
@@ -69,6 +80,9 @@ def _admin_user_response(u: UserORM) -> AdminUserResponse:
         llm_monthly_cost_limit_usd=float(raw) if raw is not None else None,
         effective_llm_monthly_cost_limit_usd=eff,
         uses_site_default_llm_monthly_limit=uses_default,
+        llm_cost_month_usd=llm_cost_month_usd,
+        llm_tokens_month=llm_tokens_month,
+        llm_monthly_limit_reached=limit_reached,
         created_at=u.created_at,
     )
 
@@ -84,6 +98,15 @@ class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+async def _admin_user_response_with_usage(session: DbSession, u: UserORM) -> AdminUserResponse:
+    row = await user_llm_usage_month(session, u.id)
+    return _admin_user_response(
+        u,
+        llm_cost_month_usd=float(row["cost_month_usd"]),
+        llm_tokens_month=int(row["tokens_month"]),
+    )
+
+
 @router.get("/users", response_model=list[AdminUserResponse])
 async def list_users(
     session: DbSession,
@@ -93,7 +116,15 @@ async def list_users(
     _check_admin_key(x_admin_key)
     stmt = select(UserORM).order_by(UserORM.created_at.desc())
     rows = list((await session.scalars(stmt)).all())
-    return [_admin_user_response(u) for u in rows]
+    usage_by_user = await llm_usage_month_by_user_id(session)
+    return [
+        _admin_user_response(
+            u,
+            llm_cost_month_usd=float(usage_by_user.get(u.id, {}).get("cost_month_usd", 0)),
+            llm_tokens_month=int(usage_by_user.get(u.id, {}).get("tokens_month", 0)),
+        )
+        for u in rows
+    ]
 
 
 @router.patch("/users/{user_id}", response_model=AdminUserResponse)
@@ -125,7 +156,7 @@ async def update_user(
 
     await session.commit()
     await session.refresh(target)
-    return _admin_user_response(target)
+    return await _admin_user_response_with_usage(session, target)
 
 
 @router.delete("/users/{user_id}/rate-limit", response_model=AdminUserResponse)
@@ -143,7 +174,7 @@ async def clear_user_rate_limit(
     target.rate_limit_rpm = None
     await session.commit()
     await session.refresh(target)
-    return _admin_user_response(target)
+    return await _admin_user_response_with_usage(session, target)
 
 
 @router.delete("/users/{user_id}/llm-monthly-cost-limit", response_model=AdminUserResponse)
@@ -161,7 +192,7 @@ async def clear_user_llm_monthly_cost_limit(
     target.llm_monthly_cost_limit_usd = None
     await session.commit()
     await session.refresh(target)
-    return _admin_user_response(target)
+    return await _admin_user_response_with_usage(session, target)
 
 
 @router.post("/users/{user_id}/reset-password")
