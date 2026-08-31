@@ -23,6 +23,7 @@ from teacher_helper.infrastructure.db.file_ops import (
     semantic_search_chunks,
 )
 from teacher_helper.infrastructure.db.llm_usage import (
+    LangfuseTraceContext,
     record_langfuse_model_call_sync,
     record_llm_usage_event,
     record_usage_log,
@@ -1516,6 +1517,7 @@ class ChatOrchestratorUseCase:
         attached_file_ids: list[UUID] | None = None,
         history: list[tuple[str, str]] | None = None,
         dry_run: bool = False,
+        trace_context: LangfuseTraceContext | None = None,
     ) -> ChatResult:
         attached_file_ids = attached_file_ids or []
         history = history or []
@@ -1545,6 +1547,7 @@ class ChatOrchestratorUseCase:
         await record_llm_usage_event(
             session, user_id=user_id, call_kind="orchestrator", module_name=None,
             completion=completion, system_text=sys_eff, user_text=user_content, dry_run=dry_run,
+            trace_context=trace_context,
         )
 
         if not dry_run and _should_retry_llm_for_library_persist(completion, message, history):
@@ -1575,10 +1578,12 @@ class ChatOrchestratorUseCase:
                 system_text=sys_eff,
                 user_text=f"{user_content}\n\n[retry_persist]\n{correction}",
                 dry_run=dry_run,
+                trace_context=trace_context,
             )
 
         return await self._process_tool_calls(
             session, user_id, project_id, message, context_block, completion, dry_run, history,
+            trace_context=trace_context,
         )
 
     # --- Budowanie kontekstu ---
@@ -1601,6 +1606,7 @@ class ChatOrchestratorUseCase:
         self, session: AsyncSession, user_id: UUID, project_id: UUID | None,
         user_message: str, context: str, completion: Any, dry_run: bool,
         history: list[tuple[str, str]],
+        trace_context: LangfuseTraceContext | None = None,
     ) -> ChatResult:
         if not completion.tool_calls:
             return ChatResult(
@@ -1852,6 +1858,7 @@ class ChatOrchestratorUseCase:
                     e_fids, e_note = await self._handle_edit_presentation(
                         session, user_id, write_pid, user_message, dynamic_context, tc.arguments,
                         last_created_in_turn=last_created_file_id,
+                        trace_context=trace_context,
                     )
                     if e_fids:
                         for ef in e_fids:
@@ -1905,6 +1912,7 @@ class ChatOrchestratorUseCase:
                         reply_parts.append(write_note)
                     mod_fids, mod_note = await self._run_module(
                         session, user_id, write_pid, module, user_message, dynamic_context, tc.arguments,
+                        trace_context=trace_context,
                     )
                     if mod_fids:
                         for mod_fid in mod_fids:
@@ -2007,13 +2015,15 @@ class ChatOrchestratorUseCase:
     async def _run_module(
         self, session: AsyncSession, user_id: UUID, project_id: UUID | None,
         module: str, user_message: str, context: str, tool_args: dict[str, Any],
+        trace_context: LangfuseTraceContext | None = None,
     ) -> tuple[list[UUID], str | None]:
         mod = module.lower().strip()
         if mod == "sound":
-            return await self._handle_sound_effect(session, user_id, project_id, tool_args)
+            return await self._handle_sound_effect(session, user_id, project_id, tool_args, trace_context=trace_context)
         if mod == "presentation":
             return await self._handle_presentation(
                 session, user_id, project_id, user_message, context, tool_args,
+                trace_context=trace_context,
             )
         sys_prompt = MODULE_SYSTEM_PROMPTS.get(mod)
         if not sys_prompt:
@@ -2035,6 +2045,7 @@ class ChatOrchestratorUseCase:
         await record_llm_usage_event(
             session, user_id=user_id, call_kind="module", module_name=mod,
             completion=mod_completion, system_text=sys_prompt, user_text=user_part,
+            trace_context=trace_context,
         )
         content = mod_completion.text if mod_completion.text is not None else ""
         trunc_note: str | None = None
@@ -2117,6 +2128,7 @@ class ChatOrchestratorUseCase:
         user_message: str,
         context: str,
         tool_args: dict[str, Any],
+        trace_context: LangfuseTraceContext | None = None,
     ) -> tuple[list[UUID], str | None]:
         sys_prompt = MODULE_SYSTEM_PROMPTS["presentation"]
         args_for_prompt = dict(tool_args) if tool_args else {}
@@ -2127,6 +2139,7 @@ class ChatOrchestratorUseCase:
         await record_llm_usage_event(
             session, user_id=user_id, call_kind="module", module_name="presentation",
             completion=mod_completion, system_text=sys_prompt, user_text=user_part,
+            trace_context=trace_context,
         )
         content = mod_completion.text if mod_completion.text is not None else ""
         trunc_note: str | None = None
@@ -2274,6 +2287,7 @@ class ChatOrchestratorUseCase:
         context: str,
         tool_args: dict[str, Any],
         last_created_in_turn: UUID | None = None,
+        trace_context: LangfuseTraceContext | None = None,
     ) -> tuple[list[UUID], str | None]:
         sn_raw = tool_args.get("slide_number")
         try:
@@ -2330,6 +2344,7 @@ class ChatOrchestratorUseCase:
         await record_llm_usage_event(
             session, user_id=user_id, call_kind="module", module_name="presentation_edit",
             completion=comp, system_text=PRESENTATION_EDIT_SYSTEM, user_text=user_part,
+            trace_context=trace_context,
         )
         new_spec = parse_presentation_json(comp.text or "")
         if not new_spec:
@@ -2405,6 +2420,7 @@ class ChatOrchestratorUseCase:
         user_id: UUID,
         project_id: UUID | None,
         tool_args: dict[str, Any],
+        trace_context: LangfuseTraceContext | None = None,
     ) -> tuple[list[UUID], str | None]:
         gen = self._sound_gen
         if gen is None:
@@ -2444,6 +2460,7 @@ class ChatOrchestratorUseCase:
             metadata={"call_kind": "sound_effect", "module": "sound"},
             usage=None,
             cost_usd=s.elevenlabs_sfx_estimated_cost_usd,
+            trace_context=trace_context,
         )
         await _record_model_cost_usd(
             session,

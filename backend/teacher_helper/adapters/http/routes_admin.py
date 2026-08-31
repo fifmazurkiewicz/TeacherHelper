@@ -341,7 +341,7 @@ async def admin_monitoring(
         },
         "langfuse": {
             "enabled": langfuse_on, "host": s.langfuse_host, "dashboard_url": s.langfuse_host.rstrip("/") + "/",
-            "hint": ("Langfuse włączony — generacje trafiają do dashboard." if langfuse_on
+            "hint": ("Langfuse włączony — generacje trafiają do dashboard; rozmowy w czacie grupowane w Sessions (session_id = conversation_id)." if langfuse_on
                      else "Uzupełnij LANGFUSE_* w .env, aby duplikować zdarzenia LLM do chmurowego observability."),
         },
         "langgraph": {"role": "LangGraph — w przyszłości orchestrator można przenieść do LangGraph."},

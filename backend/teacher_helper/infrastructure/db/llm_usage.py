@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 from uuid import UUID, uuid4
@@ -14,6 +15,60 @@ from teacher_helper.infrastructure.db.models import LlmUsageLogORM
 from teacher_helper.use_cases.ports import LlmCompletion
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LangfuseTraceContext:
+    """Grupowanie trace'ów Langfuse w jednej sesji rozmowy (Faza A)."""
+
+    conversation_id: UUID | None = None
+    project_id: UUID | None = None
+    job_id: UUID | None = None
+
+    def session_id(self) -> str | None:
+        if self.conversation_id is not None:
+            return str(self.conversation_id)
+        return None
+
+    def metadata(self) -> dict[str, str]:
+        out: dict[str, str] = {}
+        if self.conversation_id is not None:
+            out["conversation_id"] = str(self.conversation_id)
+        if self.project_id is not None:
+            out["project_id"] = str(self.project_id)
+        if self.job_id is not None:
+            out["job_id"] = str(self.job_id)
+        return out
+
+
+def _merge_langfuse_metadata(
+    base: dict[str, Any] | None,
+    trace_context: LangfuseTraceContext | None,
+) -> dict[str, Any]:
+    out: dict[str, Any] = dict(base or {})
+    if trace_context is not None:
+        out.update(trace_context.metadata())
+    return out
+
+
+def _langfuse_trace_kwargs(
+    *,
+    user_id: UUID | None,
+    trace_context: LangfuseTraceContext | None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    kw: dict[str, Any] = {
+        "name": "TeacherHelper",
+        "user_id": str(user_id) if user_id else None,
+    }
+    if trace_context is not None:
+        sid = trace_context.session_id()
+        if sid:
+            kw["session_id"] = sid
+    merged = _merge_langfuse_metadata(metadata, trace_context)
+    if merged:
+        kw["metadata"] = merged
+    return kw
 
 
 def _to_decimal_usd(value: float | Decimal | None) -> Decimal | None:
@@ -107,6 +162,7 @@ def record_langfuse_model_call_sync(
     metadata: dict[str, Any] | None = None,
     usage: dict[str, int] | None = None,
     cost_usd: float | None = None,
+    trace_context: LangfuseTraceContext | None = None,
 ) -> None:
     """Langfuse dla wywołań spoza standardowego ``LlmCompletion`` (obrazy, embeddingi, audio, KIE)."""
     s = get_settings()
@@ -120,14 +176,10 @@ def record_langfuse_model_call_sync(
             secret_key=s.langfuse_secret_key,
             host=s.langfuse_host.rstrip("/"),
         )
-        meta = {"provider": provider, **(metadata or {})}
+        meta = _merge_langfuse_metadata({"provider": provider, **(metadata or {})}, trace_context)
         if cost_usd is not None:
             meta["cost_usd"] = cost_usd
-        trace = lf.trace(
-            name="TeacherHelper",
-            user_id=str(user_id) if user_id else None,
-            metadata=meta,
-        )
+        trace = lf.trace(**_langfuse_trace_kwargs(user_id=user_id, trace_context=trace_context, metadata=meta))
         if isinstance(input_data, str):
             inp: Any = input_data[:12000]
         else:
@@ -172,6 +224,7 @@ def _emit_langfuse_sync(
     system_text: str,
     user_text: str,
     output_text: str,
+    trace_context: LangfuseTraceContext | None = None,
 ) -> None:
     s = get_settings()
     if not s.langfuse_public_key or not s.langfuse_secret_key:
@@ -185,14 +238,16 @@ def _emit_langfuse_sync(
             host=s.langfuse_host.rstrip("/"),
         )
         trace = lf.trace(
-            name="TeacherHelper",
-            user_id=str(user_id) if user_id else None,
-            metadata={
-                "call_kind": call_kind,
-                "module_name": module_name or "",
-                "provider": completion.provider,
-                "cost_usd": completion.cost_usd,
-            },
+            **_langfuse_trace_kwargs(
+                user_id=user_id,
+                trace_context=trace_context,
+                metadata={
+                    "call_kind": call_kind,
+                    "module_name": module_name or "",
+                    "provider": completion.provider,
+                    "cost_usd": completion.cost_usd,
+                },
+            )
         )
         gen = trace.generation(
             name=observation_name,
@@ -246,6 +301,7 @@ async def record_llm_usage_event(
     system_text: str,
     user_text: str,
     dry_run: bool = False,
+    trace_context: LangfuseTraceContext | None = None,
 ) -> None:
     total = completion.resolved_total_tokens()
     await record_usage_log(
@@ -273,4 +329,5 @@ async def record_llm_usage_event(
         system_text=system_text,
         user_text=user_text,
         output_text=completion.text,
+        trace_context=trace_context,
     )

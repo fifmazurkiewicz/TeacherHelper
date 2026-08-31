@@ -1490,6 +1490,11 @@ export default function AssistantPage() {
                   )}
                 </button>
               </div>
+              <p className="mx-auto mt-2 max-w-3xl text-center text-[0.65rem] leading-snug text-ink-500 dark:text-paper-500">
+                Wywołania modelów AI są rejestrowane w aplikacji (limity kosztu, jakość, wsparcie). Gdy administrator
+                włączy Langfuse, techniczne logi wywołań z tej rozmowy mogą być też wysyłane do zewnętrznego
+                narzędzia observability (bez sprzedaży danych do reklamodawców).
+              </p>
             </div>
           </div>
         </section>

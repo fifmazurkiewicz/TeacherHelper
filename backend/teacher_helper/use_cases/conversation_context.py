@@ -9,7 +9,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from teacher_helper.config import Settings, get_settings
-from teacher_helper.infrastructure.db.llm_usage import record_llm_usage_event
+from teacher_helper.infrastructure.db.llm_usage import LangfuseTraceContext, record_llm_usage_event
 from teacher_helper.infrastructure.db.models import ConversationORM, MessageORM
 from teacher_helper.use_cases.ports import LlmClientPort
 
@@ -123,6 +123,7 @@ async def build_history_with_rolling_summary(
     summary_llm: LlmClientPort,
     settings: Settings | None = None,
     dry_run: bool = False,
+    trace_context: LangfuseTraceContext | None = None,
 ) -> list[tuple[str, str]]:
     s = settings or get_settings()
     pairs = messages_to_history_pairs(prior_msgs, message_pair_for_llm)
@@ -188,6 +189,7 @@ async def build_history_with_rolling_summary(
                 system_text=SUMMARY_SYSTEM,
                 user_text=user_prompt,
                 dry_run=dry_run,
+                trace_context=trace_context,
             )
         logger.info(
             "conversation context: folded head=%d tail=%d dry_run=%s",

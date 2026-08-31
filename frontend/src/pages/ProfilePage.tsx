@@ -46,6 +46,19 @@ export default function ProfilePage() {
         <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">VITE_ADMIN_API_KEY</code> (nagłówek{" "}
         <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">X-Admin-Key</code>).
       </p>
+      <section className="max-w-xl space-y-2 rounded-xl border border-ink-800/15 bg-white p-4 text-sm text-ink-600 dark:border-paper-100/10 dark:bg-ink-900 dark:text-paper-400">
+        <h2 className="font-semibold text-ink-900 dark:text-paper-100">Dane i monitoring AI</h2>
+        <p>
+          Treść rozmów w asystencie jest przechowywana w aplikacji, żebyś mógł wrócić do historii i generować
+          materiały. Wywołania modelów (prompty techniczne, odpowiedzi, koszt) są logowane do limitów miesięcznych
+          i rozwiązywania problemów.
+        </p>
+        <p>
+          Opcjonalnie administrator może włączyć <strong className="font-medium text-ink-800 dark:text-paper-200">Langfuse</strong> —
+          wtedy wywołania z danej rozmowy są grupowane w jednej sesji (ID rozmowy) w zewnętrznym panelu
+          observability. Nie sprzedajemy Twoich danych do reklam.
+        </p>
+      </section>
     </div>
   );
 }

@@ -11,6 +11,7 @@ from teacher_helper.adapters.http.chat_services import _llm_summary, message_pai
 from teacher_helper.adapters.http.chat_services import orchestrator as _orchestrator
 from teacher_helper.adapters.http.schemas import ChatRequest, CreatedFileBrief
 from teacher_helper.infrastructure.alert_webhook import send_alert_webhook
+from teacher_helper.infrastructure.db.llm_usage import LangfuseTraceContext
 from teacher_helper.infrastructure.db.models import ConversationORM, FileAssetORM, MessageORM
 from teacher_helper.infrastructure.db.session import async_session_factory
 from teacher_helper.infrastructure.jobs import get_job, mark_job_done, mark_job_error, mark_job_running
@@ -46,6 +47,12 @@ async def run_chat_job(job_id: UUID, user_id: UUID, body: ChatRequest) -> None:
             )
             prior_msgs = list((await session.scalars(stmt)).all())
 
+            trace_context = LangfuseTraceContext(
+                conversation_id=conv.id,
+                project_id=conv.project_id,
+                job_id=job_id,
+            )
+
             if body.history and len(prior_msgs) <= 1:
                 history = cap_orchestrator_history(
                     [(h.role, h.content) for h in body.history if h.role in ("user", "assistant")],
@@ -59,6 +66,7 @@ async def run_chat_job(job_id: UUID, user_id: UUID, body: ChatRequest) -> None:
                     message_pair_for_llm=message_pair_for_orchestrator_llm,
                     summary_llm=_llm_summary,
                     dry_run=body.dry_run,
+                    trace_context=trace_context,
                 )
 
             result = await _orchestrator.execute(
@@ -69,6 +77,7 @@ async def run_chat_job(job_id: UUID, user_id: UUID, body: ChatRequest) -> None:
                 attached_file_ids=body.attached_file_ids,
                 history=history,
                 dry_run=body.dry_run,
+                trace_context=trace_context,
             )
 
             now = datetime.now(timezone.utc)

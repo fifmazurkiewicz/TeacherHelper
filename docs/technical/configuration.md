@@ -64,3 +64,13 @@ Frontend (`frontend/.env`): `BACKEND_INTERNAL_URL`, opcjonalnie `VITE_ADMIN_API_
 | Supabase | Auth providers (Google OAuth), Storage bucket, DB connection strings |
 
 Szczegóły wdrożenia: `.cursor/plans/2026-08-28-standard-deploy.md`.
+
+## Langfuse (opcjonalnie)
+
+| Zmienna | Opis |
+|---|---|
+| `LANGFUSE_PUBLIC_KEY` | Klucz publiczny projektu Langfuse |
+| `LANGFUSE_SECRET_KEY` | Klucz secret (tylko backend) |
+| `LANGFUSE_HOST` | Domyślnie `https://cloud.langfuse.com` |
+
+Gdy klucze są ustawione, wywołania LLM z czatu trafiają do Langfuse z `session_id = conversation_id` (jedna sesja = jedna rozmowa). Szczegóły: `docs/superpowers/specs/2026-08-31-langfuse-conversation-sessions-design.md`.
