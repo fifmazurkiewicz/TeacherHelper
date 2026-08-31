@@ -344,7 +344,9 @@ async def admin_monitoring(
             "hint": ("Langfuse włączony — generacje trafiają do dashboard; rozmowy w czacie grupowane w Sessions (session_id = conversation_id)." if langfuse_on
                      else "Uzupełnij LANGFUSE_* w .env, aby duplikować zdarzenia LLM do chmurowego observability."),
         },
-        "langgraph": {"role": "LangGraph — w przyszłości orchestrator można przenieść do LangGraph."},
+        "langgraph": {
+            "role": "Orchestrator czatu: custom Python (ChatOrchestratorUseCase), nie LangGraph — decyzja ADR no-langgraph.",
+        },
         "per_user_llm_costs": per_user_costs,
         "per_user_llm_costs_hint": (
             "Koszt USD bez dry-run. „Dziś” i „miesiąc” — kalendarz UTC. "

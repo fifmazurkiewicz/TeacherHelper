@@ -354,7 +354,7 @@ export default function AdminMonitoringPage() {
           </section>
 
           <section className="rounded-xl border border-ink-800/10 bg-paper-100/80 p-4 dark:border-paper-100/10 dark:bg-ink-800/50">
-            <h2 className="mb-2 text-sm font-semibold text-ink-700 dark:text-paper-300">LangGraph</h2>
+            <h2 className="mb-2 text-sm font-semibold text-ink-700 dark:text-paper-300">Orchestrator czatu</h2>
             <p className="text-sm text-ink-700 dark:text-paper-300">{data.langgraph.role}</p>
           </section>
         </>
