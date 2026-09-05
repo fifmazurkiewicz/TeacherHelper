@@ -41,10 +41,9 @@ export default function ProfilePage() {
       <p className="max-w-xl text-sm text-ink-600 dark:text-paper-400">
         Administrator może zmieniać role innych użytkowników w zakładce{" "}
         <span className="font-medium">Użytkownicy</span>. Endpointy{" "}
-        <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">/v1/admin/*</code> wymagają roli admin oraz — gdy backend ma{" "}
-        <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">ADMIN_API_KEY</code> — tego samego klucza we frontendzie jako{" "}
-        <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">VITE_ADMIN_API_KEY</code> (nagłówek{" "}
-        <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">X-Admin-Key</code>).
+        <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">/v1/admin/*</code> wymagają roli administratora
+        (JWT). Opcjonalny <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">ADMIN_API_KEY</code> jest tylko
+        dla skryptów maszynowych — nie umieszczaj go w SPA.
       </p>
       <section className="max-w-xl space-y-2 rounded-xl border border-ink-800/15 bg-white p-4 text-sm text-ink-600 dark:border-paper-100/10 dark:bg-ink-900 dark:text-paper-400">
         <h2 className="font-semibold text-ink-900 dark:text-paper-100">Dane i monitoring AI</h2>

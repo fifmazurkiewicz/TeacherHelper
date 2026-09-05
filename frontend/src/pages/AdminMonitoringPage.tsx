@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { adminStats, api, getAdminKeyHeaders, type AdminStats } from "@/lib/api";
+import { adminStats, api, type AdminStats } from "@/lib/api";
 
 type Monitoring = {
   application: { users: number; files: number; ai_read_audits: number };
@@ -80,9 +80,8 @@ export default function AdminMonitoringPage() {
 
   function reload() {
     setError(null);
-    const h = getAdminKeyHeaders();
     Promise.all([
-      api<Monitoring>("/v1/admin/monitoring", { headers: h }),
+      api<Monitoring>("/v1/admin/monitoring"),
       adminStats(),
     ])
       .then(([m, s]) => {
@@ -101,7 +100,6 @@ export default function AdminMonitoringPage() {
     try {
       const r = await api<{ sent: boolean }>("/v1/admin/alerts/test-webhook", {
         method: "POST",
-        headers: getAdminKeyHeaders(),
       });
       setWebhookMsg(r.sent ? "Testowy webhook wysłany." : "Webhook zwrócił błąd (sprawdź logi serwera).");
     } catch (e) {
@@ -114,7 +112,7 @@ export default function AdminMonitoringPage() {
     try {
       const r = await api<{ ok: boolean; auth_check?: boolean; reason?: string }>(
         "/v1/admin/alerts/test-langfuse",
-        { method: "POST", headers: getAdminKeyHeaders() },
+        { method: "POST" },
       );
       if (r.ok) {
         setLangfuseMsg(

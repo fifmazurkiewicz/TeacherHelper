@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { PasswordField } from "@/components/PasswordField";
-import { api, getAdminKeyHeaders } from "@/lib/api";
+import { api } from "@/lib/api";
 
 type AdminUser = {
   id: string;
@@ -45,7 +45,7 @@ export default function AdminUsersPage() {
 
   function reload() {
     setError(null);
-    api<AdminUser[]>("/v1/admin/users", { headers: getAdminKeyHeaders() })
+    api<AdminUser[]>("/v1/admin/users")
       .then(setUsers)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
   }
@@ -63,7 +63,6 @@ export default function AdminUsersPage() {
       if (rpm === null) {
         await api(`/v1/admin/users/${userId}/rate-limit`, {
           method: "DELETE",
-          headers: getAdminKeyHeaders(),
         });
       } else {
         if (isNaN(rpm) || rpm < 1) {
@@ -72,7 +71,6 @@ export default function AdminUsersPage() {
         }
         await api(`/v1/admin/users/${userId}`, {
           method: "PATCH",
-          headers: getAdminKeyHeaders(),
           json: { rate_limit_rpm: rpm },
         });
       }
@@ -95,7 +93,6 @@ export default function AdminUsersPage() {
       if (raw === "") {
         await api(`/v1/admin/users/${userId}/llm-monthly-cost-limit`, {
           method: "DELETE",
-          headers: getAdminKeyHeaders(),
         });
       } else {
         const limit = parseFloat(raw.replace(",", "."));
@@ -105,7 +102,6 @@ export default function AdminUsersPage() {
         }
         await api(`/v1/admin/users/${userId}`, {
           method: "PATCH",
-          headers: getAdminKeyHeaders(),
           json: { llm_monthly_cost_limit_usd: limit },
         });
       }
@@ -128,7 +124,6 @@ export default function AdminUsersPage() {
     try {
       await api(`/v1/admin/users/${u.id}`, {
         method: "PATCH",
-        headers: getAdminKeyHeaders(),
         json: { role: newRole },
       });
       setSuccess("Rola zaktualizowana.");
@@ -151,7 +146,6 @@ export default function AdminUsersPage() {
     try {
       await api(`/v1/admin/users/${userId}/reset-password`, {
         method: "POST",
-        headers: getAdminKeyHeaders(),
         json: { new_password: newPassword },
       });
       setResetPwId(null);
@@ -170,9 +164,7 @@ export default function AdminUsersPage() {
         <h1 className="text-2xl font-bold">Użytkownicy</h1>
         <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">
           Role, rate limit (żądania/min), bieżące zużycie LLM (koszt i tokeny w miesiącu UTC), miesięczny limit kosztu w USD
-          (wszystkie modele) i reset haseł. Przy włączonym{" "}
-          <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">ADMIN_API_KEY</code> ustaw też{" "}
-          <code className="rounded bg-paper-100 px-1 dark:bg-ink-800">VITE_ADMIN_API_KEY</code> we frontendzie.
+          (wszystkie modele) i reset haseł. Panel wymaga roli administratora (JWT).
         </p>
         <button type="button" onClick={reload} className="mt-2 text-sm text-accent hover:underline">
           Odśwież

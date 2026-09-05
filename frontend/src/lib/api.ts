@@ -39,12 +39,6 @@ async function resolveAuthToken(): Promise<string | null> {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function getAdminKeyHeaders(): Record<string, string> {
-  const k = (import.meta.env.VITE_ADMIN_API_KEY as string | undefined)?.trim();
-  if (!k) return {};
-  return { "X-Admin-Key": k };
-}
-
 type ApiInit = {
   method?: string;
   headers?: Record<string, string>;
@@ -151,7 +145,7 @@ export type AdminStats = {
 };
 
 export async function adminStats(): Promise<AdminStats> {
-  return api<AdminStats>("/v1/admin/stats", { headers: getAdminKeyHeaders() });
+  return api<AdminStats>("/v1/admin/stats");
 }
 
 export type PendingProjectAction = {
