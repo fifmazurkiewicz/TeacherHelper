@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   api,
+  ApiConflictError,
   createConversation,
   createProjectConfirmed,
   deleteConversation,
@@ -619,11 +620,23 @@ export default function AssistantPage() {
       if (conversationId) body.conversation_id = conversationId;
       const ids = args.attachmentsSnapshot.map((a) => a.id);
       if (ids.length) body.attached_file_ids = ids;
-      const accepted = await api<ChatAcceptedResponse>("/v1/chat", {
-        method: "POST",
-        json: body,
-        signal,
-      });
+      let accepted: ChatAcceptedResponse;
+      try {
+        accepted = await api<ChatAcceptedResponse>("/v1/chat", {
+          method: "POST",
+          json: body,
+          signal,
+        });
+      } catch (postErr) {
+        if (postErr instanceof ApiConflictError && postErr.jobId) {
+          accepted = {
+            job_id: postErr.jobId,
+            conversation_id: postErr.conversationId || conversationId || "",
+          };
+        } else {
+          throw postErr;
+        }
+      }
       const resultPayload = await pollJobUntilDone(accepted.job_id, signal);
       const res = resultPayload as unknown as AssistantChatResponse;
       try {

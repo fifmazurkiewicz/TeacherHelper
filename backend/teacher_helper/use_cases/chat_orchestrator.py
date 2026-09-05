@@ -1480,7 +1480,7 @@ _PAID_OR_FILE_SIDE_EFFECT_TOOLS = frozenset(TOOL_TO_MODULE.keys()) | frozenset({
 PAID_BUDGET_MODULES = frozenset({"music", "graphics", "video", "sound"})
 
 MUSIC_CONFIRM_MARKER = "Czy potwierdzasz generację muzyki?"
-_MUSIC_CONFIRM_RE = re.compile(r"^\s*(tak|yes|ok|potwierdzam)\b", re.IGNORECASE)
+_MUSIC_CONFIRM_RE = re.compile(r"^\s*(tak|yes|potwierdzam)\b", re.IGNORECASE)
 
 _MONTHLY_LIMIT_FALLBACK = (
     "Osiągnięto miesięczny limit kosztu. Pominięto pozostałe płatne narzędzia."
@@ -1514,15 +1514,17 @@ async def monthly_cost_limit_user_message(session: AsyncSession, user_id: UUID) 
 
 
 def history_confirms_music(history: list[tuple[str, str]]) -> bool:
-    pending = False
-    for role, content in history:
-        text = content or ""
-        if role == "assistant" and MUSIC_CONFIRM_MARKER in text:
-            pending = True
-        elif role == "user" and pending:
-            if _MUSIC_CONFIRM_RE.match(text):
-                return True
-            pending = False
+    """Confirm only the last marker → next user turn, and only if that turn is last."""
+    last_marker = -1
+    for i, (role, content) in enumerate(history):
+        if role == "assistant" and MUSIC_CONFIRM_MARKER in (content or ""):
+            last_marker = i
+    if last_marker < 0:
+        return False
+    for j in range(last_marker + 1, len(history)):
+        role, content = history[j]
+        if role == "user":
+            return bool(_MUSIC_CONFIRM_RE.match(content or "")) and j == len(history) - 1
     return False
 
 

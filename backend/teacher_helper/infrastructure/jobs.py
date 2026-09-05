@@ -121,27 +121,48 @@ async def conversation_has_active_chat_job(
     return await session.scalar(stmt)
 
 
-async def reap_stale_running_jobs(session: AsyncSession, max_age_minutes: int = 15) -> int:
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)
-    result = await session.execute(
+async def reap_stale_running_jobs(
+    session: AsyncSession,
+    max_age_minutes: int = 15,
+    pending_max_age_minutes: int = 5,
+) -> int:
+    now = datetime.now(timezone.utc)
+    running_cutoff = now - timedelta(minutes=max_age_minutes)
+    pending_cutoff = now - timedelta(minutes=pending_max_age_minutes)
+    running = await session.execute(
         update(GenerationJobORM)
         .where(
             GenerationJobORM.status == JobStatus.running.value,
-            GenerationJobORM.updated_at < cutoff,
+            GenerationJobORM.updated_at < running_cutoff,
         )
         .values(
             status=JobStatus.error.value,
             error=STALE_RUNNING_JOB_MESSAGE,
-            updated_at=datetime.now(timezone.utc),
+            updated_at=now,
         )
     )
-    return int(result.rowcount or 0)
-
-
-async def mark_job_done(session: AsyncSession, job_id: UUID, result: dict[str, Any]) -> None:
-    await session.execute(
+    pending = await session.execute(
         update(GenerationJobORM)
-        .where(GenerationJobORM.id == job_id)
+        .where(
+            GenerationJobORM.status == JobStatus.pending.value,
+            GenerationJobORM.updated_at < pending_cutoff,
+        )
+        .values(
+            status=JobStatus.error.value,
+            error=STALE_RUNNING_JOB_MESSAGE,
+            updated_at=now,
+        )
+    )
+    return int((running.rowcount or 0) + (pending.rowcount or 0))
+
+
+async def mark_job_done(session: AsyncSession, job_id: UUID, result: dict[str, Any]) -> bool:
+    res = await session.execute(
+        update(GenerationJobORM)
+        .where(
+            GenerationJobORM.id == job_id,
+            GenerationJobORM.status == JobStatus.running.value,
+        )
         .values(
             status=JobStatus.done.value,
             result=result,
@@ -149,18 +170,23 @@ async def mark_job_done(session: AsyncSession, job_id: UUID, result: dict[str, A
             updated_at=datetime.now(timezone.utc),
         )
     )
+    return int(res.rowcount or 0) > 0
 
 
-async def mark_job_error(session: AsyncSession, job_id: UUID, message: str) -> None:
-    await session.execute(
+async def mark_job_error(session: AsyncSession, job_id: UUID, message: str) -> bool:
+    res = await session.execute(
         update(GenerationJobORM)
-        .where(GenerationJobORM.id == job_id)
+        .where(
+            GenerationJobORM.id == job_id,
+            GenerationJobORM.status.in_((JobStatus.pending.value, JobStatus.running.value)),
+        )
         .values(
             status=JobStatus.error.value,
             error=message[:4000],
             updated_at=datetime.now(timezone.utc),
         )
     )
+    return int(res.rowcount or 0) > 0
 
 
 async def get_job_for_user(session: AsyncSession, job_id: UUID, user_id: UUID) -> GenerationJobORM | None:

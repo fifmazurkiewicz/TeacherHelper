@@ -46,6 +46,17 @@ type ApiInit = {
   signal?: AbortSignal;
 };
 
+export class ApiConflictError extends Error {
+  jobId?: string;
+  conversationId?: string;
+  constructor(message: string, jobId?: string, conversationId?: string) {
+    super(message);
+    this.name = "ApiConflictError";
+    this.jobId = jobId;
+    this.conversationId = conversationId;
+  }
+}
+
 async function errorText(res: Response): Promise<string> {
   const t = await res.text();
   try {
@@ -60,6 +71,24 @@ async function errorText(res: Response): Promise<string> {
     /* ignore */
   }
   return t || res.statusText || `HTTP ${res.status}`;
+}
+
+function conflictFromResponse(res: Response, bodyText: string): ApiConflictError | null {
+  if (res.status !== 409) return null;
+  try {
+    const j = JSON.parse(bodyText) as { detail?: unknown };
+    const d = j.detail;
+    if (d && typeof d === "object" && d !== null) {
+      const o = d as { message?: unknown; job_id?: unknown; conversation_id?: unknown };
+      const message = typeof o.message === "string" ? o.message : bodyText;
+      const jobId = typeof o.job_id === "string" ? o.job_id : undefined;
+      const conversationId = typeof o.conversation_id === "string" ? o.conversation_id : undefined;
+      return new ApiConflictError(message, jobId, conversationId);
+    }
+  } catch {
+    /* ignore */
+  }
+  return new ApiConflictError(bodyText);
 }
 
 async function authFetch(path: string, init?: RequestInit): Promise<Response> {
@@ -98,7 +127,12 @@ export async function api<T>(path: string, init?: ApiInit): Promise<T> {
     signal: init?.signal,
   });
   if (res.status === 204) return undefined as T;
-  if (!res.ok) throw new Error(await errorText(res));
+  if (!res.ok) {
+    const raw = await res.clone().text();
+    const conflict = conflictFromResponse(res, raw);
+    if (conflict) throw conflict;
+    throw new Error(await errorText(res));
+  }
   const text = await res.text();
   if (!text) return undefined as T;
   return JSON.parse(text) as T;

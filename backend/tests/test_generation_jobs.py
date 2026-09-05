@@ -102,7 +102,8 @@ async def test_lock_conversation_for_job_uses_for_update() -> None:
 async def test_reap_stale_running_jobs_marks_error() -> None:
     session = _FakeSession(execute_result=_ExecResult(rowcount=2))
     n = await reap_stale_running_jobs(session, max_age_minutes=15)
-    assert n == 2
+    assert n == 4
+    assert len(session.statements) == 2
     stmt = session.statements[0]
     assert isinstance(stmt, Update)
     values = _bound_values(stmt)
@@ -110,6 +111,8 @@ async def test_reap_stale_running_jobs_marks_error() -> None:
     assert JobStatus.error.value in values
     assert STALE_RUNNING_JOB_MESSAGE in values
     assert "utkn" in STALE_RUNNING_JOB_MESSAGE.lower() or "limit" in STALE_RUNNING_JOB_MESSAGE.lower()
+    pending_values = _bound_values(session.statements[1])
+    assert JobStatus.pending.value in pending_values
 
 
 def test_stale_cutoff_is_fifteen_minutes_by_default() -> None:

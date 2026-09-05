@@ -55,6 +55,24 @@ def test_music_confirm_rejected_on_unrelated_followup() -> None:
     assert music_generation_needs_confirm({"generate_music"}, history) is True
 
 
+def test_music_confirm_does_not_treat_ok_as_yes() -> None:
+    history = [
+        ("assistant", "Czy potwierdzasz generację muzyki? Napisz **tak**."),
+        ("user", "ok, zrób raczej grafikę"),
+    ]
+    assert history_confirms_music(history) is False
+
+
+def test_music_confirm_is_one_shot_not_lifetime() -> None:
+    history = [
+        ("assistant", "Czy potwierdzasz generację muzyki? Napisz **tak**."),
+        ("user", "tak"),
+        ("assistant", "Gotowa piosenka o wodzie."),
+    ]
+    assert history_confirms_music(history) is False
+    assert music_generation_needs_confirm({"generate_music"}, history) is True
+
+
 def test_music_confirm_not_required_when_music_not_requested() -> None:
     assert music_generation_needs_confirm({"generate_graphics"}, []) is False
 
