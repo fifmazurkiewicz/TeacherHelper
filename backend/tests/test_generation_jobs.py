@@ -90,6 +90,15 @@ async def test_conversation_has_active_chat_job_none_when_idle() -> None:
     assert await conversation_has_active_chat_job(session, uuid4()) is None
 
 
+async def test_lock_conversation_for_job_uses_for_update() -> None:
+    from teacher_helper.infrastructure.jobs import lock_conversation_for_job_stmt
+
+    conv_id = uuid4()
+    stmt = lock_conversation_for_job_stmt(conv_id)
+    compiled = str(stmt.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": False}))
+    assert "FOR UPDATE" in compiled.upper()
+
+
 async def test_reap_stale_running_jobs_marks_error() -> None:
     session = _FakeSession(execute_result=_ExecResult(rowcount=2))
     n = await reap_stale_running_jobs(session, max_age_minutes=15)

@@ -6,6 +6,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from teacher_helper.adapters.http.deps import CurrentUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
@@ -17,6 +18,7 @@ from teacher_helper.infrastructure.db.session import async_session_factory
 from teacher_helper.infrastructure.jobs import (
     conversation_has_active_chat_job,
     create_job,
+    lock_conversation_for_job,
     reap_stale_running_jobs,
 )
 from teacher_helper.infrastructure.system_incidents import record_system_incident
@@ -75,13 +77,16 @@ async def chat(session: DbSession, user: CurrentUser, body: ChatRequest) -> JSON
             )
 
     if body.conversation_id is not None:
-        conv = await session.get(ConversationORM, body.conversation_id)
+        conv = await lock_conversation_for_job(session, body.conversation_id)
         if not conv or conv.user_id != user.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Rozmowa nie znaleziona")
     else:
         conv = ConversationORM(id=uuid4(), user_id=user.id, title="")
         session.add(conv)
         await session.flush()
+        locked = await lock_conversation_for_job(session, conv.id)
+        if locked is not None:
+            conv = locked
 
     if body.project_id is not None:
         p = await session.get(ProjectORM, body.project_id)
@@ -124,7 +129,19 @@ async def chat(session: DbSession, user: CurrentUser, body: ChatRequest) -> JSON
         payload=body.model_dump(mode="json"),
         conversation_id=conv.id,
     )
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        active = await conversation_has_active_chat_job(session, conv.id)
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "message": "W tej rozmowie trwa już zadanie. Poczekaj na jego zakończenie.",
+                "job_id": str(active.id) if active is not None else None,
+                "conversation_id": str(conv.id),
+            },
+        ) from None
 
     asyncio.create_task(run_chat_job(job.id, user.id, body))
 

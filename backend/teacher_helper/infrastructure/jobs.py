@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
 
 from teacher_helper.infrastructure.db.base import Base
+from teacher_helper.infrastructure.db.models import ConversationORM
 
 STALE_RUNNING_JOB_MESSAGE = (
     "Zadanie utknęło (przekroczono limit czasu 15 minut). Spróbuj ponownie."
@@ -85,6 +86,22 @@ async def claim_job_running(session: AsyncSession, job_id: UUID) -> bool:
 async def mark_job_running(session: AsyncSession, job_id: UUID) -> bool:
     """CAS wrapper — only pending jobs become running."""
     return await claim_job_running(session, job_id)
+
+
+def lock_conversation_for_job_stmt(conversation_id: UUID):
+    """SELECT conversation … FOR UPDATE — serializes check+create of an active chat job."""
+    return (
+        select(ConversationORM)
+        .where(ConversationORM.id == conversation_id)
+        .with_for_update()
+    )
+
+
+async def lock_conversation_for_job(
+    session: AsyncSession,
+    conversation_id: UUID,
+) -> ConversationORM | None:
+    return await session.scalar(lock_conversation_for_job_stmt(conversation_id))
 
 
 async def conversation_has_active_chat_job(

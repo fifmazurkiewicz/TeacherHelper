@@ -12,6 +12,7 @@ Ciężkie narzędzia czatu (grafika, muzyka, PPTX) mogą przekraczać timeout HT
 - Tabela `generation_jobs` w Postgresie.
 - `POST /v1/chat` → **202** `{ job_id }`; wykonanie jako zadanie w tle w **tym samym procesie** uvicorn.
 - `GET /v1/jobs/{id}` — status i wynik; frontend odpytuje do `done`.
+- Jedno aktywne zadanie czatu na rozmowę: `SELECT … FOR UPDATE` na wierszu rozmowy + unikalny indeks częściowy `uq_generation_jobs_one_active_chat` (migracja `014`). Równoległy drugi `POST /v1/chat` → 409.
 
 ## Uzasadnienie
 
@@ -30,6 +31,7 @@ Ciężkie narzędzia czatu (grafika, muzyka, PPTX) mogą przekraczać timeout HT
 
 - `claim_job_running`: `UPDATE … WHERE id = ? AND status = 'pending'` (CAS). Runner kończy pracę, jeśli claim się nie uda (już `running`/`done`/`error`).
 - `conversation_has_active_chat_job`: `POST /v1/chat` zwraca **409** z istniejącym `job_id`, gdy rozmowa ma job `pending`/`running`.
+- Wyścig dwóch równoległych POST: `SELECT conversations … FOR UPDATE` przed check+create + indeks `uq_generation_jobs_one_active_chat` (Alembic `014`); `IntegrityError` → 409.
 - `reap_stale_running_jobs(max_age_minutes=15)`: `running` ze starym `updated_at` → `error` (polski komunikat). Wywołanie przy starcie aplikacji (lifespan) oraz przed utworzeniem nowej job.
 
 **WHY**
