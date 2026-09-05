@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import traceback
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -24,6 +25,7 @@ from teacher_helper.adapters.http.routes_topics import router as topics_router
 from teacher_helper.adapters.http.routes_voice import router as voice_router
 from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.db.session import async_session_factory
+from teacher_helper.infrastructure.jobs import reap_stale_running_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         return response
 
 
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    try:
+        async with async_session_factory() as session:
+            n = await reap_stale_running_jobs(session)
+            if n:
+                await session.commit()
+                logger.info("Startup reaper marked %s stale running job(s) as error", n)
+    except Exception:
+        logger.exception("Startup job reaper failed")
+    yield
+
+
 def create_app() -> FastAPI:
     s = get_settings()
     app = FastAPI(
@@ -50,6 +65,7 @@ def create_app() -> FastAPI:
         description="TeacherHelper — modularny monolit: auth, projekty, pliki, kontekst, czat z orchestracją modułów (tool calling).",
         docs_url="/docs" if s.openapi_docs else None,
         redoc_url="/redoc" if s.openapi_docs else None,
+        lifespan=_lifespan,
     )
     app.add_middleware(SecurityHeadersMiddleware)
     raw_origins = s.cors_origins.strip()

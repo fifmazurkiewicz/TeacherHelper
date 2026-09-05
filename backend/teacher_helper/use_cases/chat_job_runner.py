@@ -14,7 +14,7 @@ from teacher_helper.infrastructure.alert_webhook import send_alert_webhook
 from teacher_helper.infrastructure.db.llm_usage import LangfuseTraceContext
 from teacher_helper.infrastructure.db.models import ConversationORM, FileAssetORM, MessageORM
 from teacher_helper.infrastructure.db.session import async_session_factory
-from teacher_helper.infrastructure.jobs import get_job, mark_job_done, mark_job_error, mark_job_running
+from teacher_helper.infrastructure.jobs import claim_job_running, get_job, mark_job_done, mark_job_error
 from teacher_helper.infrastructure.system_incidents import record_system_incident
 from teacher_helper.use_cases.conversation_context import build_history_with_rolling_summary, cap_orchestrator_history
 
@@ -32,8 +32,12 @@ async def run_chat_job(job_id: UUID, user_id: UUID, body: ChatRequest) -> None:
             await session.commit()
             return
 
+        claimed = await claim_job_running(session, job_id)
+        if not claimed:
+            logger.info("Chat job %s not claimed (already running or finished)", job_id)
+            return
+
         try:
-            await mark_job_running(session, job_id)
             await session.commit()
 
             conv = await session.get(ConversationORM, conv_id)

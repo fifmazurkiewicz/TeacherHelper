@@ -14,7 +14,11 @@ from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.alert_webhook import send_alert_webhook
 from teacher_helper.infrastructure.db.models import ConversationORM, MessageORM, ProjectORM
 from teacher_helper.infrastructure.db.session import async_session_factory
-from teacher_helper.infrastructure.jobs import create_job
+from teacher_helper.infrastructure.jobs import (
+    conversation_has_active_chat_job,
+    create_job,
+    reap_stale_running_jobs,
+)
 from teacher_helper.infrastructure.system_incidents import record_system_incident
 from teacher_helper.infrastructure.usage_limits import (
     effective_user_llm_monthly_cost_limit_usd,
@@ -91,6 +95,18 @@ async def chat(session: DbSession, user: CurrentUser, body: ChatRequest) -> JSON
     if not (conv.title or "").strip():
         t = body.message.strip().replace("\n", " ")
         conv.title = (t[:48] + "…") if len(t) > 48 else t
+
+    await reap_stale_running_jobs(session)
+    active = await conversation_has_active_chat_job(session, conv.id)
+    if active is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            detail={
+                "message": "W tej rozmowie trwa już zadanie. Poczekaj na jego zakończenie.",
+                "job_id": str(active.id),
+                "conversation_id": str(conv.id),
+            },
+        )
 
     session.add(
         MessageORM(

@@ -30,8 +30,14 @@ router = APIRouter(prefix="/v1/admin", tags=["admin"])
 
 
 def _check_admin_key(x_admin_key: str | None) -> None:
+    """Optional machine key. Browser admin uses JWT role; missing header is allowed."""
     s = get_settings()
-    if s.admin_api_key and x_admin_key != s.admin_api_key:
+    if not s.admin_api_key:
+        return
+    incoming = (x_admin_key or "").strip()
+    if not incoming:
+        return
+    if incoming != s.admin_api_key:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Nieprawidłowy X-Admin-Key")
 
 

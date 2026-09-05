@@ -104,7 +104,9 @@ class Settings(BaseSettings):
     openrouter_music_model: str = Field(default="google/lyria-3-pro-preview")
     openrouter_music_timeout_seconds: float = Field(default=300.0)
     # Ile osobnych utworów zlecać każdemu dostawcy (KIE + Lyria) przy jednym generate_music (max 5).
-    music_variants_per_provider: int = 2
+    music_variants_per_provider: int = 1
+    # Minimalny cosine score (1 - distance) przy wyszukiwaniu fragmentów biblioteki / tematu.
+    rag_min_score: float = Field(default=0.25, ge=0.0, le=1.0)
     # Generacja obrazów (OpenRouter chat/completions + modalities); tylko gdy OPENROUTER_API_KEY.
     openrouter_image_timeout_seconds: float = Field(default=120.0)
     # Opcjonalnie: image_config.image_size dla modeli Gemini Image (np. 1K, 2K); puste = nie wysyłaj.

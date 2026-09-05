@@ -8,6 +8,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.chunking import chunk_text
 from teacher_helper.infrastructure.db.models import (
     AiReadAuditORM,
@@ -18,7 +19,7 @@ from teacher_helper.infrastructure.db.models import (
 )
 from teacher_helper.infrastructure.embeddings import embed_text, embed_texts
 from teacher_helper.infrastructure.text_extract import extract_plain_text
-from teacher_helper.infrastructure.vector_search import search_vector_chunks
+from teacher_helper.infrastructure.vector_search import rag_score_passes, search_vector_chunks
 
 
 async def delete_chunks_for_file(session: AsyncSession, file_id: UUID) -> None:
@@ -70,13 +71,22 @@ async def semantic_search_chunks(
     topic_id: UUID | None = None,
 ) -> list[tuple[FileChunkORM, float]]:
     q_emb = await embed_text(query, user_id=user_id, session=session)
-    if topic_id is not None:
-        hits = await search_vector_chunks(session, user_id, q_emb, top_k=top_k, topic_id=topic_id)
-    else:
-        hits = await search_vector_chunks(session, user_id, q_emb, top_k=min(top_k * 4, 48), topic_id=None)
+    min_score = get_settings().rag_min_score
+    hits = await search_vector_chunks(
+        session,
+        user_id,
+        q_emb,
+        top_k=top_k,
+        topic_id=topic_id,
+        project_id=project_id if topic_id is None else None,
+        min_score=min_score,
+        library_only=topic_id is None,
+    )
 
     result: list[tuple[FileChunkORM, float]] = []
     for hit in hits:
+        if not rag_score_passes(hit["score"], min_score):
+            continue
         chunk_id = hit["id"]
         try:
             uid = UUID(chunk_id)
@@ -90,14 +100,6 @@ async def semantic_search_chunks(
         if chunk is None or chunk.file_asset is None:
             continue
         if chunk.file_asset.user_id != user_id:
-            continue
-        if topic_id is not None:
-            if chunk.file_asset.topic_id != topic_id:
-                continue
-        else:
-            if chunk.file_asset.topic_id is not None:
-                continue
-        if project_id is not None and chunk.file_asset.project_id != project_id:
             continue
         result.append((chunk, hit["score"]))
         if len(result) >= top_k:

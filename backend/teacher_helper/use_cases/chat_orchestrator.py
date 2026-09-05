@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from fastapi import HTTPException
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,7 +29,7 @@ from teacher_helper.infrastructure.db.llm_usage import (
     record_llm_usage_event,
     record_usage_log,
 )
-from teacher_helper.infrastructure.db.models import FileAssetORM, FileStatus, ProjectORM
+from teacher_helper.infrastructure.db.models import FileAssetORM, FileStatus, ProjectORM, UserORM
 from teacher_helper.infrastructure.export import text_to_pdf, text_to_pptx
 from teacher_helper.infrastructure.lyria_openrouter import OpenRouterLyriaMusicGenerator
 from teacher_helper.infrastructure.music_kie import (
@@ -48,6 +49,7 @@ from teacher_helper.infrastructure.presentation_spec import (
     spec_to_readable_plan_text,
 )
 from teacher_helper.infrastructure.storage.local import LocalStorage
+from teacher_helper.infrastructure.usage_limits import assert_user_within_monthly_cost_limit
 from teacher_helper.infrastructure.web_search import format_hits_for_llm, run_web_search
 from teacher_helper.security.resource_confirmation import (
     ACTION_DELETE_PROJECT,
@@ -1463,6 +1465,96 @@ def _tool_call_sort_key(tc: Any) -> tuple[int, str]:
     return (3, tc.id or "")
 
 
+_CLARIFICATION_BLOCKING_TOOLS = frozenset({
+    "ask_clarification",
+    "request_video_confirmation",
+    "prepare_create_teacher_project",
+    "prepare_delete_teacher_project",
+})
+
+_PAID_OR_FILE_SIDE_EFFECT_TOOLS = frozenset(TOOL_TO_MODULE.keys()) | frozenset({
+    "edit_presentation",
+    "export_library_file",
+})
+
+PAID_BUDGET_MODULES = frozenset({"music", "graphics", "video", "sound"})
+
+MUSIC_CONFIRM_MARKER = "Czy potwierdzasz generację muzyki?"
+_MUSIC_CONFIRM_RE = re.compile(r"^\s*(tak|yes|ok|potwierdzam)\b", re.IGNORECASE)
+
+_MONTHLY_LIMIT_FALLBACK = (
+    "Osiągnięto miesięczny limit kosztu. Pominięto pozostałe płatne narzędzia."
+)
+
+
+def clarification_blocks_paid_tools(tool_names: set[str]) -> bool:
+    """True when this turn asked to clarify / confirm / prepare a project — skip paid file tools."""
+    return bool({n for n in tool_names if n} & _CLARIFICATION_BLOCKING_TOOLS)
+
+
+def is_paid_budget_module(module: str) -> bool:
+    return module in PAID_BUDGET_MODULES
+
+
+def polish_monthly_limit_skip_message(detail: object) -> str:
+    if isinstance(detail, str) and detail.strip():
+        return detail.strip()
+    return _MONTHLY_LIMIT_FALLBACK
+
+
+async def monthly_cost_limit_user_message(session: AsyncSession, user_id: UUID) -> str | None:
+    user = await session.get(UserORM, user_id)
+    if user is None:
+        return None
+    try:
+        await assert_user_within_monthly_cost_limit(session, user)
+    except HTTPException as exc:
+        return polish_monthly_limit_skip_message(exc.detail)
+    return None
+
+
+def history_confirms_music(history: list[tuple[str, str]]) -> bool:
+    pending = False
+    for role, content in history:
+        text = content or ""
+        if role == "assistant" and MUSIC_CONFIRM_MARKER in text:
+            pending = True
+        elif role == "user" and pending:
+            if _MUSIC_CONFIRM_RE.match(text):
+                return True
+            pending = False
+    return False
+
+
+def music_generation_needs_confirm(tool_names: set[str], history: list[tuple[str, str]]) -> bool:
+    if "generate_music" not in tool_names:
+        return False
+    return not history_confirms_music(history)
+
+
+def estimate_music_confirm_cost_usd() -> float:
+    s = get_settings()
+    n = min(max(1, int(s.music_variants_per_provider)), 5)
+    cost = float(s.kie_music_estimated_cost_usd) * n
+    if s.openrouter_music_enabled:
+        cost += float(s.openrouter_lyria_estimated_cost_usd) * n
+    return cost
+
+
+def _build_music_confirmation_message(args: dict[str, Any]) -> str:
+    topic = (args.get("topic") or args.get("material_title") or "utwór edukacyjny").strip()
+    s = get_settings()
+    n = min(max(1, int(s.music_variants_per_provider)), 5)
+    cost = estimate_music_confirm_cost_usd()
+    return (
+        "Przed uruchomieniem generowania muzyki (KIE / Lyria) przedstawiam szacunek kosztu.\n\n"
+        f"**Temat:** {topic}\n"
+        f"**Warianty na dostawcę:** {n}\n"
+        f"**Szacowany koszt:** ~${cost:.2f} USD\n\n"
+        f"---\n{MUSIC_CONFIRM_MARKER} Napisz **tak** aby rozpocząć, lub **nie** aby zrezygnować."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Wynik czatu
 # ---------------------------------------------------------------------------
@@ -1638,6 +1730,37 @@ class ChatOrchestratorUseCase:
         tool_calls_in = list(completion.tool_calls)
         tool_calls_eff = _filter_incremental_redundant_tool_calls(user_message, history, tool_calls_in)
         sorted_calls = sorted(tool_calls_eff, key=_tool_call_sort_key)
+        turn_names = {(tc.name or "") for tc in sorted_calls}
+        skip_paid_tools = clarification_blocks_paid_tools(turn_names)
+        budget_exhausted = False
+
+        async def _abort_paid_tool(tool_name: str, tool_args: dict[str, Any]) -> bool:
+            nonlocal side_effects_skipped, budget_exhausted, needs_clarification, clarification_question
+            if tool_name not in _PAID_OR_FILE_SIDE_EFFECT_TOOLS:
+                return False
+            if skip_paid_tools:
+                side_effects_skipped = True
+                return True
+            if tool_name == "generate_music" and music_generation_needs_confirm(turn_names, history):
+                needs_clarification = True
+                side_effects_skipped = True
+                msg = _build_music_confirmation_message(tool_args)
+                clarification_question = clarification_question or msg
+                reply_parts.append(msg)
+                return True
+            module = TOOL_TO_MODULE.get(tool_name)
+            if module and is_paid_budget_module(module):
+                if budget_exhausted:
+                    side_effects_skipped = True
+                    return True
+                limit_msg = await monthly_cost_limit_user_message(session, user_id)
+                if limit_msg:
+                    budget_exhausted = True
+                    side_effects_skipped = True
+                    reply_parts.append(limit_msg)
+                    return True
+            return False
+
         for call_idx, tc in enumerate(sorted_calls):
             logger.debug("Processing tool call: %s (id=%s) args_keys=%s", tc.name, tc.id, list(tc.arguments.keys()))
             if tc.name == "ask_clarification":
@@ -1810,6 +1933,8 @@ class ChatOrchestratorUseCase:
                 )
 
             elif tc.name == "export_library_file":
+                if await _abort_paid_tool(tc.name, tc.arguments):
+                    continue
                 fmt = (tc.arguments.get("format") or "pdf").lower().strip()
                 fid_raw = tc.arguments.get("file_id")
                 fid: UUID | None = None
@@ -1846,6 +1971,8 @@ class ChatOrchestratorUseCase:
                         reply_parts.append(str(exc))
 
             elif tc.name == "edit_presentation":
+                if await _abort_paid_tool(tc.name, tc.arguments):
+                    continue
                 if dry_run:
                     side_effects_skipped = True
                     reply_parts.append("[Symulacja] **edit_presentation** — pliki by nie powstały.")
@@ -1878,6 +2005,8 @@ class ChatOrchestratorUseCase:
                         )
 
             elif tc.name in TOOL_TO_MODULE:
+                if await _abort_paid_tool(tc.name, tc.arguments):
+                    continue
                 module = TOOL_TO_MODULE[tc.name]
                 if tc.name == "generate_video" and video_confirmation_pending:
                     logger.info(
