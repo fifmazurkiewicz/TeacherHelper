@@ -153,3 +153,4 @@ Polish copy (existing product language).
 | 2026-09-07 | $10 = existing site default on Accept | No second quota system |
 | 2026-09-07 | All five landing apps get the gate; $10 only where a quota already exists | Public hub; Family Organiser has no LLM cap |
 | 2026-09-07 | TeacherHelper first; other repos copy this contract | Separate auth stacks |
+| 2026-09-07 | Chat job unique index is Alembic **015** (after `014` is_approved) | Two files both used revision `014`; Render `upgrade head` failed |

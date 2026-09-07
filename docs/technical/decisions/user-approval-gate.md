@@ -18,5 +18,6 @@ TeacherHelper (and the other apps on `fmazurkiewicz.dev`) is publicly linked fro
 
 - Public registration stays; spend starts only after Accept.
 - Follow-on: same product contract in Langy, Medical Intelligence, Family Organiser, and Coach — each in its own repo. $10 grant only where that app already has a spend quota.
+- 2026-09-07: the chat unique-index migration is Alembic **015**. A second file also used revision **014**, which made Render `alembic upgrade head` fail.
 
 Full spec: `docs/superpowers/specs/2026-09-07-user-approval-gate-design.md`.

@@ -1,7 +1,7 @@
 """One active chat generation job per conversation.
 
-Revision ID: 014
-Revises: 013
+Revision ID: 015
+Revises: 014
 """
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import Sequence, Union
 
 from alembic import op
 
-revision: str = "014"
-down_revision: Union[str, None] = "013"
+revision: str = "015"
+down_revision: Union[str, None] = "014"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

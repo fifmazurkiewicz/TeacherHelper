@@ -58,7 +58,7 @@ async def create_conversation(
 
 @router.get("/{conversation_id}/active-job", response_model=ConversationActiveJobResponse | None)
 async def get_conversation_active_job(
-    session: DbSession, user: CurrentUser, conversation_id: UUID,
+    session: DbSession, user: ApprovedUser, conversation_id: UUID,
 ) -> ConversationActiveJobResponse | None:
     """Zwraca trwające zadanie czatu (pending/running) — frontend wznawia polling po odświeżeniu strony."""
     c = await session.get(ConversationORM, conversation_id)

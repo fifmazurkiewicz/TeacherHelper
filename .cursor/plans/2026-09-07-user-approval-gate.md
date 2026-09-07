@@ -20,6 +20,12 @@
 - Isolate in `_harden/TeacherHelper-approval`; do not edit dirty main WIP.
 - Follow-on apps (Langy, Medical Intelligence, Family Organiser, Coach) copy this contract in their own repos — $10 only where a spend quota already exists.
 
+## Decisions
+
+| Date | Decision | Why |
+|---|---|---|
+| 2026-09-07 | Chat unique-index migration is **015**, not a second **014** | `014_user_is_approved` and `014_one_active_chat_job` both revised `013`. Render `alembic upgrade head` failed; waiting-screen frontend shipped without a matching backend. |
+
 ---
 
 ### Task 1: Model + migration + create-time approval helper
