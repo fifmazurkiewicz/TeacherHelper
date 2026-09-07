@@ -173,6 +173,12 @@ class JobStatusResponse(BaseModel):
     error: str | None = None
 
 
+class ConversationActiveJobResponse(BaseModel):
+    job_id: UUID
+    status: str
+    message_preview: str | None = None
+
+
 class ChatResponse(BaseModel):
     reply: str
     conversation_id: UUID

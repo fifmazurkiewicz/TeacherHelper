@@ -195,6 +195,12 @@ export type JobStatusResponse = {
   error: string | null;
 };
 
+export type ConversationActiveJobResponse = {
+  job_id: string;
+  status: string;
+  message_preview: string | null;
+};
+
 export async function pollJobUntilDone(
   jobId: string,
   signal?: AbortSignal,
@@ -365,6 +371,16 @@ export async function listConversationMessages(
   return api<ApiChatMessage[]>(`/v1/conversations/${encodeURIComponent(conversationId)}/messages`, {
     signal: opts?.signal,
   });
+}
+
+export async function getConversationActiveJob(
+  conversationId: string,
+  opts?: { signal?: AbortSignal },
+): Promise<ConversationActiveJobResponse | null> {
+  return api<ConversationActiveJobResponse | null>(
+    `/v1/conversations/${encodeURIComponent(conversationId)}/active-job`,
+    { signal: opts?.signal },
+  );
 }
 
 export async function ensureConversationFolder(conversationId: string): Promise<ApiConversation> {

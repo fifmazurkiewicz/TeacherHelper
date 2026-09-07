@@ -198,3 +198,24 @@ async def get_job_for_user(session: AsyncSession, job_id: UUID, user_id: UUID) -
 
 async def get_job(session: AsyncSession, job_id: UUID) -> GenerationJobORM | None:
     return await session.get(GenerationJobORM, job_id)
+
+
+async def find_active_chat_job_for_conversation(
+    session: AsyncSession,
+    *,
+    user_id: UUID,
+    conversation_id: UUID,
+) -> GenerationJobORM | None:
+    """Ostatnie zadanie czatu w stanie pending/running dla rozmowy (do wznowienia po odświeżeniu FE)."""
+    stmt = (
+        select(GenerationJobORM)
+        .where(
+            GenerationJobORM.user_id == user_id,
+            GenerationJobORM.conversation_id == conversation_id,
+            GenerationJobORM.kind == "chat",
+            GenerationJobORM.status.in_((JobStatus.pending.value, JobStatus.running.value)),
+        )
+        .order_by(GenerationJobORM.created_at.desc())
+        .limit(1)
+    )
+    return await session.scalar(stmt)

@@ -8,12 +8,14 @@ from sqlalchemy import select
 
 from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.schemas import (
+    ConversationActiveJobResponse,
     ConversationCreate,
     ConversationPatch,
     ConversationResponse,
     MessageResponse,
 )
 from teacher_helper.infrastructure.db.models import ConversationORM, MessageORM, ProjectORM
+from teacher_helper.infrastructure.jobs import find_active_chat_job_for_conversation
 
 router = APIRouter(prefix="/v1/conversations", tags=["conversations"])
 
@@ -52,6 +54,31 @@ async def create_conversation(
     await session.commit()
     await session.refresh(c)
     return _conv_out(c)
+
+
+@router.get("/{conversation_id}/active-job", response_model=ConversationActiveJobResponse | None)
+async def get_conversation_active_job(
+    session: DbSession, user: CurrentUser, conversation_id: UUID,
+) -> ConversationActiveJobResponse | None:
+    """Zwraca trwające zadanie czatu (pending/running) — frontend wznawia polling po odświeżeniu strony."""
+    c = await session.get(ConversationORM, conversation_id)
+    if not c or c.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Rozmowa nie znaleziona")
+    job = await find_active_chat_job_for_conversation(
+        session, user_id=user.id, conversation_id=conversation_id,
+    )
+    if job is None:
+        return None
+    preview: str | None = None
+    if isinstance(job.payload, dict):
+        raw = job.payload.get("message")
+        if isinstance(raw, str) and raw.strip():
+            preview = raw.strip()
+    return ConversationActiveJobResponse(
+        job_id=job.id,
+        status=job.status,
+        message_preview=preview,
+    )
 
 
 @router.get("/{conversation_id}/messages", response_model=list[MessageResponse])

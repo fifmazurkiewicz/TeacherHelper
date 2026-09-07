@@ -9,6 +9,7 @@ import {
   deleteProjectConfirmed,
   downloadFileBlob,
   ensureConversationFolder,
+  getConversationActiveJob,
   listConversationMessages,
   listConversations,
   patchConversation,
@@ -166,11 +167,66 @@ const CHAT_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
 const CHAT_FILE_INPUT_ACCEPT =
   ".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain";
 
+type PersistedActiveJob = {
+  jobId: string;
+  label: string;
+  userPreview: string;
+  conversationId: string;
+};
+
 type PersistedAssistantUi = {
   draft: string;
   conversationId: string | null;
   attached: ChatAttachment[];
+  activeJob?: PersistedActiveJob | null;
 };
+
+function readPersistedAssistantUi(): PersistedAssistantUi | null {
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(ASSISTANT_UI_STORAGE_KEY);
+    if (!raw) return null;
+    const p = JSON.parse(raw) as Partial<PersistedAssistantUi> & { attached?: unknown };
+    return {
+      draft: typeof p.draft === "string" ? p.draft : "",
+      conversationId: typeof p.conversationId === "string" ? p.conversationId : null,
+      attached: normalizePersistedAttachments(p.attached),
+      activeJob:
+        p.activeJob &&
+        typeof p.activeJob === "object" &&
+        typeof p.activeJob.jobId === "string" &&
+        typeof p.activeJob.conversationId === "string"
+          ? (p.activeJob as PersistedActiveJob)
+          : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function patchPersistedAssistantUi(patch: Partial<PersistedAssistantUi>): void {
+  if (typeof sessionStorage === "undefined") return;
+  try {
+    const prev = readPersistedAssistantUi();
+    const next: PersistedAssistantUi = {
+      draft: patch.draft ?? prev?.draft ?? "",
+      conversationId: patch.conversationId !== undefined ? patch.conversationId : (prev?.conversationId ?? null),
+      attached: patch.attached ?? prev?.attached ?? [],
+      activeJob: patch.activeJob !== undefined ? patch.activeJob : (prev?.activeJob ?? null),
+    };
+    sessionStorage.setItem(ASSISTANT_UI_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function setPersistedActiveJob(job: PersistedActiveJob): void {
+  patchPersistedAssistantUi({ activeJob: job });
+}
+
+function clearPersistedActiveJob(): void {
+  patchPersistedAssistantUi({ activeJob: null });
+}
 
 function validateChatUploadFile(file: File): string | null {
   const n = file.name.toLowerCase();
@@ -388,6 +444,7 @@ export default function AssistantPage() {
     startW: number;
   } | null>(null);
   const sidebarWidthCommitRef = useRef(sidebarWidth);
+  const resumeAttemptedRef = useRef<string | null>(null);
 
   const loadConversations = useCallback(async () => {
     const list = await listConversations();
@@ -450,12 +507,15 @@ export default function AssistantPage() {
         const p = JSON.parse(raw) as Partial<PersistedAssistantUi> & { attached?: unknown };
         if (typeof p.draft === "string") setMessage(p.draft);
         if (p.attached !== undefined) setChatAttachments(normalizePersistedAttachments(p.attached));
-        if (p.conversationId && typeof p.conversationId === "string") {
+        const convId =
+          (typeof p.conversationId === "string" && p.conversationId) ||
+          (p.activeJob && typeof p.activeJob.conversationId === "string" ? p.activeJob.conversationId : null);
+        if (convId) {
           setError(null);
           setLoadingThread(true);
-          setConversationId(p.conversationId);
+          setConversationId(convId);
           try {
-            const rows = await listConversationMessages(p.conversationId);
+            const rows = await listConversationMessages(convId);
             if (!cancelled) setMessages(mapStoredMessages(rows));
           } catch {
             if (!cancelled) {
@@ -479,16 +539,11 @@ export default function AssistantPage() {
 
   useEffect(() => {
     if (!allowPersistUi.current) return;
-    try {
-      const payload: PersistedAssistantUi = {
-        draft: message,
-        conversationId,
-        attached: chatAttachments,
-      };
-      sessionStorage.setItem(ASSISTANT_UI_STORAGE_KEY, JSON.stringify(payload));
-    } catch {
-      /* quota / private mode */
-    }
+    patchPersistedAssistantUi({
+      draft: message,
+      conversationId,
+      attached: chatAttachments,
+    });
   }, [message, conversationId, chatAttachments]);
 
   async function openConversation(id: string) {
@@ -578,6 +633,101 @@ export default function AssistantPage() {
     }
   }
 
+  async function applyChatJobResult(res: AssistantChatResponse, signal: AbortSignal) {
+    patchPersistedAssistantUi({ conversationId: res.conversation_id, activeJob: null });
+    if (!mountedRef.current) return;
+    setConversationId(res.conversation_id);
+    try {
+      const rows = await listConversationMessages(res.conversation_id, { signal });
+      if (!mountedRef.current) return;
+      let mapped = mapStoredMessages(rows);
+      mapped = mergeLastAssistantAttachments(mapped, normalizeResponseAttachments(res.created_files));
+      setMessages(mapped);
+    } catch {
+      const attachments =
+        res.created_files && res.created_files.length > 0 ? res.created_files : undefined;
+      setMessages((m) => [...m, { role: "assistant", text: res.reply, attachments }]);
+    }
+    if (res.pending_project_creation) setPendingProjectCreate(res.pending_project_creation);
+    if (res.pending_project_deletion) setPendingProjectDelete(res.pending_project_deletion);
+    setChatAttachments([]);
+    await loadConversations();
+  }
+
+  async function resumeChatJob(job: PersistedActiveJob) {
+    setError(null);
+    setPendingProjectCreate(null);
+    setPendingProjectDelete(null);
+    setBusyLabel(job.label);
+    setLoading(true);
+    beginAssistantRequest({
+      label: job.label,
+      userPreview: job.userPreview,
+      conversationId: job.conversationId,
+    });
+    const signal = getAssistantAbortSignal();
+    try {
+      const resultPayload = await pollJobUntilDone(job.jobId, signal);
+      const res = resultPayload as unknown as AssistantChatResponse;
+      await applyChatJobResult(res, signal);
+    } catch (e) {
+      const aborted =
+        (e instanceof DOMException && e.name === "AbortError") ||
+        (e instanceof Error && e.name === "AbortError");
+      if (!aborted && mountedRef.current) {
+        setError(e instanceof Error ? e.message : "Błąd czatu");
+      }
+    } finally {
+      clearPersistedActiveJob();
+      endAssistantRequest();
+      if (mountedRef.current) {
+        setLoading(false);
+        setBusyLabel(null);
+      }
+    }
+  }
+
+  useEffect(() => {
+    if (!allowPersistUi.current || loadingThread || !conversationId) return;
+    if (loading || chatPending) return;
+
+    let cancelled = false;
+    (async () => {
+      let job: PersistedActiveJob | null = null;
+      const persisted = readPersistedAssistantUi();
+      if (persisted?.activeJob?.conversationId === conversationId) {
+        job = persisted.activeJob;
+      } else {
+        const last = messagesRef.current.at(-1);
+        if (last?.role !== "user") return;
+        try {
+          const remote = await getConversationActiveJob(conversationId);
+          if (cancelled || !remote) return;
+          const preview = remote.message_preview?.trim() || "Asystent przetwarza prośbę…";
+          job = {
+            jobId: remote.job_id,
+            conversationId,
+            userPreview: preview,
+            label: assistantBusyLabel(preview),
+          };
+          setPersistedActiveJob(job);
+        } catch {
+          return;
+        }
+      }
+      if (!job || cancelled) return;
+      if (resumeAttemptedRef.current === job.jobId) return;
+      resumeAttemptedRef.current = job.jobId;
+      await resumeChatJob(job);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // resumeChatJob — stabilna logika w ramach montażu; nie dodajemy do deps (unikamy pętli)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId, loadingThread, loading, chatPending]);
+
   async function postChatTurn(args: {
     outgoing: string;
     userBubbleText: string;
@@ -637,45 +787,17 @@ export default function AssistantPage() {
           throw postErr;
         }
       }
+      setPersistedActiveJob({
+        jobId: accepted.job_id,
+        label: busy,
+        userPreview: args.userBubbleText,
+        conversationId: accepted.conversation_id,
+      });
       const resultPayload = await pollJobUntilDone(accepted.job_id, signal);
       const res = resultPayload as unknown as AssistantChatResponse;
-      try {
-        const raw = sessionStorage.getItem(ASSISTANT_UI_STORAGE_KEY);
-        if (raw) {
-          const p = JSON.parse(raw) as PersistedAssistantUi;
-          p.conversationId = res.conversation_id;
-          sessionStorage.setItem(ASSISTANT_UI_STORAGE_KEY, JSON.stringify(p));
-        } else {
-          sessionStorage.setItem(
-            ASSISTANT_UI_STORAGE_KEY,
-            JSON.stringify({
-              draft: "",
-              conversationId: res.conversation_id,
-              attached: [],
-            } satisfies PersistedAssistantUi),
-          );
-        }
-      } catch {
-        /* quota / private mode */
-      }
-      if (!mountedRef.current) return;
-      setConversationId(res.conversation_id);
-      try {
-        const rows = await listConversationMessages(res.conversation_id, { signal });
-        if (!mountedRef.current) return;
-        let mapped = mapStoredMessages(rows);
-        mapped = mergeLastAssistantAttachments(mapped, normalizeResponseAttachments(res.created_files));
-        setMessages(mapped);
-      } catch {
-        const attachments =
-          res.created_files && res.created_files.length > 0 ? res.created_files : undefined;
-        setMessages((m) => [...m, { role: "assistant", text: res.reply, attachments }]);
-      }
-      if (res.pending_project_creation) setPendingProjectCreate(res.pending_project_creation);
-      if (res.pending_project_deletion) setPendingProjectDelete(res.pending_project_deletion);
-      setChatAttachments([]);
-      await loadConversations();
+      await applyChatJobResult(res, signal);
     } catch (e) {
+      clearPersistedActiveJob();
       const aborted =
         (e instanceof DOMException && e.name === "AbortError") ||
         (e instanceof Error && e.name === "AbortError");
