@@ -199,17 +199,33 @@ export default function AdminUsersPage() {
       {success && <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-200">{success}</p>}
 
       <div className="overflow-x-auto rounded-xl border border-ink-800/15 bg-white dark:border-paper-100/10 dark:bg-ink-900">
-        <table className="w-full min-w-[1100px] border-collapse text-left text-sm">
+        <table className="w-full min-w-0 table-fixed border-collapse text-left text-sm">
+          <colgroup>
+            <col className="w-[20%]" />
+            <col className="w-[8%]" />
+            <col className="w-[7%]" />
+            <col className="w-[10%]" />
+            <col className="w-[8%]" />
+            <col className="w-[16%]" />
+            <col className="w-[12%]" />
+            <col className="w-[19%]" />
+          </colgroup>
           <thead>
             <tr className="border-b border-ink-800/15 dark:border-paper-100/15">
-              <th className="px-4 py-3 font-medium">E-mail</th>
-              <th className="px-4 py-3 font-medium">Nazwa</th>
-              <th className="px-4 py-3 font-medium">Rola</th>
-              <th className="px-4 py-3 font-medium">Status</th>
-              <th className="px-4 py-3 font-medium">Rate limit (req/min)</th>
-              <th className="px-4 py-3 font-medium">Zużycie LLM (miesiąc UTC)</th>
-              <th className="px-4 py-3 font-medium">Limit kosztu LLM / miesiąc (USD)</th>
-              <th className="px-4 py-3 font-medium">Akcje</th>
+              <th className="px-3 py-3 align-middle font-medium">E-mail</th>
+              <th className="px-3 py-3 align-middle font-medium">Nazwa</th>
+              <th className="px-3 py-3 align-middle font-medium">Rola</th>
+              <th className="px-3 py-3 align-middle font-medium">Status</th>
+              <th className="px-3 py-3 align-middle font-medium" title="Rate limit (żądania na minutę)">
+                Rate limit
+              </th>
+              <th className="px-3 py-3 align-middle font-medium" title="Zużycie LLM w bieżącym miesiącu UTC">
+                Zużycie LLM
+              </th>
+              <th className="px-3 py-3 align-middle font-medium" title="Miesięczny limit kosztu LLM w USD">
+                Limit LLM
+              </th>
+              <th className="px-3 py-3 pr-4 align-middle font-medium">Akcje</th>
             </tr>
           </thead>
           <tbody>
@@ -222,20 +238,24 @@ export default function AdminUsersPage() {
                   u.is_approved ? "" : "bg-amber-50/70 dark:bg-amber-950/20"
                 }`}
               >
-                <td className="px-4 py-3 font-mono text-xs">{u.email}</td>
-                <td className="px-4 py-3">{u.display_name ?? "—"}</td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3.5 align-middle">
+                  <span className="break-all font-mono text-xs leading-snug">{u.email}</span>
+                </td>
+                <td className="px-3 py-3.5 align-middle text-ink-700 dark:text-paper-300">
+                  {u.display_name ?? <span className="text-ink-400">—</span>}
+                </td>
+                <td className="px-3 py-3.5 align-middle">
                   <select
                     value={u.role}
                     disabled={busy}
                     onChange={(e) => void changeRole(u, e.target.value)}
-                    className="rounded border border-ink-800/20 bg-paper-50 px-2 py-1 text-xs dark:border-paper-100/20 dark:bg-ink-950"
+                    className="w-full max-w-[6.5rem] rounded border border-ink-800/20 bg-paper-50 px-2 py-1.5 text-xs dark:border-paper-100/20 dark:bg-ink-950"
                   >
                     <option value="teacher">teacher</option>
                     <option value="admin">admin</option>
                   </select>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3.5 align-middle">
                   <span
                     className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
                       u.is_approved
@@ -246,32 +266,32 @@ export default function AdminUsersPage() {
                     {u.is_approved ? "Zaakceptowany" : "Oczekuje"}
                   </span>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3.5 align-middle text-ink-700 dark:text-paper-300">
                   {editingId === u.id ? (
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-1.5">
                       <input
                         type="number"
                         min={1}
                         value={editRpm}
                         onChange={(e) => setEditRpm(e.target.value)}
                         placeholder="domyślny"
-                        className="w-24 rounded border border-ink-800/20 px-2 py-1 text-xs dark:border-paper-100/20 dark:bg-ink-950"
+                        className="w-full max-w-[6rem] rounded border border-ink-800/20 px-2 py-1 text-xs dark:border-paper-100/20 dark:bg-ink-950"
                       />
-                      <button type="button" onClick={() => void saveRateLimit(u.id)} disabled={busy} className="text-xs text-accent hover:underline">
-                        Zapisz
-                      </button>
-                      <button type="button" onClick={() => setEditingId(null)} className="text-xs text-ink-500 hover:underline">
-                        Anuluj
-                      </button>
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                        <button type="button" onClick={() => void saveRateLimit(u.id)} disabled={busy} className="text-xs text-accent hover:underline">
+                          Zapisz
+                        </button>
+                        <button type="button" onClick={() => setEditingId(null)} className="text-xs text-ink-500 hover:underline">
+                          Anuluj
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <span>
-                      {u.rate_limit_rpm ?? <span className="text-ink-400">domyślny</span>}
-                    </span>
+                    <span>{u.rate_limit_rpm ?? <span className="text-ink-400">domyślny</span>}</span>
                   )}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="space-y-0.5">
+                <td className="px-3 py-3.5 align-middle">
+                  <div className="space-y-1 leading-snug">
                     <div className={u.llm_monthly_limit_reached ? "font-medium text-red-600 dark:text-red-400" : ""}>
                       {formatUsd(u.llm_cost_month_usd)}
                       {u.effective_llm_monthly_cost_limit_usd !== null && (
@@ -289,9 +309,9 @@ export default function AdminUsersPage() {
                     )}
                   </div>
                 </td>
-                <td className="px-4 py-3">
+                <td className="px-3 py-3.5 align-middle">
                   {editingCostId === u.id ? (
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <div className="flex flex-col gap-1.5">
                       <input
                         type="text"
                         inputMode="decimal"
@@ -299,34 +319,36 @@ export default function AdminUsersPage() {
                         onChange={(e) => setEditCostLimit(e.target.value)}
                         placeholder="0 lub puste"
                         title="0 = brak limitu na konto; puste + Zapisz = domyślny z serwera"
-                        className="w-36 rounded border border-ink-800/20 px-2 py-1 text-xs dark:border-paper-100/20 dark:bg-ink-950"
+                        className="w-full max-w-[7rem] rounded border border-ink-800/20 px-2 py-1 text-xs dark:border-paper-100/20 dark:bg-ink-950"
                       />
-                      <button type="button" onClick={() => void saveCostLimit(u.id)} disabled={busy} className="text-xs text-accent hover:underline">
-                        Zapisz
-                      </button>
-                      <button type="button" onClick={() => setEditingCostId(null)} className="text-xs text-ink-500 hover:underline">
-                        Anuluj
-                      </button>
+                      <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+                        <button type="button" onClick={() => void saveCostLimit(u.id)} disabled={busy} className="text-xs text-accent hover:underline">
+                          Zapisz
+                        </button>
+                        <button type="button" onClick={() => setEditingCostId(null)} className="text-xs text-ink-500 hover:underline">
+                          Anuluj
+                        </button>
+                      </div>
                     </div>
                   ) : u.effective_llm_monthly_cost_limit_usd === null && !u.uses_site_default_llm_monthly_limit ? (
-                    <span className="text-ink-600 dark:text-paper-300">Brak limitu (konto)</span>
+                    <span className="text-ink-600 dark:text-paper-300">Brak limitu</span>
                   ) : (
-                    <span>
+                    <span className="leading-snug">
                       <strong>{formatUsd(u.effective_llm_monthly_cost_limit_usd)}</strong>
                       {u.uses_site_default_llm_monthly_limit && (
-                        <span className="ml-1 text-ink-400">(domyślny)</span>
+                        <span className="mt-0.5 block text-xs text-ink-400">domyślny</span>
                       )}
                     </span>
                   )}
                 </td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-2">
+                <td className="px-3 py-3.5 pr-4 align-middle">
+                  <div className="flex flex-col items-start gap-1">
                     {!u.is_approved && (
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => void setApproval(u, true)}
-                        className="text-xs text-accent hover:underline"
+                        className="text-left text-xs text-accent hover:underline"
                       >
                         Akceptuj
                       </button>
@@ -336,7 +358,7 @@ export default function AdminUsersPage() {
                         type="button"
                         disabled={busy}
                         onClick={() => void setApproval(u, false)}
-                        className="text-xs text-red-600 hover:underline dark:text-red-400"
+                        className="text-left text-xs text-red-600 hover:underline dark:text-red-400"
                       >
                         Cofnij dostęp
                       </button>
@@ -345,7 +367,7 @@ export default function AdminUsersPage() {
                       <button
                         type="button"
                         onClick={() => { setEditingCostId(null); setEditingId(u.id); setEditRpm(u.rate_limit_rpm?.toString() ?? ""); }}
-                        className="text-xs text-accent hover:underline"
+                        className="text-left text-xs text-accent hover:underline"
                       >
                         Zmień limit
                       </button>
@@ -362,7 +384,7 @@ export default function AdminUsersPage() {
                               : String(u.llm_monthly_cost_limit_usd),
                           );
                         }}
-                        className="text-xs text-accent hover:underline"
+                        className="text-left text-xs text-accent hover:underline"
                       >
                         Limit kosztu
                       </button>
@@ -373,13 +395,13 @@ export default function AdminUsersPage() {
                         setResetPwId(resetPwId === u.id ? null : u.id);
                         setNewPassword("");
                       }}
-                      className="text-xs text-ink-600 hover:underline dark:text-paper-400"
+                      className="text-left text-xs text-ink-600 hover:underline dark:text-paper-400"
                     >
                       Reset hasła
                     </button>
                   </div>
                   {resetPwId === u.id && (
-                    <div className="mt-2 flex max-w-lg flex-col gap-2 sm:flex-row sm:items-end">
+                    <div className="mt-2 flex flex-col gap-2">
                       <PasswordField
                         key={u.id}
                         ariaLabel={`Nowe hasło dla ${u.email}`}
@@ -389,13 +411,13 @@ export default function AdminUsersPage() {
                         autoComplete="new-password"
                         placeholder="Nowe hasło (min. 8 zn.)"
                         compact
-                        fieldWrapperClassName="w-full min-w-[12rem] max-w-md"
+                        fieldWrapperClassName="w-full"
                       />
                       <button
                         type="button"
                         onClick={() => void resetPassword(u.id)}
                         disabled={busy}
-                        className="shrink-0 text-xs text-red-600 hover:underline sm:mb-1 dark:text-red-400"
+                        className="self-start text-xs text-red-600 hover:underline dark:text-red-400"
                       >
                         Resetuj
                       </button>
