@@ -17,6 +17,11 @@ from teacher_helper.security.supabase_jwt import extract_user_id_from_payload, v
 
 security = HTTPBearer(auto_error=False)
 
+ACCOUNT_PENDING_APPROVAL = {
+    "code": "account_pending_approval",
+    "message": "Konto oczekuje na akceptację administratora.",
+}
+
 
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     async with async_session_factory() as session:
@@ -31,6 +36,19 @@ def _resolve_role_for_email(email: str) -> UserRole:
     if not allowed:
         return UserRole.teacher
     return UserRole.admin if email.strip().lower() in allowed else UserRole.teacher
+
+
+def initial_is_approved_for_email(email: str) -> bool:
+    allowed = parse_admin_emails(get_settings().admin_emails)
+    if not allowed:
+        return False
+    return email.strip().lower() in allowed
+
+
+def require_approved_user(user: UserORM) -> UserORM:
+    if not user.is_approved:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail=ACCOUNT_PENDING_APPROVAL)
+    return user
 
 
 def _apply_admin_email_policy(user: UserORM, email: str) -> None:
@@ -57,6 +75,7 @@ async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str 
         email=email.lower(),
         hashed_password=None,
         role=_resolve_role_for_email(email),
+        is_approved=initial_is_approved_for_email(email),
     )
     session.add(user)
     try:
@@ -109,7 +128,14 @@ async def get_current_user(
 CurrentUser = Annotated[UserORM, Depends(get_current_user)]
 
 
-async def require_admin(user: CurrentUser) -> UserORM:
+async def require_approved(user: CurrentUser) -> UserORM:
+    return require_approved_user(user)
+
+
+ApprovedUser = Annotated[UserORM, Depends(require_approved)]
+
+
+async def require_admin(user: ApprovedUser) -> UserORM:
     if user.role != UserRole.admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Wymagana rola administratora")
     return user

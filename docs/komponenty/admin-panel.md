@@ -9,8 +9,8 @@
 
 ## Zaimplementowane
 
-- `GET /v1/admin/users` — lista użytkowników (rola, rate limit, **zużycie LLM miesiąc UTC**: koszt USD, tokeny, flaga wyczerpania limitu**, limit kosztu LLM).
-- `PATCH /v1/admin/users/{id}` — zmiana roli, rate limit, limit kosztu LLM.
+- `GET /v1/admin/users` — lista użytkowników (status `is_approved`, rola, rate limit, **zużycie LLM miesiąc UTC**: koszt USD, tokeny, flaga wyczerpania limitu**, limit kosztu LLM).
+- `PATCH /v1/admin/users/{id}` — zmiana roli, rate limit, limit kosztu LLM, **Accept/Revoke** (`is_approved`). Admin nie może cofnąć dostępu własnego konta.
 - `DELETE /v1/admin/users/{id}/rate-limit` — reset indywidualnego limitu RPM.
 - `DELETE /v1/admin/users/{id}/llm-monthly-cost-limit` — przywrócenie domyślnego limitu kosztu (`DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD`).
 - `POST /v1/admin/users/{id}/reset-password` — resetowanie hasła.
@@ -24,6 +24,7 @@ Pola w odpowiedzi `GET /v1/admin/users`:
 
 | Pole | Znaczenie |
 |------|-----------|
+| `is_approved` | Accept/Revoke: `false` = waiting screen; `true` = pełny dostęp |
 | `llm_cost_month_usd` | Koszt USD od 1. dnia miesiąca UTC (`llm_usage_log`, bez dry-run) |
 | `llm_tokens_month` | Suma tokenów w tym samym okresie |
 | `llm_monthly_limit_reached` | `true` gdy `llm_cost_month_usd >= effective_llm_monthly_cost_limit_usd` |

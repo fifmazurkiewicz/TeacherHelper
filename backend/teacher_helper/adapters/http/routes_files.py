@@ -7,7 +7,7 @@ from fastapi import APIRouter, File, Form, Header, HTTPException, UploadFile, st
 from fastapi.responses import Response
 from sqlalchemy import func, select
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import FileReindexDryRunResponse, FileResponse, MoveFilesRequest
 from teacher_helper.config import get_settings
@@ -55,7 +55,7 @@ def _parse_category(raw: str | None) -> FileCategory:
 @router.post("", response_model=FileResponse)
 async def upload_file(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     file: UploadFile = File(...),
     project_id: str | None = Form(None),
     topic_id: str | None = Form(None),
@@ -110,7 +110,7 @@ async def upload_file(
 @router.get("", response_model=list[FileResponse])
 async def list_files(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     project_id: UUID | None = None,
     topic_id: UUID | None = None,
 ) -> list[FileAssetORM]:
@@ -124,7 +124,7 @@ async def list_files(
 
 
 @router.post("/move", response_model=list[FileResponse])
-async def move_files(session: DbSession, user: CurrentUser, body: MoveFilesRequest) -> list[FileAssetORM]:
+async def move_files(session: DbSession, user: ApprovedUser, body: MoveFilesRequest) -> list[FileAssetORM]:
     await check_rate_limit(session, user)
     target_pid = body.project_id
     if target_pid is not None:
@@ -153,7 +153,7 @@ async def move_files(session: DbSession, user: CurrentUser, body: MoveFilesReque
 
 
 @router.get("/{file_id}/delete-impact")
-async def file_delete_impact(session: DbSession, user: CurrentUser, file_id: UUID) -> dict:
+async def file_delete_impact(session: DbSession, user: ApprovedUser, file_id: UUID) -> dict:
     row = await session.get(FileAssetORM, file_id)
     if not row or row.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plik nie znaleziony")
@@ -171,7 +171,7 @@ async def file_delete_impact(session: DbSession, user: CurrentUser, file_id: UUI
 
 
 @router.post("/{file_id}/prepare-delete")
-async def file_prepare_delete(session: DbSession, user: CurrentUser, file_id: UUID) -> dict:
+async def file_prepare_delete(session: DbSession, user: ApprovedUser, file_id: UUID) -> dict:
     row = await session.get(FileAssetORM, file_id)
     if not row or row.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plik nie znaleziony")
@@ -191,7 +191,7 @@ async def file_prepare_delete(session: DbSession, user: CurrentUser, file_id: UU
 
 
 @router.post("/{file_id}/prepare-reindex")
-async def file_prepare_reindex(session: DbSession, user: CurrentUser, file_id: UUID) -> dict:
+async def file_prepare_reindex(session: DbSession, user: ApprovedUser, file_id: UUID) -> dict:
     row = await session.get(FileAssetORM, file_id)
     if not row or row.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plik nie znaleziony")
@@ -211,7 +211,7 @@ async def file_prepare_reindex(session: DbSession, user: CurrentUser, file_id: U
 
 
 @router.get("/{file_id}/download")
-async def download_file(session: DbSession, user: CurrentUser, file_id: UUID) -> Response:
+async def download_file(session: DbSession, user: ApprovedUser, file_id: UUID) -> Response:
     row = await session.get(FileAssetORM, file_id)
     if not row or row.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plik nie znaleziony")
@@ -226,7 +226,7 @@ async def download_file(session: DbSession, user: CurrentUser, file_id: UUID) ->
 @router.post("/{file_id}/reindex", response_model=FileResponse | FileReindexDryRunResponse)
 async def reindex_file(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     file_id: UUID,
     dry_run: bool = False,
     x_resource_confirmation: str | None = Header(None, alias="X-Resource-Confirmation"),
@@ -269,7 +269,7 @@ async def reindex_file(
 @router.delete("/{file_id}", response_model=None)
 async def delete_file(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     file_id: UUID,
     dry_run: bool = False,
     x_resource_confirmation: str | None = Header(None, alias="X-Resource-Confirmation"),
@@ -313,7 +313,7 @@ async def delete_file(
 @router.post("/{file_id}/export")
 async def export_file(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     file_id: UUID,
     target_format: str = "pdf",
 ) -> Response:

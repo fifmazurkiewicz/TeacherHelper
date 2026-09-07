@@ -1,14 +1,12 @@
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
-
-type Me = { id: string; email: string; display_name: string | null; role: string };
+import { api, type AuthMe } from "@/lib/api";
 
 export default function ProfilePage() {
-  const [me, setMe] = useState<Me | null>(null);
+  const [me, setMe] = useState<AuthMe | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<Me>("/v1/auth/me")
+    api<AuthMe>("/v1/auth/me")
       .then(setMe)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Błąd"));
   }, []);
@@ -31,6 +29,10 @@ export default function ProfilePage() {
           <div>
             <dt className="text-xs uppercase text-ink-500">Rola</dt>
             <dd>{me.role}</dd>
+          </div>
+          <div>
+            <dt className="text-xs uppercase text-ink-500">Status</dt>
+            <dd>{me.is_approved ? "Zaakceptowany" : "Oczekuje na akceptację"}</dd>
           </div>
           <div>
             <dt className="text-xs uppercase text-ink-500">ID</dt>

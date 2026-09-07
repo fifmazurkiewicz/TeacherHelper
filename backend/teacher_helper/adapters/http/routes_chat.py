@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import ChatAcceptedResponse, ChatRequest
 from teacher_helper.config import get_settings
@@ -35,7 +35,7 @@ router = APIRouter(prefix="/v1/chat", tags=["chat"])
 
 
 @router.post("", response_model=ChatAcceptedResponse, status_code=status.HTTP_202_ACCEPTED)
-async def chat(session: DbSession, user: CurrentUser, body: ChatRequest) -> JSONResponse:
+async def chat(session: DbSession, user: ApprovedUser, body: ChatRequest) -> JSONResponse:
     await check_rate_limit(session, user)
     s = get_settings()
     cost_month = await sum_llm_cost_usd_month(session, include_dry_run=False)

@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { getToken } from "@/lib/api";
+import { ACCOUNT_PENDING_EVENT, api, getToken, type AuthMe } from "@/lib/api";
 import { AssistantActivityProvider } from "@/context/AssistantActivityContext";
 import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useChatShell } from "@/hooks/useChatShell";
+import PendingApprovalPage from "@/pages/PendingApprovalPage";
 import { AssistantBackgroundChatBanner } from "./AssistantBackgroundChatBanner";
 import { Nav } from "./Nav";
 
@@ -14,6 +15,20 @@ export function ProtectedLayout() {
   const chatLayout = pathname === "/assistant";
   useChatShell(chatLayout);
   const [authState, setAuthState] = useState<AuthState>("loading");
+  const [approval, setApproval] = useState<"unknown" | "pending" | "approved">("unknown");
+  const [checking, setChecking] = useState(false);
+
+  const refreshMe = useCallback(async (manual = false) => {
+    if (manual) setChecking(true);
+    try {
+      const me = await api<AuthMe>("/v1/auth/me");
+      setApproval(me.is_approved ? "approved" : "pending");
+    } catch {
+      setApproval((prev) => (prev === "approved" ? "approved" : "pending"));
+    } finally {
+      if (manual) setChecking(false);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,7 +61,24 @@ export function ProtectedLayout() {
     };
   }, []);
 
-  if (authState === "loading") {
+  useEffect(() => {
+    if (authState !== "authenticated") {
+      setApproval("unknown");
+      return;
+    }
+    void refreshMe(false);
+    const poll = window.setInterval(() => {
+      void refreshMe(false);
+    }, 15_000);
+    const onPending = () => setApproval("pending");
+    window.addEventListener(ACCOUNT_PENDING_EVENT, onPending);
+    return () => {
+      window.clearInterval(poll);
+      window.removeEventListener(ACCOUNT_PENDING_EVENT, onPending);
+    };
+  }, [authState, refreshMe]);
+
+  if (authState === "loading" || (authState === "authenticated" && approval === "unknown")) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-paper-50 text-sm text-ink-600 dark:bg-ink-950 dark:text-paper-400">
         Ładowanie sesji…
@@ -56,6 +88,10 @@ export function ProtectedLayout() {
 
   if (authState === "unauthenticated") {
     return <Navigate to="/login" replace />;
+  }
+
+  if (approval === "pending") {
+    return <PendingApprovalPage checking={checking} onCheckStatus={() => void refreshMe(true)} />;
   }
 
   return (

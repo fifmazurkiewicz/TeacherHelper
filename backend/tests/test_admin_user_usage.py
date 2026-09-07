@@ -14,6 +14,7 @@ def _user(limit: Decimal | None) -> UserORM:
         email="t@example.com",
         hashed_password="x",
         role=UserRole.teacher,
+        is_approved=True,
         created_at=datetime.now(timezone.utc),
     )
     u.llm_monthly_cost_limit_usd = limit

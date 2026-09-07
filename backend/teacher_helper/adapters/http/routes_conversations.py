@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, Body, HTTPException, Response, status
 from sqlalchemy import select
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.schemas import (
     ConversationCreate,
     ConversationPatch,
@@ -29,7 +29,7 @@ def _conv_out(c: ConversationORM) -> ConversationResponse:
 
 
 @router.get("", response_model=list[ConversationResponse])
-async def list_conversations(session: DbSession, user: CurrentUser) -> list[ConversationResponse]:
+async def list_conversations(session: DbSession, user: ApprovedUser) -> list[ConversationResponse]:
     stmt = (
         select(ConversationORM)
         .where(ConversationORM.user_id == user.id)
@@ -42,7 +42,7 @@ async def list_conversations(session: DbSession, user: CurrentUser) -> list[Conv
 @router.post("", response_model=ConversationResponse)
 async def create_conversation(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     body: ConversationCreate | None = Body(None),
 ) -> ConversationResponse:
     payload = body if body is not None else ConversationCreate()
@@ -56,7 +56,7 @@ async def create_conversation(
 
 @router.get("/{conversation_id}/messages", response_model=list[MessageResponse])
 async def list_messages(
-    session: DbSession, user: CurrentUser, conversation_id: UUID,
+    session: DbSession, user: ApprovedUser, conversation_id: UUID,
 ) -> list[MessageORM]:
     c = await session.get(ConversationORM, conversation_id)
     if not c or c.user_id != user.id:
@@ -71,7 +71,7 @@ async def list_messages(
 
 @router.post("/{conversation_id}/ensure-folder", response_model=ConversationResponse)
 async def ensure_conversation_folder(
-    session: DbSession, user: CurrentUser, conversation_id: UUID,
+    session: DbSession, user: ApprovedUser, conversation_id: UUID,
 ) -> ConversationResponse:
     """Tworzy (jeśli trzeba) katalog projektu powiązany z rozmową — pliki z Asystenta trafiają do „Moje materiały”."""
     c = await session.get(ConversationORM, conversation_id)
@@ -101,7 +101,7 @@ async def ensure_conversation_folder(
 
 @router.patch("/{conversation_id}", response_model=ConversationResponse)
 async def patch_conversation(
-    session: DbSession, user: CurrentUser, conversation_id: UUID, body: ConversationPatch,
+    session: DbSession, user: ApprovedUser, conversation_id: UUID, body: ConversationPatch,
 ) -> ConversationResponse:
     c = await session.get(ConversationORM, conversation_id)
     if not c or c.user_id != user.id:
@@ -127,7 +127,7 @@ async def patch_conversation(
 
 @router.delete("/{conversation_id}", response_model=None)
 async def delete_conversation(
-    session: DbSession, user: CurrentUser, conversation_id: UUID,
+    session: DbSession, user: ApprovedUser, conversation_id: UUID,
 ) -> Response:
     c = await session.get(ConversationORM, conversation_id)
     if not c or c.user_id != user.id:

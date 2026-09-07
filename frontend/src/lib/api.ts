@@ -57,6 +57,42 @@ export class ApiConflictError extends Error {
   }
 }
 
+export const ACCOUNT_PENDING_EVENT = "th:account-pending-approval";
+
+export class AccountPendingApprovalError extends Error {
+  readonly code = "account_pending_approval";
+  constructor(message = "Konto oczekuje na akceptację administratora.") {
+    super(message);
+    this.name = "AccountPendingApprovalError";
+  }
+}
+
+export type AuthMe = {
+  id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  is_approved: boolean;
+};
+
+function pendingFromResponse(res: Response, bodyText: string): AccountPendingApprovalError | null {
+  if (res.status !== 403) return null;
+  try {
+    const j = JSON.parse(bodyText) as { detail?: unknown };
+    const d = j.detail;
+    if (d && typeof d === "object" && d !== null) {
+      const o = d as { code?: unknown; message?: unknown };
+      if (o.code === "account_pending_approval") {
+        const message = typeof o.message === "string" ? o.message : "Konto oczekuje na akceptację administratora.";
+        return new AccountPendingApprovalError(message);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
 async function errorText(res: Response): Promise<string> {
   const t = await res.text();
   try {
@@ -129,6 +165,11 @@ export async function api<T>(path: string, init?: ApiInit): Promise<T> {
   if (res.status === 204) return undefined as T;
   if (!res.ok) {
     const raw = await res.clone().text();
+    const pending = pendingFromResponse(res, raw);
+    if (pending) {
+      window.dispatchEvent(new Event(ACCOUNT_PENDING_EVENT));
+      throw pending;
+    }
     const conflict = conflictFromResponse(res, raw);
     if (conflict) throw conflict;
     throw new Error(await errorText(res));

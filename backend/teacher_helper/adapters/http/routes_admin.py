@@ -57,6 +57,7 @@ class AdminUserResponse(BaseModel):
     llm_cost_month_usd: float = 0.0
     llm_tokens_month: int = 0
     llm_monthly_limit_reached: bool = False
+    is_approved: bool = False
     created_at: datetime
 
 
@@ -90,6 +91,7 @@ def _admin_user_response(
         llm_cost_month_usd=llm_cost_month_usd,
         llm_tokens_month=llm_tokens_month,
         llm_monthly_limit_reached=limit_reached,
+        is_approved=u.is_approved,
         created_at=u.created_at,
     )
 
@@ -99,10 +101,16 @@ class UpdateUserRequest(BaseModel):
     # 0 = brak limitu per konto (tylko limity globalne); NULL w bazie = domyślny z DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD
     llm_monthly_cost_limit_usd: float | None = Field(None, ge=0, le=100_000.0)
     role: str | None = None
+    is_approved: bool | None = None
 
 
 class ResetPasswordRequest(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
+
+
+def assert_can_set_approval(admin: UserORM, target: UserORM, is_approved: bool) -> None:
+    if admin.id == target.id and not is_approved:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="Nie można cofnąć dostępu własnego konta")
 
 
 async def _admin_user_response_with_usage(session: DbSession, u: UserORM) -> AdminUserResponse:
@@ -160,6 +168,9 @@ async def update_user(
     updates = body.model_dump(exclude_unset=True)
     if "llm_monthly_cost_limit_usd" in updates:
         target.llm_monthly_cost_limit_usd = updates["llm_monthly_cost_limit_usd"]
+    if "is_approved" in updates and updates["is_approved"] is not None:
+        assert_can_set_approval(admin, target, bool(updates["is_approved"]))
+        target.is_approved = bool(updates["is_approved"])
 
     await session.commit()
     await session.refresh(target)

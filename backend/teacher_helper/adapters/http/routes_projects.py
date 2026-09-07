@@ -10,7 +10,7 @@ from fastapi import APIRouter, Header, HTTPException, status
 from fastapi.responses import Response
 from sqlalchemy import func, select
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import ProjectCreate, ProjectResponse
 from teacher_helper.config import get_settings
@@ -64,7 +64,7 @@ def _unique_zip_entry_name(filename: str, seen: dict[str, int]) -> str:
 
 
 @router.post("/prepare-create")
-async def project_prepare_create(session: DbSession, user: CurrentUser, body: ProjectCreate) -> dict:
+async def project_prepare_create(session: DbSession, user: ApprovedUser, body: ProjectCreate) -> dict:
     """Zwraca token — utworzenie projektu wymaga nagłówka ``X-Resource-Confirmation`` (gdy włączone w konfiguracji)."""
     s = get_settings()
     token = create_project_creation_token(
@@ -83,7 +83,7 @@ async def project_prepare_create(session: DbSession, user: CurrentUser, body: Pr
 @router.post("", response_model=ProjectResponse)
 async def create_project(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     body: ProjectCreate | None = None,
     x_resource_confirmation: str | None = Header(default=None, alias="X-Resource-Confirmation"),
 ) -> ProjectORM:
@@ -119,14 +119,14 @@ async def create_project(
 
 
 @router.get("", response_model=list[ProjectResponse])
-async def list_projects(session: DbSession, user: CurrentUser) -> list[ProjectORM]:
+async def list_projects(session: DbSession, user: ApprovedUser) -> list[ProjectORM]:
     stmt = select(ProjectORM).where(ProjectORM.user_id == user.id).order_by(ProjectORM.created_at.desc())
     rows = (await session.scalars(stmt)).all()
     return list(rows)
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
-async def get_project(session: DbSession, user: CurrentUser, project_id: UUID) -> ProjectORM:
+async def get_project(session: DbSession, user: ApprovedUser, project_id: UUID) -> ProjectORM:
     p = await session.get(ProjectORM, project_id)
     if not p or p.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Projekt nie znaleziony")
@@ -136,7 +136,7 @@ async def get_project(session: DbSession, user: CurrentUser, project_id: UUID) -
 @router.get("/{project_id}/download-archive")
 async def download_project_archive(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     project_id: UUID,
 ) -> Response:
     """Pobiera wszystkie pliki katalogu jako jedno archiwum ZIP (płaska struktura w podfolderze nazwanego jak projekt)."""
@@ -189,7 +189,7 @@ async def download_project_archive(
 
 
 @router.get("/{project_id}/delete-impact")
-async def project_delete_impact(session: DbSession, user: CurrentUser, project_id: UUID) -> dict:
+async def project_delete_impact(session: DbSession, user: ApprovedUser, project_id: UUID) -> dict:
     p = await session.get(ProjectORM, project_id)
     if not p or p.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Projekt nie znaleziony")
@@ -206,7 +206,7 @@ async def project_delete_impact(session: DbSession, user: CurrentUser, project_i
 
 
 @router.post("/{project_id}/prepare-delete")
-async def project_prepare_delete(session: DbSession, user: CurrentUser, project_id: UUID) -> dict:
+async def project_prepare_delete(session: DbSession, user: ApprovedUser, project_id: UUID) -> dict:
     p = await session.get(ProjectORM, project_id)
     if not p or p.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Projekt nie znaleziony")
@@ -237,7 +237,7 @@ async def project_prepare_delete(session: DbSession, user: CurrentUser, project_
 @router.delete("/{project_id}", response_model=None)
 async def delete_project(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     project_id: UUID,
     dry_run: bool = False,
     x_resource_confirmation: str | None = Header(None, alias="X-Resource-Confirmation"),

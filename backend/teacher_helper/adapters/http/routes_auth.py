@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import CurrentUser, DbSession, initial_is_approved_for_email
 from teacher_helper.adapters.http.schemas import UserResponse
 from teacher_helper.config import get_settings
 
@@ -39,6 +39,7 @@ if _legacy_auth_enabled():
             hashed_password=hash_password(body.password),
             role=UserRole.teacher,
             display_name=body.display_name,
+            is_approved=initial_is_approved_for_email(body.email),
         )
         session.add(user)
         await session.commit()

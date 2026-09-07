@@ -28,6 +28,7 @@ class UserResponse(BaseModel):
     email: str
     display_name: str | None
     role: str
+    is_approved: bool = False
 
     model_config = {"from_attributes": True}
 

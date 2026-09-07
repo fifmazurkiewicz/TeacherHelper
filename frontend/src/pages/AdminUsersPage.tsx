@@ -7,6 +7,7 @@ type AdminUser = {
   email: string;
   display_name: string | null;
   role: string;
+  is_approved: boolean;
   rate_limit_rpm: number | null;
   llm_monthly_cost_limit_usd: number | null;
   effective_llm_monthly_cost_limit_usd: number | null;
@@ -33,6 +34,7 @@ function formatTokens(value: number): string {
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [meId, setMeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,6 +54,9 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     reload();
+    api<{ id: string }>("/v1/auth/me")
+      .then((me) => setMeId(me.id))
+      .catch(() => setMeId(null));
   }, []);
 
   async function saveRateLimit(userId: string) {
@@ -115,6 +120,25 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function setApproval(u: AdminUser, isApproved: boolean) {
+    if (!window.confirm(isApproved ? `Akceptować konto ${u.email}?` : `Cofnąć dostęp dla ${u.email}?`)) return;
+    setError(null);
+    setSuccess(null);
+    setBusy(true);
+    try {
+      await api(`/v1/admin/users/${u.id}`, {
+        method: "PATCH",
+        json: { is_approved: isApproved },
+      });
+      setSuccess(isApproved ? "Konto zaakceptowane." : "Dostęp cofnięty.");
+      reload();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Błąd");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function changeRole(u: AdminUser, newRole: string) {
     if (newRole === u.role) return;
     if (!window.confirm(`Ustawić rolę użytkownika ${u.email} na „${newRole}”?`)) return;
@@ -163,8 +187,8 @@ export default function AdminUsersPage() {
       <div>
         <h1 className="text-2xl font-bold">Użytkownicy</h1>
         <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">
-          Role, rate limit (żądania/min), bieżące zużycie LLM (koszt i tokeny w miesiącu UTC), miesięczny limit kosztu w USD
-          (wszystkie modele) i reset haseł. Panel wymaga roli administratora (JWT).
+          Status akceptacji, role, rate limit (żądania/min), bieżące zużycie LLM (koszt i tokeny w miesiącu UTC),
+          miesięczny limit kosztu w USD (wszystkie modele) i reset haseł. Panel wymaga roli administratora (JWT).
         </p>
         <button type="button" onClick={reload} className="mt-2 text-sm text-accent hover:underline">
           Odśwież
@@ -181,6 +205,7 @@ export default function AdminUsersPage() {
               <th className="px-4 py-3 font-medium">E-mail</th>
               <th className="px-4 py-3 font-medium">Nazwa</th>
               <th className="px-4 py-3 font-medium">Rola</th>
+              <th className="px-4 py-3 font-medium">Status</th>
               <th className="px-4 py-3 font-medium">Rate limit (req/min)</th>
               <th className="px-4 py-3 font-medium">Zużycie LLM (miesiąc UTC)</th>
               <th className="px-4 py-3 font-medium">Limit kosztu LLM / miesiąc (USD)</th>
@@ -188,8 +213,15 @@ export default function AdminUsersPage() {
             </tr>
           </thead>
           <tbody>
-            {users.map((u) => (
-              <tr key={u.id} className="border-b border-ink-800/10 dark:border-paper-100/10">
+            {[...users]
+              .sort((a, b) => Number(a.is_approved) - Number(b.is_approved) || a.email.localeCompare(b.email))
+              .map((u) => (
+              <tr
+                key={u.id}
+                className={`border-b border-ink-800/10 dark:border-paper-100/10 ${
+                  u.is_approved ? "" : "bg-amber-50/70 dark:bg-amber-950/20"
+                }`}
+              >
                 <td className="px-4 py-3 font-mono text-xs">{u.email}</td>
                 <td className="px-4 py-3">{u.display_name ?? "—"}</td>
                 <td className="px-4 py-3">
@@ -202,6 +234,17 @@ export default function AdminUsersPage() {
                     <option value="teacher">teacher</option>
                     <option value="admin">admin</option>
                   </select>
+                </td>
+                <td className="px-4 py-3">
+                  <span
+                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      u.is_approved
+                        ? "bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-200"
+                        : "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
+                    }`}
+                  >
+                    {u.is_approved ? "Zaakceptowany" : "Oczekuje"}
+                  </span>
                 </td>
                 <td className="px-4 py-3">
                   {editingId === u.id ? (
@@ -278,6 +321,26 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-2">
+                    {!u.is_approved && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void setApproval(u, true)}
+                        className="text-xs text-accent hover:underline"
+                      >
+                        Akceptuj
+                      </button>
+                    )}
+                    {u.is_approved && meId !== u.id && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void setApproval(u, false)}
+                        className="text-xs text-red-600 hover:underline dark:text-red-400"
+                      >
+                        Cofnij dostęp
+                      </button>
+                    )}
                     {editingId !== u.id && (
                       <button
                         type="button"

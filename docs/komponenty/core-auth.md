@@ -7,8 +7,10 @@ Rejestracja, logowanie, sesje, przypisanie ról. Dostarcza tożsamość użytkow
 ## Zaimplementowane
 
 - Rejestracja (e-mail + hasło, bcrypt), logowanie, JWT Bearer.
-- Endpoint `GET /v1/auth/me` (dane użytkownika).
+- Endpoint `GET /v1/auth/me` (dane użytkownika, w tym `is_approved`).
+- Brama akceptacji: nowi użytkownicy logują się, ale funkcje `/v1/*` (poza `/me`) zwracają 403 `account_pending_approval` do czasu Accept admina.
 - Role: `teacher` (domyślna przy rejestracji), `admin` (nadawana w bazie / przez admina).
+- `ADMIN_EMAILS` — auto-rola admin i auto-akceptacja **tylko przy pierwszym insercie profilu**.
 - Admin guard (`require_admin`) + opcjonalny `X-Admin-Key`.
 - Resetowanie hasła użytkownika z panelu admina (`POST /v1/admin/users/{id}/reset-password`).
 - Security headers middleware (HSTS, X-Content-Type-Options, X-Frame-Options, Referrer-Policy).
@@ -26,7 +28,7 @@ Rejestracja, logowanie, sesje, przypisanie ról. Dostarcza tożsamość użytkow
 
 ## Encje domenowe
 
-`User`, `Role` (nauczyciel | administrator).
+`User`, `Role` (nauczyciel | administrator), flaga `is_approved`.
 
 ## Zasady
 

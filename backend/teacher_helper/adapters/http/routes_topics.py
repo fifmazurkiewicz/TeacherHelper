@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import TopicCreate, TopicResponse, TopicSearchHit
 from teacher_helper.infrastructure.db.file_ops import semantic_search_chunks
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/v1/topics", tags=["topics"])
 
 
 @router.post("", response_model=TopicResponse)
-async def create_topic(session: DbSession, user: CurrentUser, body: TopicCreate) -> TopicORM:
+async def create_topic(session: DbSession, user: ApprovedUser, body: TopicCreate) -> TopicORM:
     await check_rate_limit(session, user)
     row = TopicORM(
         id=uuid4(),
@@ -30,13 +30,13 @@ async def create_topic(session: DbSession, user: CurrentUser, body: TopicCreate)
 
 
 @router.get("", response_model=list[TopicResponse])
-async def list_topics(session: DbSession, user: CurrentUser) -> list[TopicORM]:
+async def list_topics(session: DbSession, user: ApprovedUser) -> list[TopicORM]:
     stmt = select(TopicORM).where(TopicORM.user_id == user.id).order_by(TopicORM.created_at.desc())
     return list((await session.scalars(stmt)).all())
 
 
 @router.get("/{topic_id}", response_model=TopicResponse)
-async def get_topic(session: DbSession, user: CurrentUser, topic_id: UUID) -> TopicORM:
+async def get_topic(session: DbSession, user: ApprovedUser, topic_id: UUID) -> TopicORM:
     row = await session.get(TopicORM, topic_id)
     if not row or row.user_id != user.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Temat nie znaleziony")
@@ -44,7 +44,7 @@ async def get_topic(session: DbSession, user: CurrentUser, topic_id: UUID) -> To
 
 
 @router.delete("/{topic_id}", response_model=None)
-async def delete_topic(session: DbSession, user: CurrentUser, topic_id: UUID) -> Response:
+async def delete_topic(session: DbSession, user: ApprovedUser, topic_id: UUID) -> Response:
     await check_rate_limit(session, user)
     row = await session.get(TopicORM, topic_id)
     if not row or row.user_id != user.id:
@@ -65,7 +65,7 @@ async def delete_topic(session: DbSession, user: CurrentUser, topic_id: UUID) ->
 @router.get("/{topic_id}/search", response_model=list[TopicSearchHit])
 async def search_topic_rag(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     topic_id: UUID,
     q: str = Query(..., min_length=1, max_length=2000, description="Zapytanie semantyczne w obrębie tematu"),
     top_k: int = Query(8, ge=1, le=32),

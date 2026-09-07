@@ -4,7 +4,7 @@ import json
 
 from fastapi import APIRouter
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.schemas import AnalyzeIntentRequest
 from teacher_helper.infrastructure.db.llm_usage import record_llm_usage_event
 from teacher_helper.infrastructure.factories import build_llm_client
@@ -15,7 +15,7 @@ _llm = build_llm_client()
 
 
 @router.post("/analyze")
-async def analyze_intent(session: DbSession, user: CurrentUser, body: AnalyzeIntentRequest) -> dict:
+async def analyze_intent(session: DbSession, user: ApprovedUser, body: AnalyzeIntentRequest) -> dict:
     """Lekki endpoint diagnostyczny — ten sam kontrakt JSON co orchestrator."""
     user_text = body.message.strip()
     sys_prompt = orchestrator_system_prompt()

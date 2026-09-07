@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, status
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import FileResponse, SoundGenerateRequest
 from teacher_helper.infrastructure.db.file_ops import index_file_content
@@ -29,7 +29,7 @@ _storage = get_storage()
 @router.post("/generate", response_model=FileResponse)
 async def generate_sound(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     body: SoundGenerateRequest,
 ) -> FileAssetORM:
     """Generuje krótki efekt dźwiękowy (SFX, do 10 s), nie piosenkę — zapis w bibliotece."""

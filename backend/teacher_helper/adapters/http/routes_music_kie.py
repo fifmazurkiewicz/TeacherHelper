@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, status
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession
+from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
 from teacher_helper.adapters.http.schemas import FileResponse, KieMusicImportByTaskRequest
 from teacher_helper.config import get_settings
@@ -36,7 +36,7 @@ _storage = get_storage()
 @router.post("/import-by-task", response_model=FileResponse)
 async def import_kie_music_by_task(
     session: DbSession,
-    user: CurrentUser,
+    user: ApprovedUser,
     body: KieMusicImportByTaskRequest,
 ) -> FileAssetORM:
     """Odpytuje ``record-info`` i zapisuje pierwszy dostępny MP3 w bibliotece."""
