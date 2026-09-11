@@ -23,6 +23,7 @@ _DEFAULT_DARK_ON_LIGHT: dict[str, tuple[int, int, int]] = {
 }
 _THEME_JSON_KEYS: tuple[str, ...] = ("background", "title", "body", "muted")
 _BG_LUMINANCE_LIGHT: float = 0.55  # powyżej: jasne tło → ciemny tekst z zapasu
+_SLIDE_LAYOUTS = frozenset({"text", "image_right", "image_full", "comparison", "exercise", "summary"})
 
 
 def _parse_hex_rgb(s: str) -> tuple[int, int, int] | None:
@@ -158,12 +159,18 @@ def normalize_presentation_spec(data: Any) -> dict[str, Any] | None:
             image_hint = raw_img.strip()
         if not image_hint and isinstance(s.get("image_hint"), str) and s.get("image_hint", "").strip():
             image_hint = (s.get("image_hint") or "").strip()
+        layout = str(s.get("layout") or "").strip().lower()
+        if layout not in _SLIDE_LAYOUTS:
+            layout = "image_right" if inc else "text"
+        notes = str(s.get("speaker_notes") or s.get("notes") or "").strip()
         out_slides.append(
             {
                 "title": st,
                 "bullets": b_clean,
                 "include_image": inc,
                 "image_hint": image_hint,
+                "layout": layout,
+                "speaker_notes": notes,
             }
         )
     has_substance = bool(out_slides) or bool(desc and desc.strip()) or (title != "Prezentacja")
@@ -315,16 +322,14 @@ def _content_body_font_pt(num_nonempty_lines: int, max_line_len: int) -> int:
     """Czcionka listy na slajdzie treści — zmniejsz przy wielu lub długich punktach."""
     n = num_nonempty_lines
     m = max_line_len
-    pt = 18
-    if n > 6 or m > 100:
-        pt = 14
-    elif n > 4 or m > 78:
-        pt = 15
-    elif n > 3 or m > 58:
-        pt = 16
-    elif n > 2 and m > 50:
+    pt = 20
+    if n > 5 or m > 90:
         pt = 17
-    return max(11, min(pt, 20))
+    elif n > 3 or m > 68:
+        pt = 18
+    elif n > 2 and m > 52:
+        pt = 19
+    return max(17, min(pt, 20))
 
 
 def _set_textframe_font_pt(tf: Any, pt: int) -> None:
@@ -335,6 +340,97 @@ def _set_textframe_font_pt(tf: Any, pt: int) -> None:
         p.font.size = Pt(s)
         for r in p.runs:
             r.font.size = Pt(s)
+
+
+def _add_picture_contained(slide: Any, image_data: bytes, left: Any, top: Any, width: Any, height: Any) -> None:
+    """Fit an image inside a box without stretching or overflowing the slide."""
+    from pptx.parts.image import Image
+
+    image = Image.from_blob(image_data)
+    px_w, px_h = image.size
+    if not px_w or not px_h:
+        return
+    scale = min(int(width) / px_w, int(height) / px_h)
+    draw_w = int(px_w * scale)
+    draw_h = int(px_h * scale)
+    draw_left = int(left) + (int(width) - draw_w) // 2
+    draw_top = int(top) + (int(height) - draw_h) // 2
+    slide.shapes.add_picture(io.BytesIO(image_data), draw_left, draw_top, width=draw_w, height=draw_h)
+
+
+def _set_speaker_notes(slide: Any, notes: str) -> None:
+    if not notes:
+        return
+    try:
+        tf = slide.notes_slide.notes_text_frame
+        if tf is not None:
+            tf.text = notes
+    except Exception:
+        pass
+
+
+def extract_pptx_slide_images(data: bytes) -> dict[int, bytes]:
+    """Return the first embedded picture from each content slide, keyed from zero."""
+    try:
+        from pptx import Presentation
+        from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+        prs = Presentation(io.BytesIO(data))
+    except Exception:
+        return {}
+    images: dict[int, bytes] = {}
+    for content_idx, slide in enumerate(list(prs.slides)[1:]):
+        for shape in slide.shapes:
+            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
+                try:
+                    images[content_idx] = shape.image.blob
+                except Exception:
+                    pass
+                break
+    return images
+
+
+def _presentation_theme_from_pptx(prs: Any) -> dict[str, str] | None:
+    """Read the solid background and representative text colors from a PPTX."""
+    if not prs.slides:
+        return None
+
+    def as_hex(rgb: Any) -> str | None:
+        if rgb is None:
+            return None
+        value = str(rgb)
+        return f"#{value}" if len(value) == 6 else None
+
+    slide = prs.slides[0]
+    theme: dict[str, str] = {}
+    try:
+        background = as_hex(slide.background.fill.fore_color.rgb)
+        if background:
+            theme["background"] = background
+    except Exception:
+        pass
+    for shape in slide.shapes:
+        if not shape.has_text_frame:
+            continue
+        color: str | None = None
+        for paragraph in shape.text_frame.paragraphs:
+            for run in paragraph.runs:
+                try:
+                    color = as_hex(run.font.color.rgb)
+                except Exception:
+                    color = None
+                if color:
+                    break
+            if color:
+                break
+        if not color:
+            continue
+        if shape == slide.shapes.title:
+            theme["title"] = color
+        elif "body" not in theme:
+            theme["body"] = color
+            theme["muted"] = color
+    return _normalize_theme_dict(theme)
 
 
 def spec_to_pptx_bytes(
@@ -369,7 +465,6 @@ def spec_to_pptx_bytes(
         except Exception:
             pass
 
-    layout1 = prs.slide_layouts[1]
     sim = slide_images or {}
     for slide_idx, s in enumerate(spec.get("slides") or []):
         if not isinstance(s, dict):
@@ -386,9 +481,17 @@ def spec_to_pptx_bytes(
             else:
                 body_lines.append("")
                 body_lines.append("(Miejsce na grafikę — uzupełnij w PowerPoint, jeśli potrzeba.)")
-        slide = prs.slides.add_slide(layout1)
+        layout_name = str(s.get("layout") or ("image_right" if embed_bytes else "text"))
+        layout_index = 3 if layout_name == "comparison" and len(prs.slide_layouts) > 3 else 1
+        if layout_name in {"exercise", "summary"} and len(prs.slide_layouts) > 2:
+            layout_index = 2
+        if layout_name == "image_full" and embed_bytes and len(prs.slide_layouts) > 5:
+            layout_index = 5
+        slide = prs.slides.add_slide(prs.slide_layouts[layout_index])
         slide.shapes.title.text = st
-        body = slide.placeholders[1]
+        body = slide.placeholders[1] if len(slide.placeholders) > 1 else None
+        if body is None:
+            body = slide.shapes.add_textbox(Inches(0.55), Inches(1.25), Inches(5.7), Inches(5.5))
         tf = body.text_frame
         tf.clear()
         nonempty = [x for x in body_lines if str(x).strip()]
@@ -410,16 +513,34 @@ def spec_to_pptx_bytes(
                 p.text = line
                 p.font.size = Pt(fs)
                 p.level = 0
+        if layout_name == "comparison" and len(slide.placeholders) > 2:
+            midpoint = max(1, (len(body_lines) + 1) // 2)
+            left_lines, right_lines = body_lines[:midpoint], body_lines[midpoint:]
+            for placeholder, lines in ((slide.placeholders[1], left_lines), (slide.placeholders[2], right_lines)):
+                ptf = placeholder.text_frame
+                ptf.clear()
+                for line_idx, line in enumerate(lines or [" "]):
+                    paragraph = ptf.paragraphs[0] if line_idx == 0 else ptf.add_paragraph()
+                    paragraph.text = line
+                    paragraph.font.size = Pt(_content_body_font_pt(len(lines), max((len(x) for x in lines), default=0)))
         if embed_bytes:
             try:
-                body.left = Inches(0.4)
-                body.top = Inches(1.2)
-                body.width = Inches(5.7)
-                body.height = Inches(4.7)
-                stream = io.BytesIO(embed_bytes)
-                slide.shapes.add_picture(stream, Inches(6.1), Inches(1.2), height=Inches(4.65))
+                if layout_name == "image_full":
+                    body.text = ""
+                    _add_picture_contained(
+                        slide, embed_bytes, Inches(0.55), Inches(1.2), Inches(12.2), Inches(5.8)
+                    )
+                else:
+                    body.left = Inches(0.55)
+                    body.top = Inches(1.25)
+                    body.width = Inches(5.45)
+                    body.height = Inches(5.35)
+                    _add_picture_contained(
+                        slide, embed_bytes, Inches(6.25), Inches(1.25), Inches(6.5), Inches(5.35)
+                    )
             except Exception:
                 pass
+        _set_speaker_notes(slide, str(s.get("speaker_notes") or "").strip())
 
     th = spec.get("theme")
     spec_theme = th if isinstance(th, dict) else None
@@ -462,6 +583,7 @@ def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
                 desc = t
                 break
     slides_out: list[dict[str, Any]] = []
+    pictures = extract_pptx_slide_images(data)
     for idx in range(1, len(prs.slides)):
         sl = prs.slides[idx]
         st = _shape_text(sl.shapes.title) if sl.shapes.title else f"Slajd {idx + 1}"
@@ -472,9 +594,9 @@ def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
             except Exception:
                 body_t = ""
         lines: list[str] = []
-        include_image = bool(body_t) and (
+        include_image = idx - 1 in pictures or (bool(body_t) and (
             "[Propozycja grafiki:" in body_t or "Miejsce na grafikę" in body_t
-        )
+        ))
         image_hint: str | None = None
         if "[Propozycja grafiki:" in body_t and "]" in body_t:
             a = body_t.find("[Propozycja grafiki:")
@@ -490,17 +612,27 @@ def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
             if p.startswith("(Miejsce na grafikę"):
                 continue
             lines.append(p)
+        notes = ""
+        try:
+            ntf = sl.notes_slide.notes_text_frame
+            notes = ntf.text.strip() if ntf is not None else ""
+        except Exception:
+            pass
         slides_out.append(
             {
                 "title": st,
                 "bullets": lines,
                 "include_image": include_image,
                 "image_hint": image_hint,
+                "layout": "image_right" if include_image else "text",
+                "speaker_notes": notes,
             }
         )
-    return normalize_presentation_spec(
-        {"title": title, "description": desc, "slides": slides_out},
-    )
+    raw_spec: dict[str, Any] = {"title": title, "description": desc, "slides": slides_out}
+    theme = _presentation_theme_from_pptx(prs)
+    if theme:
+        raw_spec["theme"] = theme
+    return normalize_presentation_spec(raw_spec)
 
 
 def spec_to_readable_plan_text(spec: dict[str, Any]) -> str:

@@ -10,13 +10,16 @@ Automatyczne slajdy PowerPoint w trybach:
 
 ## Zaimplementowane
 
-- Generowanie planu prezentacji (markdown) przez tool calling (`generate_presentation`).
-- Eksport do PPTX (`python-pptx`) — automatyczne parsowanie markdown na slajdy.
-- Eksport do PDF.
+- Generowanie strukturalnego planu JSON przez tool calling (`generate_presentation`).
+- Eksport do PPTX (`python-pptx`) z układami: tekst, grafika po prawej, pełna grafika,
+  porównanie, ćwiczenie i podsumowanie.
+- Notatki dla nauczyciela zapisywane jako speaker notes, poza treścią wyświetlaną uczniom.
+- Osadzone obrazy dopasowywane bez rozciągania i zachowywane przy edycji pliku PPTX.
+- Eksport tekstowego planu do PDF.
 
 ## Formaty
 
-PPTX, PDF, PNG (slajdy).
+PPTX oraz PDF planu.
 
 ## Adaptery / narzędzia
 

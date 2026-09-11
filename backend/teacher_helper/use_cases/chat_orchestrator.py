@@ -40,6 +40,7 @@ from teacher_helper.infrastructure.music_kie import (
 )
 from teacher_helper.infrastructure.presentation_spec import (
     ensure_theme_persisted,
+    extract_pptx_slide_images,
     extract_pptx_plain_text,
     normalize_presentation_spec,
     parse_presentation_json,
@@ -693,7 +694,9 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         "Zwróć WYŁĄCZNIE jeden obiekt JSON (bez markdown, bez ```) w języku prośby (zwykle polski) o strukturze:\n"
         '{"title": "krótki tytuł całości (okładka)", "description": "tekst na pierwszym slajdzie (pod tytułem)", "slides": '
         "[ { \"title\": \"tytuł slajdu treści (nie okładka)\", \"bullets\": [\"punkt\", \"...\"], "
-        '"include_image": true/false, "image": null albo { "suggested_prompt": "…" } }'
+        '"include_image": true/false, "image": null albo { "suggested_prompt": "…" }, '
+        '"layout": "text|image_right|image_full|comparison|exercise|summary", '
+        '"speaker_notes": "opcjonalne wskazówki dla nauczyciela" }'
         " ], "
         '"theme": { "background": "#RRGGBB", "title": "#RRGGBB", "body": "#RRGGBB", "muted": "#RRGGBB" } }\n'
         "**Okładka (`title` + `description`):** Gdy w Parametrach **include_agenda** jest **true** (lub w Prośbie użytkownik o to prosi) — w `description` **najpierw** 1–2 zdania: cel, odbiorca; **potem** akapit rozpoczynający się od słowa „**Agenda:**” i **lista 4–7 krótkich linii** (tytuł każdej partii) w **tej samej kolejności** co kolejne obiekty w `slides` (słownictwo tych linii = skrót tytułów z `slides`); każda linia agendy do **~55 znaków**, bez długich zdań. "
@@ -701,6 +704,8 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         "Całość `description` musi się zmieścić wizualnie na slajdzie: **maks. ok. 1100 znaków**; priorytet: zwięzłość.\n"
         "**Spójność całej prezentacji (obowiązkowa):** jeden styl wypowiedzi w punktorach (np. wszystkie w formie krótkich faktów albo wszystkie rozkazujące do ucznia), ta sama terminologia w `title`/`description` i na slajdach, logiczna kolejność treści, brak sprzeczności między slajdami. "
         "**Dopasowanie treści do slajdu (żeby nie „wyjeżdżała”):** tytuł slajdu treści **maks. ~52 znaki**, jeden wątek; na slajd **maks. 5 punktów**; **jeden punkt = jedna myśl**, do **~90 znaków** na punkt; unikaj akapitów — jeśli treść długa, **podziel na drugi slajd** zamiast ściany tekstu. "
+        "**Układ:** dobierz `layout` do celu slajdu. `text` dla wyjaśnienia, `image_right` dla tekstu z ilustracją, `image_full` dla jednej mocnej ilustracji z krótkim tytułem, `comparison` dla dwóch porównywanych stron, `exercise` dla zadania uczniowskiego, `summary` dla końcowego utrwalenia. Nie powtarzaj jednego układu na wszystkich slajdach. "
+        "Treści pomocne nauczycielowi, ale zbyt szczegółowe na ekran, umieść w `speaker_notes`. "
         "**Pole `theme` — wymagane; zaplanuj je jak projektant slajdów (nie na „chybił trafił”):** "
         "Najpierw wymyśl **jedną** spójną całość (ciepłą, chłodną, neutralną) dopasowaną do treści (np. przyroda: zieleń/beż, woda: błękity, technologia: granat + cyjan). "
         "Potem ustaw w tej samej gamie barw **background**; kolory `title` i `body` muszą być czytelne na tym tle: **wyraźny kontrast** (jasne litery na ciemnym tle lub **ciemne na jasnym** — nigdy tytuł ani treść w kolorze zbliżonym do tła). "
@@ -729,7 +734,7 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
 # Edycja slajdów (osobne wywołanie modułu LLM — nie łącz w TOOL_TO_MODULE)
 PRESENTATION_EDIT_SYSTEM = (
     "Jesteś edytorem prezentacji w formacie JSON. Dostaniesz: obiekt `spec` (takie same pola jak przy tworzeniu: "
-    "title, description, slides, opcjonalnie theme), pole `slide_to_edit_1based` (1 = okładka = tylko `title` i `description` z planu, "
+    "title, description, slides, opcjonalnie theme; slajdy mogą zawierać layout i speaker_notes), pole `slide_to_edit_1based` (1 = okładka = tylko `title` i `description` z planu, "
     "2 = `slides[0]`, 3 = `slides[1]`, itd.) oraz `instruction` — co użytkownik chce zmienić.\n"
     "Zasady:\n"
     "- Zwróć WYŁĄCZNIE jeden obiekt JSON w **tym samym schemacie** co w narzędziu generate_presentation (bez markdown, bez ```).\n"
@@ -738,6 +743,7 @@ PRESENTATION_EDIT_SYSTEM = (
     "- **Długość / slajd:** gdy edytujesz treść, utrzymuj zasady: krótkie tytuły, punktory do ~90 znaków, max ~5 punktów na slajd; spójna terminologia z resztą specu.\n"
     "- Gdy w **instruction** jest zmiana listy wątków, zaktualizuj **agendę** w `description` (jeśli w specie występuje blok „Agenda:”), żeby odpowiadała `slides`.\n"
     "- **theme** i spójność wizualna: gdy użytkownik nie wspomina o kolorach / wyglądzie, przepisz `theme` z wejścia **bez zmian**; gdy prosi o nową kolorystykę, zdefiniuj **całą czwórkę** tak, by do siebie pasowała: kontrast tło↔`title`/`body`, `muted` w tej samej gamie, bez „ciemny na ciemnym”. Zaktualizuj `image.suggested_prompt` gdy edytujesz slajd z grafiką, żeby ilustracja pasowała do nowego (lub nienaruszonego) motywu (hex #RRGGBB).\n"
+    "- Gdy użytkownik nie prosi o zmianę układu, notatek lub grafiki, zachowaj bez zmian pola `layout`, `speaker_notes`, `include_image` i `image` każdego slajdu.\n"
     "- Przy `slide_to_edit_1based` = 1 edytuj wyłącznie `title` i/lub `description` — nie modyfikuj tablicy `slides` "
     "o ile instruction nie wymaga dotknięcia treści slajdów merytorycznych."
 )
@@ -2485,7 +2491,13 @@ class ChatOrchestratorUseCase:
         if not new_spec:
             return [], "Odpowiedź modelu nie da się ułożyć w poprawną specyfikację (JSON). Spróbuj jeszcze raz."
         try:
-            pptx_b = spec_to_pptx_bytes(new_spec)
+            preserved_images = extract_pptx_slide_images(raw) if name_l.endswith(".pptx") else {}
+            preserved_images = {
+                idx: image
+                for idx, image in preserved_images.items()
+                if idx < len(new_spec["slides"]) and new_spec["slides"][idx].get("include_image")
+            }
+            pptx_b = spec_to_pptx_bytes(new_spec, slide_images=preserved_images)
         except Exception as exc:
             logger.exception("edit spec_to_pptx: %s", exc)
             return [], f"Nie udało się złożyć pliku PPTX: {exc!s:.200}"
