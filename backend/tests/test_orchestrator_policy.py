@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from teacher_helper.use_cases.chat_orchestrator import (
     clarification_blocks_paid_tools,
+    get_tool_definitions,
     history_confirms_music,
     is_paid_budget_module,
     music_generation_needs_confirm,
@@ -98,3 +99,20 @@ def test_music_variants_field_default_is_one() -> None:
     from teacher_helper.config import Settings
 
     assert Settings.model_fields["music_variants_per_provider"].default == 1
+
+
+def test_web_search_is_disabled_by_default(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from teacher_helper.use_cases import chat_orchestrator
+
+    settings = SimpleNamespace(
+        web_search_enabled=False,
+        tavily_api_key="configured-but-disabled",
+        video_generation_enabled=False,
+    )
+    monkeypatch.setattr(chat_orchestrator, "get_settings", lambda: settings)
+
+    tool_names = {tool["function"]["name"] for tool in get_tool_definitions()}
+    assert "search_web" not in tool_names
+    assert "generate_study" in tool_names

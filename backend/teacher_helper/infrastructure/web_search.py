@@ -37,6 +37,8 @@ async def run_web_search(query: str) -> tuple[list[WebSearchHit], str | None]:
         return [], "Puste zapytanie do wyszukiwarki."
 
     s = get_settings()
+    if not s.web_search_enabled:
+        return [], "Wyszukiwanie w internecie jest obecnie wyłączone."
     key = (getattr(s, "tavily_api_key", None) or "").strip()
     if not key:
         return [], (

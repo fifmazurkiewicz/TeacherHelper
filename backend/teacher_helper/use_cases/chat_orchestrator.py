@@ -101,8 +101,9 @@ async def _record_model_cost_usd(
 
 
 def _tavily_enabled() -> bool:
-    """Narzędzie ``search_web`` (Tavily) tylko gdy w konfiguracji jest niepusty ``TAVILY_API_KEY``."""
-    return bool((get_settings().tavily_api_key or "").strip())
+    """Udostępnia ``search_web`` tylko po jawnym włączeniu i z kluczem Tavily."""
+    settings = get_settings()
+    return settings.web_search_enabled and bool((settings.tavily_api_key or "").strip())
 
 
 # ---------------------------------------------------------------------------
@@ -625,7 +626,7 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
 
 
 def get_tool_definitions() -> list[ToolDefinition]:
-    """Definicje narzędzi przekazywane do LLM. Bez ``search_web``, gdy brak ``TAVILY_API_KEY``."""
+    """Definicje narzędzi przekazywane do LLM. Bez ``search_web``, gdy funkcja jest wyłączona."""
     out: list[ToolDefinition] = []
     for d in _ALL_TOOL_DEFINITIONS:
         name = d.get("function", {}).get("name", "")

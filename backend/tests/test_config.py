@@ -51,6 +51,10 @@ def test_async_database_url_disables_sqlalchemy_prepared_cache_for_pooler() -> N
     assert async_database_url(local) == local
 
 
+def test_web_search_is_disabled_by_default() -> None:
+    assert Settings.model_fields["web_search_enabled"].default is False
+
+
 def test_settings_normalize_supabase_sync_url(monkeypatch) -> None:
     monkeypatch.setenv(
         "DATABASE_URL_SYNC",

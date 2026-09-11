@@ -179,6 +179,7 @@ class Settings(BaseSettings):
     confirmation_token_expire_minutes: int = 15
 
     # --- Tavily — wyszukiwanie w internecie (narzędzie search_web w asystencie) ---
+    web_search_enabled: bool = False
     tavily_api_key: str | None = None
     web_search_max_results: int = Field(default=5, ge=1, le=15)
 

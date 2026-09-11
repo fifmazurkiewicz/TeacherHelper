@@ -51,7 +51,7 @@ Plik `.env` backendu wczytywany jest z **korzenia repozytorium** (nie z `backend
 
 ## Bez zmian (wybrane, nadal używane)
 
-Backend (korzeń `.env`): `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODULE_MODEL`, `OPENROUTER_IMAGE_MODEL`, `OPENAI_API_KEY`, `EMBEDDINGS_BACKEND`, `EMBEDDING_DIM`, `TAVILY_API_KEY`, `KIE_API_KEY`, `ELEVENLABS_API_KEY`, `XAI_API_KEY`, `ADMIN_API_KEY`, `CORS_ORIGINS`, `DEFAULT_RATE_LIMIT_RPM`, limity LLM (`LLM_DAILY_*`, `DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT`), chat context (`CHAT_*`), opcjonalnie Langfuse / alerty.
+Backend (korzeń `.env`): `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_MODULE_MODEL`, `OPENROUTER_IMAGE_MODEL`, `OPENAI_API_KEY`, `EMBEDDINGS_BACKEND`, `EMBEDDING_DIM`, `WEB_SEARCH_ENABLED` (domyślnie `false`), `TAVILY_API_KEY`, `KIE_API_KEY`, `ELEVENLABS_API_KEY`, `XAI_API_KEY`, `ADMIN_API_KEY`, `CORS_ORIGINS`, `DEFAULT_RATE_LIMIT_RPM`, limity LLM (`LLM_DAILY_*`, `DEFAULT_USER_LLM_DAILY_TOKEN_LIMIT`), chat context (`CHAT_*`), opcjonalnie Langfuse / alerty.
 
 Frontend (`frontend/.env`): `BACKEND_INTERNAL_URL`. Panel admina w SPA: rola admin w JWT (bez `VITE_ADMIN_API_KEY`).
 
