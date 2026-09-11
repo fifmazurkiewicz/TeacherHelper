@@ -33,7 +33,11 @@ export function Nav() {
 
   return (
     <header className="border-b border-ink-800/20 bg-white/80 backdrop-blur dark:bg-ink-900/80 dark:border-paper-100/10">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-4 sm:py-3">
+      <div
+        className={`mx-auto flex w-full items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-4 sm:py-3 ${
+          isAdminSection ? "max-w-7xl" : "max-w-5xl"
+        }`}
+      >
         <span className="shrink-0 text-sm font-semibold text-accent sm:text-base">Teacher Helper</span>
         <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-0.5 sm:gap-1">
           {links.map(({ to, label }) => (

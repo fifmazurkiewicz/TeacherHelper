@@ -199,21 +199,11 @@ export default function AdminUsersPage() {
       {success && <p className="rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950/40 dark:text-green-200">{success}</p>}
 
       <div className="overflow-x-auto rounded-xl border border-ink-800/15 bg-white dark:border-paper-100/10 dark:bg-ink-900">
-        <table className="w-full min-w-0 table-fixed border-collapse text-left text-sm">
-          <colgroup>
-            <col className="w-[20%]" />
-            <col className="w-[8%]" />
-            <col className="w-[7%]" />
-            <col className="w-[10%]" />
-            <col className="w-[8%]" />
-            <col className="w-[16%]" />
-            <col className="w-[12%]" />
-            <col className="w-[19%]" />
-          </colgroup>
+        <table className="w-full border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-ink-800/15 dark:border-paper-100/15">
               <th className="px-3 py-3 align-middle font-medium">E-mail</th>
-              <th className="px-3 py-3 align-middle font-medium">Nazwa</th>
+              <th className="hidden px-3 py-3 align-middle font-medium xl:table-cell">Nazwa</th>
               <th className="px-3 py-3 align-middle font-medium">Rola</th>
               <th className="px-3 py-3 align-middle font-medium">Status</th>
               <th className="px-3 py-3 align-middle font-medium" title="Rate limit (żądania na minutę)">
@@ -241,7 +231,7 @@ export default function AdminUsersPage() {
                 <td className="px-3 py-3.5 align-middle">
                   <span className="break-all font-mono text-xs leading-snug">{u.email}</span>
                 </td>
-                <td className="px-3 py-3.5 align-middle text-ink-700 dark:text-paper-300">
+                <td className="hidden px-3 py-3.5 align-middle text-ink-700 xl:table-cell dark:text-paper-300">
                   {u.display_name ?? <span className="text-ink-400">—</span>}
                 </td>
                 <td className="px-3 py-3.5 align-middle">
@@ -256,15 +246,27 @@ export default function AdminUsersPage() {
                   </select>
                 </td>
                 <td className="px-3 py-3.5 align-middle">
-                  <span
-                    className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      u.is_approved
-                        ? "bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-200"
-                        : "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
-                    }`}
-                  >
-                    {u.is_approved ? "Zaakceptowany" : "Oczekuje"}
-                  </span>
+                  <div className="flex flex-col items-start gap-1.5">
+                    <span
+                      className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        u.is_approved
+                          ? "bg-green-100 text-green-800 dark:bg-green-950/50 dark:text-green-200"
+                          : "bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-200"
+                      }`}
+                    >
+                      {u.is_approved ? "Zaakceptowany" : "Oczekuje"}
+                    </span>
+                    {!u.is_approved && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void setApproval(u, true)}
+                        className="rounded-md bg-accent px-2 py-1 text-xs font-medium text-white hover:bg-accent/90 disabled:opacity-50"
+                      >
+                        Akceptuj
+                      </button>
+                    )}
+                  </div>
                 </td>
                 <td className="px-3 py-3.5 align-middle text-ink-700 dark:text-paper-300">
                   {editingId === u.id ? (
@@ -343,16 +345,6 @@ export default function AdminUsersPage() {
                 </td>
                 <td className="px-3 py-3.5 pr-4 align-middle">
                   <div className="flex flex-col items-start gap-1">
-                    {!u.is_approved && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void setApproval(u, true)}
-                        className="text-left text-xs text-accent hover:underline"
-                      >
-                        Akceptuj
-                      </button>
-                    )}
                     {u.is_approved && meId !== u.id && (
                       <button
                         type="button"

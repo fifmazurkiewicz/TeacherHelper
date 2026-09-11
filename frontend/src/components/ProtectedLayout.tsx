@@ -13,6 +13,7 @@ type AuthState = "loading" | "authenticated" | "unauthenticated";
 export function ProtectedLayout() {
   const { pathname } = useLocation();
   const chatLayout = pathname === "/assistant";
+  const adminLayout = pathname.startsWith("/admin");
   useChatShell(chatLayout);
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [approval, setApproval] = useState<"unknown" | "pending" | "approved">("unknown");
@@ -104,7 +105,11 @@ export function ProtectedLayout() {
         <>
           <AssistantBackgroundChatBanner />
           <Nav />
-          <main className="mx-auto max-w-5xl px-3 py-6 sm:px-4 sm:py-8">
+          <main
+            className={`mx-auto w-full px-3 py-6 sm:px-4 sm:py-8 ${
+              adminLayout ? "max-w-7xl" : "max-w-5xl"
+            }`}
+          >
             <Outlet />
           </main>
         </>

@@ -67,7 +67,6 @@ Graft CLI is broken on Windows (missing native build / `@nanonets/graft/dist/cli
 - Google OAuth (dev): Authorized JavaScript origins — `http://localhost:18080` i `http://127.0.0.1:18080`; redirect URI to callback Supabase, nie frontend.
 - Render + Supabase: pooler (`*.pooler.supabase.com`), nie direct `db.*.supabase.co` (IPv6); `DATABASE_URL` → port 6543 (`+asyncpg`); `DATABASE_URL_SYNC` → 5432 (`+psycopg`); migracje Alembic auto przy starcie kontenera (`entrypoint.sh`).
 - Rejestracja bez whitelisty maili (Supabase Auth); nowi userzy logują się, ale funkcje czekają na Accept admina (`is_approved`, waiting screen, 403 `account_pending_approval`); `ADMIN_EMAILS` auto-approved tylko przy insercie; seed admina wyłączany przez `SKIP_ADMIN_SEED=1`.
-- Panel admina: rola admin w JWT; `ADMIN_API_KEY` tylko dla skryptów (nie w SPA).
+- Panel admina (`/admin/users`): Accept/Revoke w kolumnie Akcje (badge Oczekuje nie jest klikalny); rola admin w JWT; `ADMIN_API_KEY` tylko dla skryptów (nie w SPA).
 - Czat: `ask_clarification` / potwierdzenie wideo / prepare projektu w tej samej turze blokuje płatne `generate_*`; jedna aktywna job na rozmowę (409 + reaper 15 min).
-- Domyślny limit LLM: **$10/miesiąc UTC** na zaakceptowanego użytkownika (`DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD`); Accept nie nadpisuje `llm_monthly_cost_limit_usd` (NULL = default).
-- Domyślne modele OpenRouter: `google/gemini-3.1-flash-lite-preview` (orchestrator), `google/gemini-3-flash-preview` (moduły).
+- Domyślne: limit LLM **$10/miesiąc UTC** (`DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD`; Accept nie nadpisuje NULL); modele OpenRouter `google/gemini-3.1-flash-lite-preview` (orchestrator), `google/gemini-3-flash-preview` (moduły).
