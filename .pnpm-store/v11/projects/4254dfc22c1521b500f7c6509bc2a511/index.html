@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <script>
+      try {
+        if (localStorage.getItem("teacher-helper:theme") === "dark") document.documentElement.classList.add("dark");
+      } catch (e) {}
+    </script>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <title>Teacher Helper</title>
+    <meta name="description" content="Asystent nauczyciela — materiały i moduły AI" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
