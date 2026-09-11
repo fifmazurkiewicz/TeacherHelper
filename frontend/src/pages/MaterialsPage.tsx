@@ -1272,10 +1272,16 @@ export default function MaterialsPage() {
                           <button
                             type="button"
                             onClick={() => void onDownload(f.id)}
-                            className="rounded-xl bg-accent px-4 py-2 text-xs font-semibold text-white shadow-sm hover:bg-accent-dim"
+                            className="min-h-11 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-accent-dim"
                           >
                             Pobierz
                           </button>
+                        </div>
+                        <details className="w-full rounded-xl border border-ink-800/15 dark:border-paper-100/15 sm:w-64">
+                          <summary className="min-h-11 cursor-pointer rounded-xl px-4 py-3 text-sm font-medium text-ink-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent dark:text-paper-300" aria-label={`Więcej opcji: ${f.name}`}>
+                            Więcej
+                          </summary>
+                          <div className="flex flex-col gap-1 border-t border-ink-800/10 p-2 dark:border-paper-100/10 [&>button]:min-h-11 [&>button]:rounded-lg [&>button]:px-3 [&>button]:text-left [&>button]:text-sm [&>button]:focus-visible:outline [&>button]:focus-visible:outline-2 [&>button]:focus-visible:outline-accent">
                           {exportFormatsForFile(f).map((fmt) => (
                             <button
                               key={fmt}
@@ -1283,17 +1289,15 @@ export default function MaterialsPage() {
                               onClick={() => void onExport(f.id, fmt)}
                               className="rounded-xl border border-ink-800/15 px-3 py-2 text-xs font-medium uppercase tracking-wide text-ink-700 hover:bg-white dark:border-paper-100/15 dark:text-paper-300 dark:hover:bg-ink-900"
                             >
-                              {fmt}
+                              Eksportuj jako {fmt.toUpperCase()}
                             </button>
                           ))}
-                        </div>
-                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[0.7rem] font-medium">
                           <button
                             type="button"
                             onClick={() => void openFileInfo(f.id)}
                             className="text-ink-600 hover:text-accent dark:text-paper-400"
                           >
-                            Szczegóły / skutek usunięcia
+                            Szczegóły
                           </button>
                           <button
                             type="button"
@@ -1301,7 +1305,7 @@ export default function MaterialsPage() {
                             disabled={busy}
                             className="text-ink-600 hover:text-accent disabled:opacity-50 dark:text-paper-400"
                           >
-                            Reindeksuj
+                            Odśwież dostępność dla asystenta
                           </button>
                           <button
                             type="button"
@@ -1311,7 +1315,8 @@ export default function MaterialsPage() {
                           >
                             Usuń
                           </button>
-                        </div>
+                          </div>
+                        </details>
                       </div>
                     </li>
                   );
