@@ -4,6 +4,7 @@ from __future__ import annotations
 import io
 import json
 import re
+import zipfile
 from typing import Any
 
 # --- Normalizacja specyfikacji z LLM / z pliku JSON ---
@@ -24,6 +25,13 @@ _DEFAULT_DARK_ON_LIGHT: dict[str, tuple[int, int, int]] = {
 _THEME_JSON_KEYS: tuple[str, ...] = ("background", "title", "body", "muted")
 _BG_LUMINANCE_LIGHT: float = 0.55  # powyżej: jasne tło → ciemny tekst z zapasu
 _SLIDE_LAYOUTS = frozenset({"text", "image_right", "image_full", "comparison", "exercise", "summary"})
+_MAX_PPTX_ZIP_ENTRIES = 3_000
+_MAX_PPTX_UNCOMPRESSED_BYTES = 150 * 1024 * 1024
+_MAX_PPTX_ENTRY_BYTES = 30 * 1024 * 1024
+_MAX_PPTX_COMPRESSION_RATIO = 200
+_MAX_PPTX_SLIDES = 200
+_MAX_PICTURE_BYTES = 20 * 1024 * 1024
+_MAX_PICTURE_PIXELS = 50_000_000
 
 
 def _parse_hex_rgb(s: str) -> tuple[int, int, int] | None:
@@ -162,6 +170,9 @@ def normalize_presentation_spec(data: Any) -> dict[str, Any] | None:
         layout = str(s.get("layout") or "").strip().lower()
         if layout not in _SLIDE_LAYOUTS:
             layout = "image_right" if inc else "text"
+        if layout == "comparison":
+            inc = False
+            image_hint = None
         notes = str(s.get("speaker_notes") or s.get("notes") or "").strip()
         out_slides.append(
             {
@@ -369,25 +380,64 @@ def _set_speaker_notes(slide: Any, notes: str) -> None:
         pass
 
 
-def extract_pptx_slide_images(data: bytes) -> dict[int, bytes]:
-    """Return the first embedded picture from each content slide, keyed from zero."""
-    try:
-        from pptx import Presentation
-        from pptx.enum.shapes import MSO_SHAPE_TYPE
+def _load_pptx(data: bytes) -> Any:
+    """Validate PPTX expansion limits before handing the archive to python-pptx."""
+    from pptx import Presentation
 
-        prs = Presentation(io.BytesIO(data))
-    except Exception:
-        return {}
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        entries = archive.infolist()
+        if len(entries) > _MAX_PPTX_ZIP_ENTRIES:
+            raise ValueError("PPTX contains too many archive entries")
+        total = 0
+        for entry in entries:
+            total += entry.file_size
+            if entry.file_size > _MAX_PPTX_ENTRY_BYTES:
+                raise ValueError("PPTX archive entry is too large")
+            if entry.compress_size == 0:
+                ratio = entry.file_size if entry.file_size else 1
+            else:
+                ratio = entry.file_size / entry.compress_size
+            if ratio > _MAX_PPTX_COMPRESSION_RATIO:
+                raise ValueError("PPTX archive entry has an unsafe compression ratio")
+        if total > _MAX_PPTX_UNCOMPRESSED_BYTES:
+            raise ValueError("PPTX expands beyond the safe size limit")
+    prs = Presentation(io.BytesIO(data))
+    if len(prs.slides) > _MAX_PPTX_SLIDES:
+        raise ValueError("PPTX contains too many slides")
+    return prs
+
+
+def _extract_slide_images_from_presentation(prs: Any) -> dict[int, bytes]:
+    """Return one safe primary image from each content slide, keyed from zero."""
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    from pptx.parts.image import Image
+
     images: dict[int, bytes] = {}
     for content_idx, slide in enumerate(list(prs.slides)[1:]):
         for shape in slide.shapes:
-            if shape.shape_type == MSO_SHAPE_TYPE.PICTURE:
-                try:
-                    images[content_idx] = shape.image.blob
-                except Exception:
-                    pass
-                break
+            if shape.shape_type != MSO_SHAPE_TYPE.PICTURE:
+                continue
+            try:
+                blob = shape.image.blob
+                if len(blob) > _MAX_PICTURE_BYTES:
+                    break
+                width, height = Image.from_blob(blob).size
+                if width * height > _MAX_PICTURE_PIXELS:
+                    break
+                images[content_idx] = blob
+            except Exception:
+                pass
+            break
     return images
+
+
+def extract_pptx_slide_images(data: bytes) -> dict[int, bytes]:
+    """Return one safe primary image from each content slide, keyed from zero."""
+    try:
+        prs = _load_pptx(data)
+    except Exception:
+        return {}
+    return _extract_slide_images_from_presentation(prs)
 
 
 def _presentation_theme_from_pptx(prs: Any) -> dict[str, str] | None:
@@ -559,16 +609,7 @@ def _shape_text(sh) -> str:
     return ""
 
 
-def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
-    """Odczyt istniejącego PPTX do specyfikacji (edycja / kontynuacja)."""
-    try:
-        from pptx import Presentation
-    except Exception:
-        return None
-    try:
-        prs = Presentation(io.BytesIO(data))
-    except Exception:
-        return None
+def _pptx_to_spec_from_presentation(prs: Any, pictures: dict[int, bytes]) -> dict[str, Any] | None:
     if not prs.slides:
         return None
     s0 = prs.slides[0]
@@ -583,16 +624,17 @@ def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
                 desc = t
                 break
     slides_out: list[dict[str, Any]] = []
-    pictures = extract_pptx_slide_images(data)
     for idx in range(1, len(prs.slides)):
         sl = prs.slides[idx]
         st = _shape_text(sl.shapes.title) if sl.shapes.title else f"Slajd {idx + 1}"
-        body_t = ""
-        if len(sl.placeholders) > 1:
-            try:
-                body_t = _shape_text(sl.placeholders[1])
-            except Exception:
-                body_t = ""
+        body_parts: list[str] = []
+        for placeholder in sl.placeholders:
+            if sl.shapes.title is not None and placeholder == sl.shapes.title:
+                continue
+            text = _shape_text(placeholder)
+            if text:
+                body_parts.append(text)
+        body_t = "\n".join(body_parts)
         lines: list[str] = []
         include_image = idx - 1 in pictures or (bool(body_t) and (
             "[Propozycja grafiki:" in body_t or "Miejsce na grafikę" in body_t
@@ -624,7 +666,9 @@ def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
                 "bullets": lines,
                 "include_image": include_image,
                 "image_hint": image_hint,
-                "layout": "image_right" if include_image else "text",
+                "layout": (
+                    "comparison" if len(body_parts) > 1 else "image_right" if include_image else "text"
+                ),
                 "speaker_notes": notes,
             }
         )
@@ -633,6 +677,22 @@ def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
     if theme:
         raw_spec["theme"] = theme
     return normalize_presentation_spec(raw_spec)
+
+
+def pptx_to_spec_and_images(data: bytes) -> tuple[dict[str, Any] | None, dict[int, bytes]]:
+    """Parse a PPTX once and return its editable spec and safe primary slide images."""
+    try:
+        prs = _load_pptx(data)
+    except Exception:
+        return None, {}
+    pictures = _extract_slide_images_from_presentation(prs)
+    return _pptx_to_spec_from_presentation(prs, pictures), pictures
+
+
+def pptx_to_spec(data: bytes) -> dict[str, Any] | None:
+    """Odczyt istniejącego PPTX do specyfikacji (edycja / kontynuacja)."""
+    spec, _ = pptx_to_spec_and_images(data)
+    return spec
 
 
 def spec_to_readable_plan_text(spec: dict[str, Any]) -> str:

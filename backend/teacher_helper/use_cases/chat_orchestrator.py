@@ -40,11 +40,11 @@ from teacher_helper.infrastructure.music_kie import (
 )
 from teacher_helper.infrastructure.presentation_spec import (
     ensure_theme_persisted,
-    extract_pptx_slide_images,
     extract_pptx_plain_text,
     normalize_presentation_spec,
     parse_presentation_json,
     pptx_to_spec,
+    pptx_to_spec_and_images,
     spec_to_json_text,
     spec_to_pptx_bytes,
     spec_to_readable_plan_text,
@@ -705,6 +705,7 @@ MODULE_SYSTEM_PROMPTS: dict[str, str] = {
         "**Spójność całej prezentacji (obowiązkowa):** jeden styl wypowiedzi w punktorach (np. wszystkie w formie krótkich faktów albo wszystkie rozkazujące do ucznia), ta sama terminologia w `title`/`description` i na slajdach, logiczna kolejność treści, brak sprzeczności między slajdami. "
         "**Dopasowanie treści do slajdu (żeby nie „wyjeżdżała”):** tytuł slajdu treści **maks. ~52 znaki**, jeden wątek; na slajd **maks. 5 punktów**; **jeden punkt = jedna myśl**, do **~90 znaków** na punkt; unikaj akapitów — jeśli treść długa, **podziel na drugi slajd** zamiast ściany tekstu. "
         "**Układ:** dobierz `layout` do celu slajdu. `text` dla wyjaśnienia, `image_right` dla tekstu z ilustracją, `image_full` dla jednej mocnej ilustracji z krótkim tytułem, `comparison` dla dwóch porównywanych stron, `exercise` dla zadania uczniowskiego, `summary` dla końcowego utrwalenia. Nie powtarzaj jednego układu na wszystkich slajdach. "
+        "Dla `comparison` zawsze ustaw `include_image: false` i `image: null`, aby dwie kolumny pozostały czytelne. "
         "Treści pomocne nauczycielowi, ale zbyt szczegółowe na ekran, umieść w `speaker_notes`. "
         "**Pole `theme` — wymagane; zaplanuj je jak projektant slajdów (nie na „chybił trafił”):** "
         "Najpierw wymyśl **jedną** spójną całość (ciepłą, chłodną, neutralną) dopasowaną do treści (np. przyroda: zieleń/beż, woda: błękity, technologia: granat + cyjan). "
@@ -2454,7 +2455,11 @@ class ChatOrchestratorUseCase:
             return [], "Plik nie istnieje lub nie należy do Ciebie."
         raw = await self._storage.get(row.storage_key)
         name_l = (row.name or "").lower()
-        spec = self._load_presentation_spec_from_file(raw, name_l)
+        source_images: dict[int, bytes] = {}
+        if name_l.endswith(".pptx"):
+            spec, source_images = pptx_to_spec_and_images(raw)
+        else:
+            spec = self._load_presentation_spec_from_file(raw, name_l)
         if not spec:
             return [], "Nie udało się odczytać prezentacji. Użyj pliku **.pptx** albo pliku planu (JSON z *plan* w nazwie) z **Moje materiały**."
         n_content = len(spec.get("slides") or [])
@@ -2490,13 +2495,27 @@ class ChatOrchestratorUseCase:
         new_spec = normalize_presentation_spec(new_spec)
         if not new_spec:
             return [], "Odpowiedź modelu nie da się ułożyć w poprawną specyfikację (JSON). Spróbuj jeszcze raz."
+        image_preservation_note: str | None = None
         try:
-            preserved_images = extract_pptx_slide_images(raw) if name_l.endswith(".pptx") else {}
-            preserved_images = {
-                idx: image
-                for idx, image in preserved_images.items()
-                if idx < len(new_spec["slides"]) and new_spec["slides"][idx].get("include_image")
-            }
+            old_slides = spec.get("slides") or []
+            new_slides = new_spec.get("slides") or []
+            edited_content_idx = slide_number - 2 if slide_number >= 2 else None
+            stable_order = len(old_slides) == len(new_slides) and all(
+                idx == edited_content_idx or old.get("title") == new.get("title")
+                for idx, (old, new) in enumerate(zip(old_slides, new_slides, strict=True))
+            )
+            preserved_images = {}
+            if stable_order:
+                preserved_images = {
+                    idx: image
+                    for idx, image in source_images.items()
+                    if idx < len(new_slides) and new_slides[idx].get("include_image")
+                }
+            elif source_images:
+                image_preservation_note = (
+                    "Układ lub kolejność slajdów zmieniły się, więc wcześniejsze obrazy nie zostały "
+                    "automatycznie przypisane do nowych slajdów."
+                )
             pptx_b = spec_to_pptx_bytes(new_spec, slide_images=preserved_images)
         except Exception as exc:
             logger.exception("edit spec_to_pptx: %s", exc)
@@ -2555,7 +2574,7 @@ class ChatOrchestratorUseCase:
         if plan_pdf_id is not None:
             out_e.append(plan_pdf_id)
         out_e.append(pptx_id)
-        return out_e, None
+        return out_e, image_preservation_note
 
     async def _handle_sound_effect(
         self,

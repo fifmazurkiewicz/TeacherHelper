@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import io
+import zipfile
 
 from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -11,6 +12,7 @@ from teacher_helper.infrastructure.presentation_spec import (
     extract_pptx_slide_images,
     normalize_presentation_spec,
     pptx_to_spec,
+    pptx_to_spec_and_images,
     spec_to_pptx_bytes,
 )
 
@@ -117,3 +119,51 @@ def test_comparison_layout_uses_two_content_columns() -> None:
 
     assert any("Ssaki" in text for text in content)
     assert any("Ptaki" in text for text in content)
+
+    parsed = pptx_to_spec(prs_to_bytes(prs))
+    assert parsed is not None
+    assert parsed["slides"][0]["layout"] == "comparison"
+    assert parsed["slides"][0]["bullets"] == [
+        "Ssaki karmią mlekiem",
+        "Ssaki mają sierść",
+        "Ptaki składają jaja",
+        "Ptaki mają pióra",
+    ]
+
+
+def prs_to_bytes(prs: Presentation) -> bytes:
+    stream = io.BytesIO()
+    prs.save(stream)
+    return stream.getvalue()
+
+
+def test_comparison_layout_disables_overlapping_image() -> None:
+    spec = normalize_presentation_spec(
+        {
+            "title": "Test",
+            "description": "",
+            "slides": [
+                {
+                    "title": "Porównanie",
+                    "bullets": ["A", "B"],
+                    "layout": "comparison",
+                    "include_image": True,
+                    "image_hint": "Diagram",
+                }
+            ],
+        }
+    )
+    assert spec is not None
+    assert spec["slides"][0]["include_image"] is False
+    assert spec["slides"][0]["image_hint"] is None
+
+
+def test_rejects_pptx_with_unsafe_compression_ratio() -> None:
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[Content_Types].xml", b"0" * 1_000_000)
+
+    spec, images = pptx_to_spec_and_images(stream.getvalue())
+
+    assert spec is None
+    assert images == {}

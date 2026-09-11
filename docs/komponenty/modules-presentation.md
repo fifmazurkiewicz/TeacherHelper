@@ -14,7 +14,8 @@ Automatyczne slajdy PowerPoint w trybach:
 - Eksport do PPTX (`python-pptx`) z układami: tekst, grafika po prawej, pełna grafika,
   porównanie, ćwiczenie i podsumowanie.
 - Notatki dla nauczyciela zapisywane jako speaker notes, poza treścią wyświetlaną uczniom.
-- Osadzone obrazy dopasowywane bez rozciągania i zachowywane przy edycji pliku PPTX.
+- Główny osadzony obraz slajdu jest dopasowywany bez rozciągania i zachowywany przy
+  edycji pliku PPTX, gdy kolejność slajdów pozostaje jednoznaczna.
 - Eksport tekstowego planu do PDF.
 
 ## Formaty
