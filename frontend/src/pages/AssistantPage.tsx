@@ -698,7 +698,8 @@ export default function AssistantPage() {
       if (persisted?.activeJob?.conversationId === conversationId) {
         job = persisted.activeJob;
       } else {
-        const last = messagesRef.current.at(-1);
+        const currentMessages = messagesRef.current;
+        const last = currentMessages[currentMessages.length - 1];
         if (last?.role !== "user") return;
         try {
           const remote = await getConversationActiveJob(conversationId);
