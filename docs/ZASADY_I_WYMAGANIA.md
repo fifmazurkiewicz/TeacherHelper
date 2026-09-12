@@ -14,7 +14,7 @@ Szczegółowe opisy komponentów: [komponenty/README.md](komponenty/README.md).
 - **Narzędzie darmowe** — dostępne wyłącznie dla wybranych osób (bez planów subskrypcyjnych).
 - **Konwersacja celowa:** użytkownik opisuje *co* chce osiągnąć; system dobiera moduły przez tool calling (narzędzia LLM), planuje i wykonuje.
 - **Kontekst plików:** odczyt i rozumienie wygenerowanych plików (scenariusze, piosenki, prezentacje); modyfikacje, porównania, rozszerzenia.
-- **Eksport wieloformatowy:** DOCX, PDF, TXT, PPTX (zgodnie z typem treści); w przyszłości PNG, MP4, SVG, GIF.
+- **Eksport wieloformatowy:** DOCX, PDF, TXT, PPTX (zgodnie z typem treści); dla koncepcji i materiałów tekstowych domyślny jest estetycznie sformatowany **DOCX**, chyba że użytkownik wskaże inny format; w przyszłości PNG, MP4, SVG, GIF.
 - **Baza plików:** organizacja, wersjonowanie, udostępnianie na konto.
 - **UX:** użytkownik nietechniczny — minimum kroków do rezultatu.
 - **Architektura:** Clean Architecture, modularność, **tool calling** w orchestratorze. Integracje zewnętrzne (np. generacja audio przez Suno) jako **API lub gotowe usługi** — TeacherHelper **nie jest** serwerem MCP; opcjonalnie może **korzystać** z zewnętrznych narzędzi jako klient aplikacyjny.

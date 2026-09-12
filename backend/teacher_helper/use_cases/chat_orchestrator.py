@@ -30,7 +30,7 @@ from teacher_helper.infrastructure.db.llm_usage import (
     record_usage_log,
 )
 from teacher_helper.infrastructure.db.models import FileAssetORM, FileStatus, ProjectORM, UserORM
-from teacher_helper.infrastructure.export import text_to_pdf, text_to_pptx
+from teacher_helper.infrastructure.export import text_to_docx, text_to_pdf, text_to_pptx
 from teacher_helper.infrastructure.lyria_openrouter import OpenRouterLyriaMusicGenerator
 from teacher_helper.infrastructure.music_kie import (
     KIE_STATUSES_WITH_POSSIBLE_AUDIO,
@@ -122,7 +122,7 @@ Masz dostęp do narzędzi (tool calling). Używaj ich zamiast pisania JSON:
 - **prepare_delete_teacher_project** — przygotuj usunięcie projektu (**project_id** UUID albo **project_name**). **Nie usuwa** — wymaga potwierdzenia użytkownika.
 - **search_library_fragments** — wyszukaj w zindeksowanej bibliotece plików użytkownika (semantycznie). W bloku **„Katalogi użytkownika”** masz UUID i nazwy folderów — gdy rozmowa dotyczy tematu zgodnego z nazwą lub opisem katalogu, ogranicz wyszukiwanie przez **project_id** (preferowane) lub **project_name**. Gdy potrzebujesz przeszukać wszystko naraz — **entire_library: true**. Użyj, gdy pytanie dotyczy treści z materiałów w „Moje materiały”, albo gdy użytkownik wspomina temat powiązany z istniejącym folderem.
 - **search_web** — wyszukaj **w internecie** (Tavily). Użyj przy **opracowaniu / pogłębianiu wiedzy**, faktach aktualnych, definicjach, gdy biblioteka nie wystarcza. W jednej turze wywołaj **przed** ``generate_study``. Gdy API nie jest skonfigurowane, krótko poinformuj użytkownika i nie podawaj szczegółowych faktów z pamięci jako rzekomych wyników wyszukiwania.
-- **generate_study** — przygotuj **opracowanie edukacyjne** (markdown) na podany temat i **zapisz** je jako plik w bibliotece. Opieraj treść na bloku wyników ``search_web`` w kontekście; zamieść linki do stron z tych wyników (sekcja na końcu dokumentu). Gdy użytkownik chce materiały w **osobnym folderze**, w tej samej turze użyj **prepare_create_teacher_project** (nazwa np. „Opracowanie: …”) — po **potwierdzeniu** utworzenia folderu w UI pliki z kolejnych generacji trafią tam, jeśli rozmowa ma ustawiony aktywny katalog.
+- **generate_study** — przygotuj **opracowanie edukacyjne, koncepcję lub inny materiał tekstowy** i **zapisz domyślnie jako estetycznie sformatowany DOCX** w bibliotece. Opieraj treść na bloku wyników ``search_web`` w kontekście; zamieść linki do stron z tych wyników (sekcja na końcu dokumentu). Gdy użytkownik chce materiały w **osobnym folderze**, w tej samej turze użyj **prepare_create_teacher_project** (nazwa np. „Opracowanie: …”) — po **potwierdzeniu** utworzenia folderu w UI pliki z kolejnych generacji trafią tam, jeśli rozmowa ma ustawiony aktywny katalog.
 - **export_library_file** — zapisz kopię istniejącego pliku z biblioteki jako PDF, DOCX, TXT lub PPTX (podaj file_id UUID lub pomiń, by użyć ostatniego w tej turze). **Prezentację PPTX** możesz też przekonwertować na **PDF** (zapis w bibliotece) — w PDF widać głównie treść stron, nie „sztywny” układ z PowerPoint.
 - **generate_scenario** — scenariusz przedstawienia.
 - **generate_graphics** — grafika (plakat, ilustracja, scenografia) **wyłącznie przez OpenRouter** — domyślnie **Nano Banana 2**; język napisów na obrazie jak użytkownika (pole ``prompt_image`` w module). W ``.env``: ``OPENROUTER_IMAGE_MODEL``.
@@ -159,6 +159,7 @@ Wskazówki wg kontekstu (wybierz tylko pasujące):
 - **Wiersz** — forma, długość, dokładniejsza tematyka niż jedno hasło.
 - **Ogólne „zrób materiały / zadania / kartkówkę”** — doprecyzuj **co konkretnie** ma powstać w ramach dostępnych narzędzi (scenariusz, prezentacja, grafika, muzyka, wiersz, wideo) albo wyjaśnij krótko ograniczenia, potem dopytaj.
 - **Opracowanie tematu / pogłębienie wiedzy / notatki do lekcji na dany temat** — jeśli prośba jest **jasna** (konkretne hasło lub temat), wywołaj **search_web** (dopasuj zapytanie: PL, kontekst szkolny) oraz **generate_study** z sensownym **material_title**. Gdy brakuje poziomu (klasa, przedmiot, czas), użyj **ask_clarification**.
+- **Koncepcja / tekst / opis / konspekt** — jeśli użytkownik oczekuje gotowego materiału, domyślnie użyj **generate_study**, aby otrzymał estetyczny plik **DOCX**. Nie pytaj o format, chyba że użytkownik wskazał inny; jawne żądanie PDF/TXT respektuj przez późniejszy eksport.
 
 Możesz zaproponować **domyślne wartości w nawiasach**. Jeśli użytkownik pisze wprost: „zrób domyślnie / przyjmij standard / sama wybierz” — wtedy **możesz** od razu użyć ``generate_*`` z rozsądnymi założeniami i **krótko je wymień** w odpowiedzi.
 
@@ -604,7 +605,7 @@ _ALL_TOOL_DEFINITIONS: list[ToolDefinition] = [
     {"type": "function", "function": {
         "name": "generate_study",
         "description": (
-            "Opracowanie edukacyjne (markdown) na podany temat — zapis w bibliotece jako plik tekstowy. "
+            "Opracowanie edukacyjne, koncepcja lub inny materiał tekstowy — domyślny zapis w bibliotece jako estetyczny DOCX. "
             "W tej samej turze wywołaj wcześniej search_web, by w kontekście znalazły się materiały z sieci."
         ),
         "parameters": {"type": "object", "properties": {
@@ -637,7 +638,7 @@ def get_tool_definitions() -> list[ToolDefinition]:
         if name == "generate_study" and not _tavily_enabled():
             d2 = copy.deepcopy(d)
             d2["function"]["description"] = (
-                "Opracowanie edukacyjne (markdown) na podany temat — zapis w bibliotece jako plik tekstowy. "
+                "Opracowanie edukacyjne, koncepcja lub inny materiał tekstowy — domyślny zapis w bibliotece jako estetyczny DOCX. "
                 "Opieraj treść na wiedzy modelu oraz na wynikach **search_library_fragments** w kontekście, jeśli je wcześniej w tej turze pobrałeś. "
                 "Nie wymyślaj fikcyjnych linków do stron internetowych. W tej instancji brak wyszukiwania w sieci (Tavily)."
             )
@@ -1059,7 +1060,7 @@ def _narrow_incremental_generate_intent(user_message: str) -> str | None:
         "video": any(k in t for k in ("wideo", "film", "storyboard", "kadr")),
         "poetry": any(k in t for k in ("wiersz", "poezj", "haiku")),
         "presentation": any(k in t for k in ("prezentac", "slajd", "powerpoint")),
-        "study": any(k in t for k in ("opracow", "pogłęb", "pogleb", "notatki do lekcji")),
+        "study": any(k in t for k in ("opracow", "pogłęb", "pogleb", "notatki do lekcji", "koncepc", "konspekt", "tekst", "opis")),
     }
     true_keys = [k for k, v in mentions.items() if v]
     if len(true_keys) != 1:
@@ -2202,10 +2203,15 @@ class ChatOrchestratorUseCase:
         if mod == "music":
             return await self._handle_music(session, user_id, project_id, content, tool_args)
         body = content if isinstance(content, str) else ""
+        stem = _resolve_file_stem(mod, tool_args)
+        docx = text_to_docx(body, title=stem)
         fid = await self._persist_file(
             session, user_id, project_id, mod,
-            data=body.encode("utf-8"), mime="text/plain; charset=utf-8", ext="txt",
-            extra={"module": mod, "tool_args": tool_args},
+            data=docx,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ext="docx",
+            extra={"module": mod, "tool_args": tool_args, "format": "docx"},
+            index_override=body[:20000],
         )
         return [fid], trunc_note
 

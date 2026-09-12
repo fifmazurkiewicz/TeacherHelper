@@ -10,7 +10,7 @@ Temat, wiek/klasa, liczba uczniów, czas trwania, styl (np. komedia, musical). P
 
 ## Wyjście
 
-Tekst strukturalny + eksport DOCX/PDF/PPTX zgodnie z **modules/export**.
+Tekst strukturalny zapisywany domyślnie jako estetycznie sformatowany DOCX. PDF/TXT/PPTX są dostępne przez eksport zgodnie z **modules/export**.
 
 ## Adapter AI
 

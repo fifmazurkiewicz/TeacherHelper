@@ -69,15 +69,131 @@ def text_to_pdf(text: str, title: str = "") -> bytes:
 
 def text_to_docx(text: str, title: str = "") -> bytes:
     from docx import Document
-    from docx.shared import Pt
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
 
     doc = Document()
+    section = doc.sections[0]
+    section.top_margin = Inches(0.7)
+    section.bottom_margin = Inches(0.7)
+    section.left_margin = Inches(0.85)
+    section.right_margin = Inches(0.85)
+
+    styles = doc.styles
+    normal = styles["Normal"]
+    normal.font.name = "Aptos"
+    normal.font.size = Pt(10.5)
+    normal.font.color.rgb = RGBColor(0x24, 0x2B, 0x38)
+    normal.paragraph_format.space_after = Pt(6)
+    normal.paragraph_format.line_spacing = 1.12
+    for level, size, color in (
+        (1, 22, (0x15, 0x3E, 0x75)),
+        (2, 16, (0x0F, 0x76, 0x6E)),
+        (3, 12, (0x33, 0x41, 0x55)),
+    ):
+        style = styles[f"Heading {level}"]
+        style.font.name = "Aptos Display"
+        style.font.size = Pt(size)
+        style.font.bold = True
+        style.font.color.rgb = RGBColor(*color)
+        style.paragraph_format.space_before = Pt(12 if level > 1 else 0)
+        style.paragraph_format.space_after = Pt(6)
+
+    def add_runs(paragraph, value: str) -> None:
+        """Render a small, predictable Markdown subset without leaking markers."""
+        token_re = re.compile(r"(\*\*[^*]+\*\*|__[^_]+__|(?<!\*)\*[^*]+\*(?!\*)|`[^`]+`)")
+        for part in token_re.split(value):
+            if not part:
+                continue
+            run = paragraph.add_run()
+            if (part.startswith("**") and part.endswith("**")) or (
+                part.startswith("__") and part.endswith("__")
+            ):
+                run.text = part[2:-2]
+                run.bold = True
+            elif part.startswith("*") and part.endswith("*"):
+                run.text = part[1:-1]
+                run.italic = True
+            elif part.startswith("`") and part.endswith("`"):
+                run.text = part[1:-1]
+                run.font.name = "Consolas"
+                run.font.size = Pt(9.5)
+                run.font.color.rgb = RGBColor(0x0F, 0x76, 0x6E)
+            else:
+                run.text = part
+
     if title:
-        doc.add_heading(title, level=1)
-    for para_text in text.split("\n"):
-        p = doc.add_paragraph(para_text)
-        for run in p.runs:
-            run.font.size = Pt(11)
+        p = doc.add_paragraph()
+        p.style = styles["Title"]
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        r = p.add_run(title)
+        r.font.name = "Aptos Display"
+        r.font.size = Pt(26)
+        r.font.bold = True
+        r.font.color.rgb = RGBColor(0x15, 0x3E, 0x75)
+        p.paragraph_format.space_after = Pt(4)
+        accent = doc.add_paragraph()
+        accent.paragraph_format.space_after = Pt(14)
+        accent_run = accent.add_run("━━━━━━━━━━━━━━━━━━━━")
+        accent_run.font.color.rgb = RGBColor(0x14, 0xB8, 0xA6)
+
+    title_key = re.sub(r"\W+", "", title.casefold())
+    first_content = True
+    for raw in text.splitlines():
+        value = raw.strip()
+        if not value:
+            continue
+        heading = re.match(r"^(#{1,3})\s+(.+)$", value)
+        if heading:
+            heading_text = heading.group(2).strip()
+            heading_key = re.sub(r"\W+", "", heading_text.casefold())
+            if first_content and title_key and heading_key == title_key:
+                first_content = False
+                continue
+            p = doc.add_heading(level=len(heading.group(1)))
+            add_runs(p, heading_text)
+        elif value.startswith(("- ", "* ", "• ")):
+            p = doc.add_paragraph(style="List Bullet")
+            add_runs(p, value[2:].strip())
+        elif re.match(r"^\d+[.)]\s+", value):
+            p = doc.add_paragraph(style="List Number")
+            add_runs(p, re.sub(r"^\d+[.)]\s+", "", value))
+        elif value.startswith("> "):
+            p = doc.add_paragraph()
+            p.paragraph_format.left_indent = Inches(0.25)
+            p.paragraph_format.right_indent = Inches(0.15)
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after = Pt(8)
+            add_runs(p, value[2:].strip())
+            for run in p.runs:
+                run.italic = True
+                run.font.color.rgb = RGBColor(0x47, 0x55, 0x69)
+            p_pr = p._p.get_or_add_pPr()
+            borders = OxmlElement("w:pBdr")
+            left = OxmlElement("w:left")
+            left.set(qn("w:val"), "single")
+            left.set(qn("w:sz"), "18")
+            left.set(qn("w:color"), "14B8A6")
+            borders.append(left)
+            p_pr.append(borders)
+        elif re.fullmatch(r"[-*_]{3,}", value):
+            p = doc.add_paragraph("────────────────────────")
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            for run in p.runs:
+                run.font.color.rgb = RGBColor(0xCB, 0xD5, 0xE1)
+        else:
+            p = doc.add_paragraph()
+            add_runs(p, value)
+        first_content = False
+
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run = footer.add_run("TeacherHelper")
+    run.font.name = "Aptos"
+    run.font.size = Pt(8)
+    run.font.color.rgb = RGBColor(0x94, 0xA3, 0xB8)
 
     buf = io.BytesIO()
     doc.save(buf)

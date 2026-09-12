@@ -6,7 +6,7 @@ Wiersze do recytacji: temat, forma, długość, nastrój, podział na głosy.
 
 ## Formaty
 
-PDF (układ ozdobny), DOCX, TXT.
+Domyślnie estetycznie sformatowany DOCX. PDF i TXT są dostępne przez eksport na wyraźną prośbę użytkownika.
 
 ## Adapter
 
