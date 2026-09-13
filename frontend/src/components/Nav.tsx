@@ -7,7 +7,6 @@ const links = [
   { to: "/assistant", label: "Asystent" },
   { to: "/materials", label: "Moje materiały" },
   { to: "/profile", label: "Profil" },
-  { to: "/privacy", label: "Prywatność" },
 ];
 
 const adminLinks = [
