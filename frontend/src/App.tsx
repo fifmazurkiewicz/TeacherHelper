@@ -7,12 +7,14 @@ import MaterialsPage from "./pages/MaterialsPage";
 import ProfilePage from "./pages/ProfilePage";
 import AdminMonitoringPage from "./pages/AdminMonitoringPage";
 import AdminUsersPage from "./pages/AdminUsersPage";
+import PrivacyPage from "./pages/PrivacyPage";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
       <Route element={<ProtectedLayout />}>
         <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/materials" element={<MaterialsPage />} />

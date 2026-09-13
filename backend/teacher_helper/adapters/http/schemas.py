@@ -29,8 +29,20 @@ class UserResponse(BaseModel):
     display_name: str | None
     role: str
     is_approved: bool = False
+    ai_disclosure_version: str | None = None
+    ai_disclosure_acknowledged_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class AiDisclosureResponse(BaseModel):
+    current_version: str
+    acknowledged: bool
+    acknowledged_at: datetime | None = None
+
+
+class AccountDeleteRequest(BaseModel):
+    confirmation: str = Field(min_length=1, max_length=100)
 
 
 class ProjectCreate(BaseModel):

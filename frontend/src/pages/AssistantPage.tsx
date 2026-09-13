@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   api,
+  acknowledgeAiDisclosure,
   ApiConflictError,
   createConversation,
   createProjectConfirmed,
@@ -10,6 +11,7 @@ import {
   downloadFileBlob,
   ensureConversationFolder,
   getConversationActiveJob,
+  getAiDisclosure,
   listConversationMessages,
   listConversations,
   patchConversation,
@@ -438,6 +440,8 @@ export default function AssistantPage() {
   const [sidebarWidth, setSidebarWidth] = useState(readInitialSidebarWidth);
   const [historyCollapsed, setHistoryCollapsed] = useState(readInitialHistoryCollapsed);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [aiDisclosureOpen, setAiDisclosureOpen] = useState(false);
+  const [aiDisclosureBusy, setAiDisclosureBusy] = useState(false);
   const sidebarResizeRef = useRef<{
     pointerId: number;
     startX: number;
@@ -493,6 +497,24 @@ export default function AssistantPage() {
       .then((m: { role: string }) => setIsAdmin(m.role === "admin"))
       .catch(() => setIsAdmin(false));
   }, []);
+
+  useEffect(() => {
+    getAiDisclosure()
+      .then((status) => setAiDisclosureOpen(!status.acknowledged))
+      .catch(() => setError("Nie udało się sprawdzić informacji o AI"));
+  }, []);
+
+  async function acceptAiDisclosure() {
+    setAiDisclosureBusy(true);
+    try {
+      await acknowledgeAiDisclosure();
+      setAiDisclosureOpen(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Nie udało się zapisać potwierdzenia");
+    } finally {
+      setAiDisclosureBusy(false);
+    }
+  }
 
   useEffect(() => {
     loadConversations().catch(() => setError("Nie udało się wczytać rozmów"));
@@ -1006,6 +1028,27 @@ export default function AssistantPage() {
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden text-[0.94rem] sm:text-base">
+      {aiDisclosureOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/65 p-4" role="dialog" aria-modal="true" aria-labelledby="ai-disclosure-title">
+          <div className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 dark:bg-ink-900">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent">Informacja o AI</p>
+              <h2 id="ai-disclosure-title" className="mt-1 text-xl font-semibold">Zanim zaczniesz korzystać z asystenta</h2>
+            </div>
+            <div className="space-y-2 text-sm leading-relaxed text-ink-700 dark:text-paper-300">
+              <p>Rozmawiasz z systemem generatywnej AI. Twoje polecenie, potrzebny kontekst rozmowy i trafne fragmenty wybranych materiałów mogą zostać przesłane do zewnętrznego dostawcy modelu.</p>
+              <p>Nie wpisuj prawdziwych nazwisk uczniów, ocen, danych kontaktowych, informacji o niepełnosprawności, zachowaniu ani poufnych danych. Używaj oznaczeń takich jak „Uczeń A”.</p>
+              <p>Odpowiedzi mogą być błędne, stronnicze lub nieodpowiednie dla wieku. Nauczyciel musi sprawdzić materiał przed użyciem i nie może opierać istotnych decyzji o uczniu wyłącznie na wyniku AI.</p>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-ink-800/10 pt-4 dark:border-paper-100/10">
+              <Link to="/privacy" className="text-sm text-accent underline">Przeczytaj Politykę prywatności</Link>
+              <button type="button" disabled={aiDisclosureBusy} onClick={() => void acceptAiDisclosure()} className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-50">
+                {aiDisclosureBusy ? "Zapisywanie…" : "Rozumiem, przejdź do asystenta"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <header className="flex min-h-11 shrink-0 items-center justify-between gap-1.5 border-b border-ink-800/15 px-2 py-1 sm:px-3 sm:min-h-12 sm:gap-2 sm:py-0 dark:border-paper-100/10">
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           {historyCollapsed && (
@@ -1101,6 +1144,14 @@ export default function AssistantPage() {
                     className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
                   >
                     Profil
+                  </Link>
+                  <Link
+                    role="menuitem"
+                    to="/privacy"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
+                  >
+                    Prywatność
                   </Link>
                   {isAdmin && (
                     <>
@@ -1287,7 +1338,7 @@ export default function AssistantPage() {
                   }`}
                 >
                   <span className="text-[0.65rem] font-semibold uppercase tracking-wide text-ink-500 sm:text-xs dark:text-paper-500">
-                    {msg.role === "user" ? "Ty" : "Asystent"}
+                    {msg.role === "user" ? "Ty" : "Asystent · Wygenerowane przez AI"}
                   </span>
                   <pre className="mt-1 min-w-0 whitespace-pre-wrap break-words font-sans">{msg.text}</pre>
                   {msg.role === "user" && att && att.length > 0 && (
@@ -1627,9 +1678,8 @@ export default function AssistantPage() {
                 </button>
               </div>
               <p className="mx-auto mt-2 max-w-3xl text-center text-[0.65rem] leading-snug text-ink-500 dark:text-paper-500">
-                Wywołania modelów AI są rejestrowane w aplikacji (limity kosztu, jakość, wsparcie). Gdy administrator
-                włączy Langfuse, techniczne logi wywołań z tej rozmowy mogą być też wysyłane do zewnętrznego
-                narzędzia observability (bez sprzedaży danych do reklamodawców).
+                Rozmawiasz z AI. Nie wpisuj danych identyfikujących uczniów ani informacji poufnych — używaj np. „Uczeń A”.
+                Wyniki mogą zawierać błędy i wymagają sprawdzenia przez nauczyciela. <Link to="/privacy" className="text-accent underline">Prywatność i dostawcy</Link>.
               </p>
             </div>
           </div>

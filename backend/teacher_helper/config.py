@@ -80,6 +80,12 @@ class Settings(BaseSettings):
     storage_backend: Literal["local", "supabase"] = "local"
     storage_root: Path = Path("data/storage")
 
+    # --- Retencja danych operacyjnych (treści użytkownika pozostają do ręcznego usunięcia/konta) ---
+    retention_cleanup_interval_hours: int = Field(default=24, ge=1, le=168)
+    generation_job_retention_days: int = Field(default=90, ge=1)
+    llm_usage_retention_days: int = Field(default=730, ge=30)
+    system_incident_retention_days: int = Field(default=365, ge=30)
+
     # --- xAI (Grok) — transkrypcja mowy STT w Asystencie (POST /v1/voice/transcribe → api.x.ai/v1/stt) ---
     xai_api_key: str | None = None
     xai_base_url: str = "https://api.x.ai/v1"

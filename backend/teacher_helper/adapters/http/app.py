@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import traceback
 from contextlib import asynccontextmanager
@@ -19,6 +20,7 @@ from teacher_helper.adapters.http.routes_intent import router as intent_router
 from teacher_helper.adapters.http.routes_jobs import router as jobs_router
 from teacher_helper.adapters.http.routes_kie import router as kie_webhook_router
 from teacher_helper.adapters.http.routes_music_kie import router as music_kie_router
+from teacher_helper.adapters.http.routes_privacy import router as privacy_router
 from teacher_helper.adapters.http.routes_projects import router as projects_router
 from teacher_helper.adapters.http.routes_sound import router as sound_router
 from teacher_helper.adapters.http.routes_topics import router as topics_router
@@ -26,6 +28,7 @@ from teacher_helper.adapters.http.routes_voice import router as voice_router
 from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.db.session import async_session_factory
 from teacher_helper.infrastructure.jobs import reap_stale_running_jobs
+from teacher_helper.infrastructure.retention import enforce_operational_retention
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +49,24 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    stop_retention = asyncio.Event()
+
+    async def retention_loop() -> None:
+        interval = get_settings().retention_cleanup_interval_hours * 3600
+        while not stop_retention.is_set():
+            try:
+                async with async_session_factory() as session:
+                    removed = await enforce_operational_retention(session)
+                    await session.commit()
+                    if any(removed.values()):
+                        logger.info("Retention cleanup removed %s", removed)
+            except Exception:
+                logger.exception("Retention cleanup failed")
+            try:
+                await asyncio.wait_for(stop_retention.wait(), timeout=interval)
+            except TimeoutError:
+                pass
+
     try:
         async with async_session_factory() as session:
             n = await reap_stale_running_jobs(session)
@@ -54,7 +75,12 @@ async def _lifespan(_app: FastAPI):
                 logger.info("Startup reaper marked %s stale running job(s) as error", n)
     except Exception:
         logger.exception("Startup job reaper failed")
-    yield
+    retention_task = asyncio.create_task(retention_loop())
+    try:
+        yield
+    finally:
+        stop_retention.set()
+        await retention_task
 
 
 def create_app() -> FastAPI:
@@ -96,6 +122,7 @@ def create_app() -> FastAPI:
     app.include_router(auth_router)
     app.include_router(conversations_router)
     app.include_router(projects_router)
+    app.include_router(privacy_router)
     app.include_router(topics_router)
     app.include_router(files_router)
     app.include_router(chat_router)

@@ -148,6 +148,10 @@ export default function RegisterPage() {
           </>
         )}
       </form>
+      <p className="mt-3 text-center text-xs leading-relaxed text-ink-500 dark:text-paper-400">
+        Tworząc konto, przekazujesz adres e-mail i dane konta potrzebne do działania usługi. Zobacz{" "}
+        <Link to="/privacy" className="text-accent underline">Politykę prywatności</Link>.
+      </p>
       <p className="mt-4 text-center text-sm text-ink-600 dark:text-paper-400">
         Masz konto?{" "}
         <Link to="/login" className="text-accent hover:underline">

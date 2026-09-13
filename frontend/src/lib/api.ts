@@ -73,6 +73,14 @@ export type AuthMe = {
   display_name: string | null;
   role: string;
   is_approved: boolean;
+  ai_disclosure_version: string | null;
+  ai_disclosure_acknowledged_at: string | null;
+};
+
+export type AiDisclosureStatus = {
+  current_version: string;
+  acknowledged: boolean;
+  acknowledged_at: string | null;
 };
 
 function pendingFromResponse(res: Response, bodyText: string): AccountPendingApprovalError | null {
@@ -316,6 +324,37 @@ async function blobResult(res: Response): Promise<{ blob: Blob; filename: string
   if (!res.ok) throw new Error(await errorText(res));
   const name = parseContentDispositionFilename(res.headers.get("Content-Disposition")) ?? "download";
   return { blob: await res.blob(), filename: name };
+}
+
+export async function downloadMyData(): Promise<{ blob: Blob; filename: string }> {
+  const res = await authFetch("/v1/privacy/export", { method: "GET" });
+  return blobResult(res);
+}
+
+export async function deleteMyAccount(confirmation: string): Promise<void> {
+  await api<undefined>("/v1/privacy/account", { method: "DELETE", json: { confirmation } });
+}
+
+export async function deleteAllConversations(): Promise<void> {
+  await api<undefined>("/v1/privacy/conversations", {
+    method: "DELETE",
+    json: { confirmation: "USUŃ ROZMOWY" },
+  });
+}
+
+export async function deleteAllMaterials(): Promise<void> {
+  await api<undefined>("/v1/privacy/materials", {
+    method: "DELETE",
+    json: { confirmation: "USUŃ MATERIAŁY" },
+  });
+}
+
+export async function getAiDisclosure(): Promise<AiDisclosureStatus> {
+  return api<AiDisclosureStatus>("/v1/privacy/ai-disclosure");
+}
+
+export async function acknowledgeAiDisclosure(): Promise<AiDisclosureStatus> {
+  return api<AiDisclosureStatus>("/v1/privacy/ai-disclosure", { method: "POST" });
 }
 
 export async function downloadFileBlob(fileId: string, opts?: { signal?: AbortSignal }): Promise<{

@@ -123,6 +123,9 @@ export default function LoginPage() {
           </>
         )}
       </form>
+      <p className="mt-3 text-center text-xs text-ink-500 dark:text-paper-400">
+        <Link to="/privacy" className="text-accent underline">Polityka prywatności</Link>
+      </p>
       <p className="mt-4 text-center text-sm text-ink-600 dark:text-paper-400">
         Nie masz konta?{" "}
         <Link to="/register" className="text-accent hover:underline">

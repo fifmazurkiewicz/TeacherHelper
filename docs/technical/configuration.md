@@ -17,6 +17,10 @@ Plik `.env` backendu wczytywany jest z **korzenia repozytorium** (nie z `backend
 | `SUPABASE_SERVICE_ROLE_KEY` | Klucz service role (tylko backend, Storage) |
 | `SUPABASE_STORAGE_BUCKET` | Nazwa bucketu Storage |
 | `STORAGE_BACKEND` | `local` (dev) lub `supabase` (prod) |
+| `RETENTION_CLEANUP_INTERVAL_HOURS` | Co ile godzin backend usuwa przeterminowane dane operacyjne; domyślnie `24` |
+| `GENERATION_JOB_RETENTION_DAYS` | Zakończone zadania generacji; domyślnie `90` dni |
+| `LLM_USAGE_RETENTION_DAYS` | Logi rozliczeń modeli; domyślnie `730` dni |
+| `SYSTEM_INCIDENT_RETENTION_DAYS` | Incydenty operacyjne; domyślnie `365` dni |
 | `VIDEO_GENERATION_ENABLED` | `true` / `false` — flaga Veo |
 | `SKIP_ADMIN_SEED` | `1` na produkcji — pomija seed admina |
 | `ADMIN_EMAILS` | Puste = bez auto-przypisania; np. `fifmazurkiewicz@gmail.com` — tylko te e-maile są adminem (Supabase Auth) |

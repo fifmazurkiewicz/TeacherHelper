@@ -1252,7 +1252,14 @@ export default function MaterialsPage() {
                           onMaterialsAudioClick={onMaterialsAudioClick}
                         />
                         <div className="min-w-0">
-                          <p className="truncate font-medium text-ink-900 dark:text-paper-50">{f.name}</p>
+                          <p className="flex min-w-0 flex-wrap items-center gap-2 font-medium text-ink-900 dark:text-paper-50">
+                            <span className="truncate">{f.name}</span>
+                            {f.category !== "other" && (
+                              <span className="shrink-0 rounded-full bg-accent/10 px-2 py-0.5 text-[0.65rem] font-semibold uppercase tracking-wide text-accent">
+                                Wygenerowane przez AI
+                              </span>
+                            )}
+                          </p>
                           <p className="mt-0.5 text-xs text-ink-500 dark:text-paper-500">
                             <span className="rounded-md bg-ink-800/5 px-1.5 py-0.5 dark:bg-paper-100/10">{cat}</span>
                             <span className="mx-1.5">·</span>
