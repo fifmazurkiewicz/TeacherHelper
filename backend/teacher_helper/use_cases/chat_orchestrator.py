@@ -2303,11 +2303,28 @@ class ChatOrchestratorUseCase:
         slide_imgs: dict[int, bytes] = {}
         if spec is not None:
             s_pres = get_settings()
+            image_cap = int(s_pres.presentation_max_embedded_images)
+            planned_image_count = min(
+                image_cap,
+                sum(
+                    1
+                    for slide in spec.get("slides") or []
+                    if isinstance(slide, dict)
+                    and slide.get("include_image")
+                    and (slide.get("image_hint") or "").strip()
+                ),
+            )
             if int(s_pres.presentation_max_embedded_images) > 0 and self._image_gen is not None:
                 try:
                     slide_imgs = await self._embed_presentation_images(session, spec, user_id)
                 except Exception as exc:
                     logger.warning("PPTX osadzanie grafik: %s", str(exc)[:400])
+            if len(slide_imgs) < planned_image_count:
+                image_note = (
+                    f"Nie udało się wygenerować wszystkich ilustracji ({len(slide_imgs)}/{planned_image_count}). "
+                    "Prezentacja używa w tych miejscach pełnego układu tekstowego bez opisów technicznych."
+                )
+                trunc_note = f"{trunc_note}\n\n{image_note}" if trunc_note else image_note
             try:
                 pptx_b = spec_to_pptx_bytes(spec, slide_images=slide_imgs)
             except Exception as exc:

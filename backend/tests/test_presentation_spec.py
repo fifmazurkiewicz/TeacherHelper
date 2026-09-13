@@ -16,7 +16,6 @@ from teacher_helper.infrastructure.presentation_spec import (
     spec_to_pptx_bytes,
 )
 
-
 _PNG_1X1 = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 )
@@ -97,6 +96,55 @@ def test_embedded_image_stays_inside_content_box() -> None:
     assert picture.top >= Inches(1.25)
     assert picture.left + picture.width <= Inches(12.75)
     assert picture.top + picture.height <= Inches(6.6)
+
+
+def test_missing_image_uses_clean_full_width_text_fallback() -> None:
+    spec = normalize_presentation_spec(
+        {
+            "title": "Sportowcy",
+            "description": "",
+            "slides": [
+                {
+                    "title": "Robert Lewandowski",
+                    "bullets": ["Gra w piłkę nożną", "Jest kapitanem reprezentacji"],
+                    "include_image": True,
+                    "image_hint": "Postać piłkarza w biało-czerwonym stroju",
+                    "layout": "image_right",
+                }
+            ],
+        }
+    )
+    assert spec is not None
+    prs = Presentation(io.BytesIO(spec_to_pptx_bytes(spec)))
+    slide = prs.slides[1]
+    all_text = "\n".join(shape.text for shape in slide.shapes if shape.has_text_frame)
+
+    assert "Propozycja grafiki" not in all_text
+    assert "Postać piłkarza" not in all_text
+    assert not any(shape.shape_type == MSO_SHAPE_TYPE.PICTURE for shape in slide.shapes)
+
+
+def test_exercise_layout_keeps_title_above_questions() -> None:
+    spec = normalize_presentation_spec(
+        {
+            "title": "Sportowcy",
+            "description": "",
+            "slides": [
+                {
+                    "title": "Quiz małego kibica",
+                    "bullets": ["Kto gra w piłkę?", "Kto skacze na nartach?"],
+                    "layout": "exercise",
+                }
+            ],
+        }
+    )
+    assert spec is not None
+    prs = Presentation(io.BytesIO(spec_to_pptx_bytes(spec)))
+    slide = prs.slides[1]
+    title = slide.shapes.title
+    body = next(shape for shape in slide.placeholders if shape != title and shape.has_text_frame)
+
+    assert title.top < body.top
 
 
 def test_comparison_layout_uses_two_content_columns() -> None:

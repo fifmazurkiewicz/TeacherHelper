@@ -490,7 +490,7 @@ def spec_to_pptx_bytes(
 ) -> bytes:
     """
     `slide_images`: indeks (0 = pierwszy slajd merytoryczny) → bajty PNG/JPEG
-    do osadzenia po prawej; brak wpisu = sam tekst (ew. wiersz „[Propozycja grafiki: …]”).
+    do osadzenia po prawej; brak wpisu = pełny układ tekstowy bez technicznych opisów grafiki.
     """
     from pptx import Presentation
     from pptx.util import Inches, Pt
@@ -523,18 +523,10 @@ def spec_to_pptx_bytes(
         bullets = s.get("bullets") or []
         body_lines: list[str] = list(bullets) if isinstance(bullets, list) else []
         embed_bytes: bytes | None = sim.get(slide_idx) or None
-        if s.get("include_image") and not embed_bytes:
-            hint = (s.get("image_hint") or "").strip()
-            if hint:
-                body_lines.append("")
-                body_lines.append(f"[Propozycja grafiki: {hint}]")
-            else:
-                body_lines.append("")
-                body_lines.append("(Miejsce na grafikę — uzupełnij w PowerPoint, jeśli potrzeba.)")
         layout_name = str(s.get("layout") or ("image_right" if embed_bytes else "text"))
+        if not embed_bytes and layout_name in {"image_right", "image_full"}:
+            layout_name = "text"
         layout_index = 3 if layout_name == "comparison" and len(prs.slide_layouts) > 3 else 1
-        if layout_name in {"exercise", "summary"} and len(prs.slide_layouts) > 2:
-            layout_index = 2
         if layout_name == "image_full" and embed_bytes and len(prs.slide_layouts) > 5:
             layout_index = 5
         slide = prs.slides.add_slide(prs.slide_layouts[layout_index])
