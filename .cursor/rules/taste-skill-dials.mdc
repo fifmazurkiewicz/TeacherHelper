@@ -1,0 +1,8 @@
+---
+description: Shared product UI dials
+alwaysApply: true
+---
+
+# Product UI dials
+
+Use a calm, accessible product baseline: **VARIANCE 3**, **MOTION 2**, **DENSITY 6**. Preserve existing tokens, respect `prefers-reduced-motion`, and reserve landing-page visual language for marketing surfaces.

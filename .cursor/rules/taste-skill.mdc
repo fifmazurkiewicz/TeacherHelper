@@ -1,0 +1,8 @@
+---
+description: Shared visual-design workflow
+alwaysApply: true
+---
+
+# Visual design
+
+For UI, layout, CSS, motion, or redesign work: use `design-taste-frontend` when it is available and read its `SKILL.md` first. If it is unavailable, say so and follow this repository's `design-system.mdc` and existing design tokens. Do not introduce a second competing visual-design system.

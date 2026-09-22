@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Use `diagram-design` for architecture, data flow, API, deployment, or complex user-flow changes when a visual aids understanding. Save reviewable artifacts under `docs/diagrams/` unless product docs specify another location. In the final handoff say the diagram is ready for user review and link it.

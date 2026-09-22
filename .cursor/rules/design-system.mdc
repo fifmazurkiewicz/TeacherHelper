@@ -1,0 +1,8 @@
+---
+description: Shared product UI and accessibility baseline
+alwaysApply: true
+---
+
+# Design system
+
+Preserve existing components, tokens, and product conventions. Build responsive interfaces with semantic HTML, keyboard access, visible focus, 44px touch targets where relevant, clear loading/error/disabled states, and `prefers-reduced-motion`. Do not replace the established styling stack without approval.

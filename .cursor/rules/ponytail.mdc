@@ -1,0 +1,5 @@
+---
+alwaysApply: true
+---
+
+Before a meaningful handoff, use the Ponytail ladder: need, existing capability, standard library, native feature, installed dependency, simplest code. Run `@ponytail-review` if available. Never reduce security, privacy, accessibility, validation, error handling, or tests for brevity.

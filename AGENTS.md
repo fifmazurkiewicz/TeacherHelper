@@ -1,5 +1,7 @@
 # TeacherHelper — agent guide
 
+> Cross-agent baseline: follow [`AGENT_STANDARD.md`](AGENT_STANDARD.md) for Codex, Cursor, and Claude Code.
+
 ## Stack
 
 | Layer | Platform |

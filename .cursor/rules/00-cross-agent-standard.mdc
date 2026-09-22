@@ -1,0 +1,6 @@
+---
+description: Shared Codex, Cursor, and Claude Code operating baseline
+alwaysApply: true
+---
+
+Read and follow `AGENT_STANDARD.md` before acting. It is the shared baseline; repository-specific Cursor rules and `AGENTS.md` add product context and take precedence where more specific.
