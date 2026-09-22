@@ -77,6 +77,12 @@ export type AuthMe = {
   ai_disclosure_acknowledged_at: string | null;
 };
 
+export type MonthlyLlmUsage = {
+  llm_cost_month_usd: number;
+  effective_llm_monthly_cost_limit_usd: number | null;
+  llm_monthly_limit_reached: boolean;
+};
+
 export type AiDisclosureStatus = {
   current_version: string;
   acknowledged: boolean;

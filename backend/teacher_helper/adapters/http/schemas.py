@@ -35,6 +35,14 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MonthlyLlmUsageResponse(BaseModel):
+    """Bieżące wykorzystanie miesięcznego limitu AI dla zalogowanego użytkownika."""
+
+    llm_cost_month_usd: float
+    effective_llm_monthly_cost_limit_usd: float | None
+    llm_monthly_limit_reached: bool
+
+
 class AiDisclosureResponse(BaseModel):
     current_version: str
     acknowledged: bool

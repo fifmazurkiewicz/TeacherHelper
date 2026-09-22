@@ -3,8 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 
 from teacher_helper.adapters.http.deps import CurrentUser, DbSession, initial_is_approved_for_email
-from teacher_helper.adapters.http.schemas import UserResponse
+from teacher_helper.adapters.http.schemas import MonthlyLlmUsageResponse, UserResponse
 from teacher_helper.config import get_settings
+from teacher_helper.infrastructure.usage_limits import (
+    effective_user_llm_monthly_cost_limit_usd,
+    sum_llm_cost_usd_month_for_user,
+)
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
@@ -13,6 +17,19 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 async def me(session: DbSession, user: CurrentUser) -> UserResponse:
     await session.refresh(user)
     return UserResponse.model_validate(user)
+
+
+@router.get("/usage", response_model=MonthlyLlmUsageResponse)
+async def monthly_usage(session: DbSession, user: CurrentUser) -> MonthlyLlmUsageResponse:
+    """Zwraca koszt AI od początku bieżącego miesiąca UTC i limit konta."""
+    await session.refresh(user)
+    cost_month_usd = await sum_llm_cost_usd_month_for_user(session, user.id)
+    limit_usd = effective_user_llm_monthly_cost_limit_usd(user)
+    return MonthlyLlmUsageResponse(
+        llm_cost_month_usd=cost_month_usd,
+        effective_llm_monthly_cost_limit_usd=limit_usd,
+        llm_monthly_limit_reached=limit_usd is not None and cost_month_usd >= limit_usd,
+    )
 
 
 def _legacy_auth_enabled() -> bool:

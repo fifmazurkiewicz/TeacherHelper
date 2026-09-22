@@ -7,12 +7,14 @@ import {
   downloadMyData,
   setToken,
   type AuthMe,
+  type MonthlyLlmUsage,
 } from "@/lib/api";
 import { useNavigate } from "react-router-dom";
 
 export default function ProfilePage() {
   const navigate = useNavigate();
   const [me, setMe] = useState<AuthMe | null>(null);
+  const [usage, setUsage] = useState<MonthlyLlmUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [privacyBusy, setPrivacyBusy] = useState<"export" | "conversations" | "materials" | "delete" | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -68,7 +70,19 @@ export default function ProfilePage() {
     api<AuthMe>("/v1/auth/me")
       .then(setMe)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Błąd"));
+    api<MonthlyLlmUsage>("/v1/auth/usage")
+      .then(setUsage)
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : "Nie udało się pobrać wykorzystania limitu"));
   }, []);
+
+  function formatUsd(value: number): string {
+    return new Intl.NumberFormat("pl-PL", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    }).format(value);
+  }
 
   return (
     <div className="space-y-4">
@@ -98,6 +112,26 @@ export default function ProfilePage() {
             <dd className="break-all font-mono text-xs">{me.id}</dd>
           </div>
         </dl>
+      )}
+      {usage && (
+        <aside
+          className={`max-w-md rounded-xl border p-4 ${usage.llm_monthly_limit_reached ? "border-red-500/40 bg-red-500/5" : "border-accent/25 bg-accent/5"}`}
+          aria-label="Miesięczny limit AI"
+        >
+          <h2 className="font-semibold text-ink-900 dark:text-paper-100">Miesięczny limit AI</h2>
+          <p className="mt-1 text-sm text-ink-600 dark:text-paper-400">Bieżący miesiąc (UTC)</p>
+          <p className="mt-2 text-lg font-semibold text-ink-900 dark:text-paper-100">
+            {formatUsd(usage.llm_cost_month_usd)}
+            <span className="font-normal text-ink-500 dark:text-paper-400">
+              {usage.effective_llm_monthly_cost_limit_usd === null
+                ? " wydano · bez limitu"
+                : ` z limitu ${formatUsd(usage.effective_llm_monthly_cost_limit_usd)}`}
+            </span>
+          </p>
+          {usage.llm_monthly_limit_reached && (
+            <p className="mt-2 text-sm font-medium text-red-700 dark:text-red-400">Osiągnięto miesięczny limit.</p>
+          )}
+        </aside>
       )}
       <p className="max-w-xl text-sm text-ink-600 dark:text-paper-400">
         Administrator może zmieniać role innych użytkowników w zakładce{" "}
