@@ -1052,7 +1052,7 @@ export default function AssistantPage() {
           </div>
         </div>
       )}
-      <header className="flex min-h-11 shrink-0 items-center justify-between gap-1.5 border-b border-ink-800/15 px-2 py-1 sm:px-3 sm:min-h-12 sm:gap-2 sm:py-0 dark:border-paper-100/10">
+      <header className="flex min-h-11 shrink-0 items-center gap-1.5 border-b border-ink-800/15 px-2 py-1 sm:px-3 sm:min-h-12 sm:gap-2 sm:py-0 dark:border-paper-100/10">
         <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
           {historyCollapsed && (
             <button
