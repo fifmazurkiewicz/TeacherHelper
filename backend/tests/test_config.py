@@ -55,6 +55,15 @@ def test_web_search_is_disabled_by_default() -> None:
     assert Settings.model_fields["web_search_enabled"].default is False
 
 
+def test_cors_preflight_cache_lasts_one_day() -> None:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    from teacher_helper.adapters.http import create_app
+
+    cors = next(middleware for middleware in create_app().user_middleware if middleware.cls is CORSMiddleware)
+    assert cors.kwargs["max_age"] == 86_400
+
+
 def test_settings_normalize_supabase_sync_url(monkeypatch) -> None:
     monkeypatch.setenv(
         "DATABASE_URL_SYNC",

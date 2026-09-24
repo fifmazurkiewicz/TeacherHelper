@@ -593,7 +593,8 @@ export default function AssistantPage() {
       setConversationId(c.id);
       setMessages([]);
       setChatAttachments([]);
-      await loadConversations();
+      setConversations((current) => [c, ...current.filter((conversation) => conversation.id !== c.id)]);
+      void loadConversations().catch(() => setError("Nie udało się odświeżyć rozmów"));
     } catch {
       setError("Nie udało się utworzyć rozmowy (POST /v1/conversations)");
       setConversationId(null);
@@ -1029,8 +1030,8 @@ export default function AssistantPage() {
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden text-[0.94rem] sm:text-base">
       {aiDisclosureOpen && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-ink-950/65 p-4" role="dialog" aria-modal="true" aria-labelledby="ai-disclosure-title">
-          <div className="w-full max-w-lg space-y-4 rounded-xl bg-white p-5 dark:bg-ink-900">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-ink-950/65 p-4" role="dialog" aria-modal="true" aria-labelledby="ai-disclosure-title">
+          <div className="my-auto max-h-[calc(100dvh-2rem)] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl bg-white p-5 dark:bg-ink-900">
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-accent">Informacja o AI</p>
               <h2 id="ai-disclosure-title" className="mt-1 text-xl font-semibold">Zanim zaczniesz korzystać z asystenta</h2>
