@@ -2,12 +2,29 @@ from __future__ import annotations
 
 from teacher_helper.use_cases.chat_orchestrator import (
     clarification_blocks_paid_tools,
+    extract_text_module_content,
     get_tool_definitions,
     history_confirms_music,
     is_paid_budget_module,
     music_generation_needs_confirm,
     polish_monthly_limit_skip_message,
 )
+
+
+def test_extract_text_module_content_uses_content_from_fenced_json() -> None:
+    raw = '''```json
+{
+  "material_title": "Scenariusz przedstawienia o kocie piłkarzu",
+  "project_id": "dfa10b75-3a7c-4572-9164-f3182d19daee",
+  "content": "# KOT NA MEDAL\\n\\n## SCENA 1"
+}
+```'''
+
+    assert extract_text_module_content(raw) == "# KOT NA MEDAL\n\n## SCENA 1"
+
+
+def test_extract_text_module_content_keeps_plain_text() -> None:
+    assert extract_text_module_content("Zwykła treść scenariusza") == "Zwykła treść scenariusza"
 
 
 def test_clarification_blocks_paid_when_ask_and_generate() -> None:

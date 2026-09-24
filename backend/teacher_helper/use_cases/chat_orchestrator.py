@@ -2202,7 +2202,7 @@ class ChatOrchestratorUseCase:
             return [await self._handle_video(session, user_id, project_id, content, tool_args)], None
         if mod == "music":
             return await self._handle_music(session, user_id, project_id, content, tool_args)
-        body = content if isinstance(content, str) else ""
+        body = extract_text_module_content(content) if isinstance(content, str) else ""
         stem = _resolve_file_stem(mod, tool_args)
         docx = text_to_docx(body, title=stem)
         fid = await self._persist_file(
@@ -3156,6 +3156,20 @@ class ChatOrchestratorUseCase:
 # ---------------------------------------------------------------------------
 # Helpery
 # ---------------------------------------------------------------------------
+
+def extract_text_module_content(raw: str) -> str:
+    """Unwrap the content field when a text module responds with JSON."""
+    try:
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[-1].rsplit("```", 1)[0]
+        data = json.loads(text)
+        if isinstance(data, dict) and isinstance(data.get("content"), str):
+            return data["content"]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return raw
+
 
 def _parse_music_json(raw: str) -> dict[str, Any]:
     """Odpowiedź modułu muzyka: JSON ze stylami, samymi słowami piosenki i materiałem dla nauczyciela."""
