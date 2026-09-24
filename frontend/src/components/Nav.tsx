@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { api, setToken } from "@/lib/api";
+import { api, setToken, type MonthlyLlmUsage } from "@/lib/api";
 import { ThemeToggle } from "./ThemeToggle";
 
 const links = [
@@ -18,11 +18,13 @@ export function Nav() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [usage, setUsage] = useState<MonthlyLlmUsage | null>(null);
 
   useEffect(() => {
     api<{ role: string }>("/v1/auth/me")
       .then((m: { role: string }) => setIsAdmin(m.role === "admin"))
       .catch(() => setIsAdmin(false));
+    api<MonthlyLlmUsage>("/v1/auth/usage").then(setUsage).catch(() => setUsage(null));
   }, []);
 
   function logout() {
@@ -30,16 +32,21 @@ export function Nav() {
   }
 
   const isAdminSection = pathname.startsWith("/admin");
+  const usageLabel = usage
+    ? usage.effective_llm_monthly_cost_limit_usd === null
+      ? `$${usage.llm_cost_month_usd.toFixed(2)} wydano`
+      : `$${usage.llm_cost_month_usd.toFixed(2)} / $${usage.effective_llm_monthly_cost_limit_usd.toFixed(2)}`
+    : null;
 
   return (
     <header className="border-b border-ink-800/20 bg-white/80 backdrop-blur dark:bg-ink-900/80 dark:border-paper-100/10">
       <div
-        className={`mx-auto flex w-full items-center justify-between gap-2 px-3 py-2.5 sm:gap-4 sm:px-4 sm:py-3 ${
+        className={`mx-auto flex w-full items-center gap-2 px-3 py-2.5 sm:gap-4 sm:px-4 sm:py-3 ${
           isAdminSection ? "max-w-7xl" : "max-w-5xl"
         }`}
       >
         <span className="shrink-0 text-sm font-semibold text-accent sm:text-base">Teacher Helper</span>
-        <nav className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-0.5 sm:gap-1">
+        <nav className="flex min-w-0 flex-1 flex-wrap items-center gap-0.5 sm:gap-1">
           {links.map(({ to, label }) => (
             <Link
               key={to}
@@ -78,6 +85,19 @@ export function Nav() {
             Wyloguj
           </button>
         </nav>
+        {usageLabel && (
+          <span
+            className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums ${
+              usage?.llm_monthly_limit_reached
+                ? "bg-red-500/10 text-red-700 dark:text-red-400"
+                : "bg-paper-100 text-ink-800 dark:bg-ink-800 dark:text-paper-200"
+            }`}
+            aria-label={`Miesięczny limit AI: ${usageLabel}`}
+            title="Miesięczny limit AI (UTC)"
+          >
+            {usageLabel}
+          </span>
+        )}
       </div>
     </header>
   );
