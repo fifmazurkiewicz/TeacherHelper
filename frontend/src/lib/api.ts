@@ -476,6 +476,17 @@ export async function prepareFileReindex(fileId: string): Promise<PrepareResult>
   return api<PrepareResult>(`/v1/files/${encodeURIComponent(fileId)}/prepare-reindex`, { method: "POST" });
 }
 
+export async function prepareVocalSeparation(fileId: string): Promise<PrepareResult> {
+  return api<PrepareResult>(`/v1/music/kie/files/${encodeURIComponent(fileId)}/prepare-vocal-separation`, { method: "POST" });
+}
+
+export async function separateVocalsConfirmed(fileId: string, confirmationToken: string): Promise<{ task_id: string; status: string }> {
+  return api<{ task_id: string; status: string }>(`/v1/music/kie/files/${encodeURIComponent(fileId)}/separate-vocals`, {
+    method: "POST",
+    headers: { "X-Resource-Confirmation": confirmationToken },
+  });
+}
+
 export async function deleteFileConfirmed(fileId: string, confirmationToken: string): Promise<void> {
   await api<undefined>(`/v1/files/${encodeURIComponent(fileId)}`, {
     method: "DELETE",

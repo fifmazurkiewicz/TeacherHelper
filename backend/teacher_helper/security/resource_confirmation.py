@@ -12,6 +12,7 @@ CONFIRM_TYP = "resource_confirm"
 
 ACTION_DELETE_FILE = "delete_file"
 ACTION_REINDEX_FILE = "reindex_file"
+ACTION_SEPARATE_VOCALS = "separate_vocals"
 ACTION_DELETE_PROJECT = "delete_project"
 ACTION_CREATE_PROJECT = "create_project"
 

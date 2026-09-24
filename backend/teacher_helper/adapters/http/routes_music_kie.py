@@ -8,9 +8,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 
 from teacher_helper.adapters.http.deps import ApprovedUser, DbSession
 from teacher_helper.adapters.http.rate_limit import check_rate_limit
@@ -26,11 +26,80 @@ from teacher_helper.infrastructure.music_kie import (
     parse_task_record,
 )
 from teacher_helper.infrastructure.storage.factory import get_storage
+from teacher_helper.security.resource_confirmation import (
+    ACTION_SEPARATE_VOCALS,
+    RESOURCE_FILE,
+    create_resource_confirmation_token,
+    verify_resource_confirmation_token,
+)
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/music/kie", tags=["music-kie"])
 _storage = get_storage()
+
+
+@router.post("/files/{file_id}/prepare-vocal-separation")
+async def prepare_vocal_separation(
+    session: DbSession, user: ApprovedUser, file_id: UUID,
+) -> dict:
+    row = await session.get(FileAssetORM, file_id)
+    if not row or row.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plik nie znaleziony")
+    if not row.mime_type.lower().startswith("audio/"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Wybierz plik audio.")
+    s = get_settings()
+    token = create_resource_confirmation_token(
+        user_id=user.id, action=ACTION_SEPARATE_VOCALS, resource_type=RESOURCE_FILE, resource_id=file_id,
+    )
+    return {
+        "confirmation_token": token,
+        "expires_in_seconds": s.confirmation_token_expire_minutes * 60,
+        "header_name": "X-Resource-Confirmation",
+        "summary": f"Wysłać „{row.name}” do KIE, aby oddzielić wokal od podkładu? Operacja zużywa kredyty KIE.",
+    }
+
+
+@router.post("/files/{file_id}/separate-vocals")
+async def separate_vocals(
+    session: DbSession,
+    user: ApprovedUser,
+    file_id: UUID,
+    x_resource_confirmation: str | None = Header(None, alias="X-Resource-Confirmation"),
+) -> dict:
+    """Przekazuje wskazany plik audio do KIE; callback zapisze wokal i instrumental."""
+    await check_rate_limit(session, user)
+    row = await session.get(FileAssetORM, file_id)
+    if not row or row.user_id != user.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Plik nie znaleziony")
+    if not row.mime_type.lower().startswith("audio/"):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Wybierz plik audio.")
+    s = get_settings()
+    if s.require_resource_confirmation and not verify_resource_confirmation_token(
+        x_resource_confirmation or "", user_id=user.id, action=ACTION_SEPARATE_VOCALS,
+        resource_type=RESOURCE_FILE, resource_id=file_id,
+    ):
+        raise HTTPException(status.HTTP_409_CONFLICT, detail={
+            "code": "CONFIRMATION_REQUIRED",
+            "message": "Potwierdź operację przed wysłaniem pliku do KIE.",
+        })
+    signed_url = getattr(_storage, "signed_url", None)
+    if not callable(signed_url):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="Separacja wymaga storage z signed URL (Supabase).")
+    gen = build_music_generator()
+    submit = getattr(gen, "submit_vocal_separation", None) if gen else None
+    if not callable(submit):
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, detail="KIE nie jest skonfigurowane.")
+    source_url = await signed_url(row.storage_key, expires_in=3600)
+    result = await submit(audio_url=source_url, call_back_url=s.kie_music_callback_url)
+    if not result.ok or not result.task_id:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail=result.error_detail or "KIE nie przyjął zadania.")
+    extra = dict(row.extra or {})
+    extra["kie_vocal_separation_task_id"] = result.task_id
+    extra["kie_vocal_separation_status"] = "submitted"
+    row.extra = extra
+    await session.commit()
+    return {"task_id": result.task_id, "status": "submitted"}
 
 
 @router.post("/import-by-task", response_model=FileResponse)

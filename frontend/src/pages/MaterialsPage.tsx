@@ -17,6 +17,8 @@ import {
   prepareProjectDelete,
   projectDeleteImpact,
   reindexFileConfirmed,
+  prepareVocalSeparation,
+  separateVocalsConfirmed,
   uploadFile,
   type FileDeleteImpact,
   type ProjectDeleteImpact,
@@ -31,7 +33,7 @@ type Project = { id: string; name: string; description: string | null; created_a
 
 type PendingConfirm =
   | {
-      kind: "project_delete" | "project_create" | "file_delete" | "file_reindex";
+      kind: "project_delete" | "project_create" | "file_delete" | "file_reindex" | "vocal_separation";
       id: string;
       label: string;
       summary: string;
@@ -773,6 +775,19 @@ export default function MaterialsPage() {
     }
   }
 
+  async function startVocalSeparation(id: string, name: string) {
+    setError(null);
+    setBusy(true);
+    try {
+      const prep = await prepareVocalSeparation(id);
+      setPending({ kind: "vocal_separation", id, label: name, summary: prep.summary, token: prep.confirmation_token });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Nie udało się przygotować separacji wokalu");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmPending() {
     if (!pending) return;
     setError(null);
@@ -798,9 +813,12 @@ export default function MaterialsPage() {
         }
         setSelectedFileIds(new Set());
         await refreshFiles();
-      } else {
+      } else if (pending.kind === "file_reindex") {
         await reindexFileConfirmed(pending.id, pending.token);
         await refreshFiles();
+      } else {
+        await separateVocalsConfirmed(pending.id, pending.token);
+        setError("Plik został wysłany do KIE. Po zakończeniu wokal i instrumental pojawią się w tej bibliotece.");
       }
       setPending(null);
     } catch (err) {
@@ -1314,6 +1332,16 @@ export default function MaterialsPage() {
                           >
                             Odśwież dostępność dla asystenta
                           </button>
+                          {(f.mime_type || "").startsWith("audio/") && (
+                            <button
+                              type="button"
+                              onClick={() => void startVocalSeparation(f.id, f.name)}
+                              disabled={busy}
+                              className="text-ink-600 hover:text-accent disabled:opacity-50 dark:text-paper-400"
+                            >
+                              Usuń wokal (KIE)
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => void startDeleteFile(f.id, f.name)}
@@ -1407,6 +1435,7 @@ export default function MaterialsPage() {
               {pending.kind === "file_delete" && "Potwierdź usunięcie pliku"}
               {pending.kind === "files_delete_bulk" && "Potwierdź usunięcie plików"}
               {pending.kind === "file_reindex" && "Potwierdź modyfikację indeksu"}
+              {pending.kind === "vocal_separation" && "Potwierdź separację wokalu"}
             </h3>
             <p className="mt-3 text-sm text-ink-700 dark:text-paper-300">
               <strong>{pending.label}</strong>
@@ -1417,7 +1446,7 @@ export default function MaterialsPage() {
                 <strong className="text-ink-800 dark:text-paper-200">API:</strong> {pending.impactNote}
               </p>
             )}
-            {pending.kind !== "project_create" && (
+            {pending.kind !== "project_create" && pending.kind !== "vocal_separation" && (
               <p className="mt-4 text-xs leading-relaxed text-ink-500 dark:text-paper-500">
                 Tej operacji nie można cofnąć z poziomu aplikacji.
               </p>

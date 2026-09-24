@@ -197,6 +197,7 @@ class KieMusicGenerator(MusicGeneratorPort):
         self._base = base_url.rstrip("/")
         self._generate_url = f"{self._base}/api/v1/generate"
         self._record_info_url = f"{self._base}/api/v1/generate/record-info"
+        self._create_task_url = f"{self._base}/api/v1/jobs/createTask"
         self._default_callback_url = default_callback_url
         self._default_negative_tags = default_negative_tags
         self._default_vocal_gender = default_vocal_gender
@@ -224,6 +225,36 @@ class KieMusicGenerator(MusicGeneratorPort):
             payload["_http_error"] = r.status_code
             payload["_body"] = text[:1200]
         return payload
+
+    async def submit_vocal_separation(
+        self, *, audio_url: str, call_back_url: str | None = None,
+    ) -> MusicSubmitResult:
+        """Zgłasza KIE separację wokalu dla zewnętrznie dostępnego MP3."""
+        callback = (call_back_url or self._default_callback_url or "").strip()
+        if not callback:
+            return MusicSubmitResult(False, 400, {}, "Brak KIE_MUSIC_CALLBACK_URL.", None)
+        if not (audio_url or "").strip():
+            return MusicSubmitResult(False, 400, {}, "Brak URL pliku audio.", None)
+        body = {
+            "model": "ai-music-api/separate-vocals",
+            "callBackUrl": callback,
+            "input": {"audio_url": audio_url, "type": "separate_vocal"},
+        }
+        headers = {"Authorization": f"Bearer {self._api_key}", "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(self._create_task_url, json=body, headers=headers)
+        try:
+            parsed = response.json()
+            payload = parsed if isinstance(parsed, dict) else {"_data": parsed}
+        except json.JSONDecodeError:
+            payload = {"_raw": (response.text or "")[:4000]}
+        ok, err = _kie_envelope_ok(payload)
+        if response.is_error or not ok:
+            return MusicSubmitResult(
+                False, response.status_code, payload,
+                err or (response.text or response.reason_phrase)[:1200], None,
+            )
+        return MusicSubmitResult(True, response.status_code, payload, None, _extract_kie_task_id(payload))
 
     async def submit(self, request: MusicSubmitRequest) -> MusicSubmitResult:
         req = replace(

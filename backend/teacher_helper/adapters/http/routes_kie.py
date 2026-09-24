@@ -8,15 +8,22 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request, status
+from sqlalchemy import select
 
 from teacher_helper.config import get_settings
+from teacher_helper.infrastructure.db.models import FileAssetORM, FileCategory, FileStatus
+from teacher_helper.infrastructure.db.session import async_session_factory
 from teacher_helper.infrastructure.kie_webhook import verify_kie_webhook_signature
+from teacher_helper.infrastructure.music_kie import download_audio_url
+from teacher_helper.infrastructure.storage.factory import get_storage
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/webhooks/kie", tags=["webhooks-kie"])
+_storage = get_storage()
 
 
 def _extract_task_and_tracks(body: dict[str, Any]) -> tuple[str | None, str | None, list[dict[str, Any]]]:
@@ -34,6 +41,44 @@ def _extract_task_and_tracks(body: dict[str, Any]) -> tuple[str | None, str | No
     if isinstance(raw_tracks, list):
         tracks = [t for t in raw_tracks if isinstance(t, dict)]
     return task_id, callback_type, tracks
+
+
+async def _save_vocal_separation(body: dict[str, Any], task_id: str) -> bool:
+    """Zapisuje stem-y callbacka KIE dla pliku, który zlecił separację."""
+    data = body.get("data") if isinstance(body.get("data"), dict) else {}
+    info = data.get("vocal_removal_info") or data.get("vocal_separation_info")
+    if not isinstance(info, dict):
+        return False
+    urls = {"instrumental": info.get("instrumental_url"), "vocal": info.get("vocal_url")}
+    if not any(isinstance(url, str) and url.strip() for url in urls.values()):
+        return False
+    async with async_session_factory() as session:
+        row = await session.scalar(
+            select(FileAssetORM).where(FileAssetORM.extra["kie_vocal_separation_task_id"].astext == task_id)
+        )
+        if row is None:
+            logger.warning("KIE vocal callback without a matching source file: %s", task_id)
+            return True
+        extra = dict(row.extra or {})
+        if extra.get("kie_vocal_separation_status") == "completed":
+            return True
+        for label, url in urls.items():
+            if not isinstance(url, str) or not url.strip():
+                continue
+            audio = await download_audio_url(url)
+            key = await _storage.put(audio, prefix=f"u/{row.user_id}")
+            stem = row.name.rsplit(".", 1)[0]
+            session.add(FileAssetORM(
+                id=uuid4(), user_id=row.user_id, project_id=row.project_id, topic_id=row.topic_id,
+                parent_file_id=row.id, name=f"{stem} — {label}.mp3", category=FileCategory.music,
+                mime_type="audio/mpeg", storage_key=key, version=1, size_bytes=len(audio),
+                status=FileStatus.draft,
+                extra={"module": "music", "kie_vocal_separation_task_id": task_id, "source_file_id": str(row.id), "stem": label},
+            ))
+        extra["kie_vocal_separation_status"] = "completed"
+        row.extra = extra
+        await session.commit()
+    return True
 
 
 @router.post("/music")
@@ -81,5 +126,11 @@ async def kie_music_callback(request: Request) -> dict[str, Any]:
         len(audio_urls),
     )
 
-    # Tu można później: dopasowanie task_id → user, zapis pliku MP3 do storage itd.
+    if task_id:
+        try:
+            await _save_vocal_separation(body, task_id)
+        except Exception:
+            logger.exception("KIE vocal callback persistence failed: task=%s", task_id)
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="Nie udało się zapisać stemów audio") from None
+
     return {"code": 200, "msg": "ok"}
