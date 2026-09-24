@@ -432,6 +432,7 @@ export default function AssistantPage() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [loadingThread, setLoadingThread] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [conversationsError, setConversationsError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
   const [pendingProjectCreate, setPendingProjectCreate] = useState<PendingProjectAction | null>(null);
@@ -453,6 +454,7 @@ export default function AssistantPage() {
   const loadConversations = useCallback(async () => {
     const list = await listConversations();
     setConversations(list);
+    setConversationsError(null);
   }, []);
 
   const stopMediaTracks = useCallback(() => {
@@ -517,7 +519,7 @@ export default function AssistantPage() {
   }
 
   useEffect(() => {
-    loadConversations().catch(() => setError("Nie udało się wczytać rozmów"));
+    loadConversations().catch(() => setConversationsError("Nie udało się wczytać rozmów"));
   }, [loadConversations]);
 
   useEffect(() => {
@@ -594,7 +596,7 @@ export default function AssistantPage() {
       setMessages([]);
       setChatAttachments([]);
       setConversations((current) => [c, ...current.filter((conversation) => conversation.id !== c.id)]);
-      void loadConversations().catch(() => setError("Nie udało się odświeżyć rozmów"));
+      void loadConversations().catch(() => setConversationsError("Nie udało się odświeżyć rozmów"));
     } catch {
       setError("Nie udało się utworzyć rozmowy (POST /v1/conversations)");
       setConversationId(null);
@@ -1224,6 +1226,18 @@ export default function AssistantPage() {
             >
               Nowy czat
             </button>
+            {conversationsError && (
+              <div className="mt-2 flex items-center justify-between gap-2 text-xs text-red-600 dark:text-red-400" role="alert">
+                <span>{conversationsError}</span>
+                <button
+                  type="button"
+                  onClick={() => void loadConversations().catch(() => setConversationsError("Nie udało się wczytać rozmów"))}
+                  className="shrink-0 rounded border border-current px-1.5 py-0.5 font-medium hover:bg-red-500/10"
+                >
+                  Spróbuj ponownie
+                </button>
+              </div>
+            )}
           </div>
           <nav className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-1 pb-2">
             {conversations.map((c) => (

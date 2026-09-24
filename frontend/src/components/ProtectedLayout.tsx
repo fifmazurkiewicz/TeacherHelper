@@ -17,6 +17,7 @@ export function ProtectedLayout() {
   useChatShell(chatLayout);
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [approval, setApproval] = useState<"unknown" | "pending" | "approved">("unknown");
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
 
   const refreshMe = useCallback(async (manual = false) => {
@@ -24,8 +25,10 @@ export function ProtectedLayout() {
     try {
       const me = await api<AuthMe>("/v1/auth/me");
       setApproval(me.is_approved ? "approved" : "pending");
+      setApprovalError(null);
     } catch {
       setApproval((prev) => (prev === "approved" ? "approved" : "pending"));
+      setApprovalError("Nie udało się sprawdzić statusu konta. Spróbuj ponownie.");
     } finally {
       if (manual) setChecking(false);
     }
@@ -65,6 +68,7 @@ export function ProtectedLayout() {
   useEffect(() => {
     if (authState !== "authenticated") {
       setApproval("unknown");
+      setApprovalError(null);
       return;
     }
     void refreshMe(false);
@@ -92,7 +96,7 @@ export function ProtectedLayout() {
   }
 
   if (approval === "pending") {
-    return <PendingApprovalPage checking={checking} onCheckStatus={() => void refreshMe(true)} />;
+    return <PendingApprovalPage checking={checking} error={approvalError} onCheckStatus={() => void refreshMe(true)} />;
   }
 
   return (
