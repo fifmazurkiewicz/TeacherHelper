@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   api,
   acknowledgeAiDisclosure,
@@ -16,7 +16,6 @@ import {
   listConversations,
   patchConversation,
   pollJobUntilDone,
-  setToken,
   transcribeVoice,
   uploadUserFile,
   type ApiChatMessage,
@@ -29,7 +28,6 @@ import {
   type AssistantChatResponse,
 } from "@/context/AssistantActivityContext";
 import { ChatAttachmentPreviews, hasPreviewableAttachments } from "@/components/ChatAttachmentPreviews";
-import { ThemeToggle } from "@/components/ThemeToggle";
 
 type ChatAttachment = { id: string; name: string; mime_type: string };
 
@@ -354,16 +352,6 @@ function IconArrowUp({ className }: { className?: string }) {
   );
 }
 
-function IconMenu({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <circle cx="12" cy="5" r="2" />
-      <circle cx="12" cy="12" r="2" />
-      <circle cx="12" cy="19" r="2" />
-    </svg>
-  );
-}
-
 function IconChevronLeft({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
@@ -401,7 +389,6 @@ function normalizePersistedAttachments(raw: unknown): ChatAttachment[] {
 }
 
 export default function AssistantPage() {
-  const navigate = useNavigate();
   const mountedRef = useRef(true);
   const {
     pending: chatPending,
@@ -417,7 +404,6 @@ export default function AssistantPage() {
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recordChunksRef = useRef<BlobPart[]>([]);
   const recordedMimeRef = useRef<string>("");
-  const [isAdmin, setIsAdmin] = useState(false);
   const [conversations, setConversations] = useState<ApiConversation[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [chatAttachments, setChatAttachments] = useState<ChatAttachment[]>([]);
@@ -440,7 +426,6 @@ export default function AssistantPage() {
   const [projectConfirmBusy, setProjectConfirmBusy] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialSidebarWidth);
   const [historyCollapsed, setHistoryCollapsed] = useState(readInitialHistoryCollapsed);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [aiDisclosureOpen, setAiDisclosureOpen] = useState(false);
   const [aiDisclosureBusy, setAiDisclosureBusy] = useState(false);
   const sidebarResizeRef = useRef<{
@@ -493,12 +478,6 @@ export default function AssistantPage() {
       /* quota / private mode */
     }
   }, [historyCollapsed]);
-
-  useEffect(() => {
-    api<{ role: string }>("/v1/auth/me")
-      .then((m: { role: string }) => setIsAdmin(m.role === "admin"))
-      .catch(() => setIsAdmin(false));
-  }, []);
 
   useEffect(() => {
     getAiDisclosure()
@@ -986,10 +965,6 @@ export default function AssistantPage() {
     setChatAttachments((prev) => prev.filter((a) => a.id !== id));
   }
 
-  function logout() {
-    void setToken(null).then(() => navigate("/login"));
-  }
-
   function onSidebarResizePointerDown(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -1052,150 +1027,6 @@ export default function AssistantPage() {
           </div>
         </div>
       )}
-      <header className="flex min-h-11 shrink-0 items-center gap-1.5 border-b border-ink-800/15 px-2 py-1 sm:px-3 sm:min-h-12 sm:gap-2 sm:py-0 dark:border-paper-100/10">
-        <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-          {historyCollapsed && (
-            <button
-              type="button"
-              onClick={() => setHistoryCollapsed(false)}
-              className="inline-flex shrink-0 items-center gap-0.5 rounded-md border border-ink-800/20 bg-paper-50 px-2 py-2.5 text-[0.7rem] font-medium text-ink-800 hover:bg-paper-100 sm:gap-1 sm:px-2 sm:py-1.5 sm:text-sm dark:border-paper-100/20 dark:bg-ink-900 dark:text-paper-200 dark:hover:bg-ink-800"
-              aria-expanded="false"
-              title="Pokaż listę rozmów"
-            >
-              <IconChevronRight className="size-3.5 sm:size-4" />
-              <span className="whitespace-nowrap">Historia</span>
-            </button>
-          )}
-          <span className="min-w-0 truncate text-[0.8125rem] font-semibold text-accent sm:text-base">Teacher Helper</span>
-        </div>
-        <div className="flex min-w-0 shrink-0 items-center gap-1 sm:gap-2">
-          {/* Desktop: pełna nawigacja */}
-          <div className="hidden max-w-full min-w-0 flex-nowrap items-center gap-2 overflow-x-auto text-sm sm:flex [&::-webkit-scrollbar]:hidden">
-            <Link
-              to="/materials"
-              className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-            >
-              Materiały
-            </Link>
-            <Link
-              to="/profile"
-              className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-            >
-              Profil
-            </Link>
-            {isAdmin && (
-              <>
-                <Link
-                  to="/admin/monitoring"
-                  className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-                >
-                  Monitoring
-                </Link>
-                <Link
-                  to="/admin/users"
-                  className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-700 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-                >
-                  Użytkownicy
-                </Link>
-              </>
-            )}
-            <ThemeToggle className="shrink-0 rounded-md px-2 py-1.5 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800" />
-            <button
-              type="button"
-              onClick={logout}
-              className="shrink-0 whitespace-nowrap rounded-md px-2 py-1.5 text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-            >
-              Wyloguj
-            </button>
-          </div>
-          {/* Mobile: menu ⋮ */}
-          <div className="relative sm:hidden">
-            <button
-              type="button"
-              onClick={() => setMobileMenuOpen((o) => !o)}
-              className="inline-flex size-11 items-center justify-center rounded-md text-ink-700 hover:bg-paper-100 dark:text-paper-200 dark:hover:bg-ink-800"
-              aria-expanded={mobileMenuOpen}
-              aria-haspopup="menu"
-              aria-label="Menu aplikacji"
-            >
-              <IconMenu className="size-5" />
-            </button>
-            {mobileMenuOpen && (
-              <>
-                <button
-                  type="button"
-                  className="fixed inset-0 z-40 cursor-default bg-transparent"
-                  aria-label="Zamknij menu"
-                  onClick={() => setMobileMenuOpen(false)}
-                />
-                <div
-                  role="menu"
-                  className="absolute right-0 top-full z-50 mt-1 w-52 rounded-xl border border-ink-800/15 bg-white py-1 shadow-lg dark:border-paper-100/10 dark:bg-ink-900"
-                >
-                  <Link
-                    role="menuitem"
-                    to="/materials"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
-                  >
-                    Materiały
-                  </Link>
-                  <Link
-                    role="menuitem"
-                    to="/profile"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
-                  >
-                    Profil
-                  </Link>
-                  <Link
-                    role="menuitem"
-                    to="/privacy"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
-                  >
-                    Prywatność
-                  </Link>
-                  {isAdmin && (
-                    <>
-                      <Link
-                        role="menuitem"
-                        to="/admin/monitoring"
-                        onClick={() => setMobileMenuOpen(false)}
-                        className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
-                      >
-                        Monitoring
-                      </Link>
-                      <Link
-                        role="menuitem"
-                        to="/admin/users"
-                        onClick={() => setMobileMenuOpen(false)}
-                        className="block px-4 py-3 text-sm text-ink-800 hover:bg-paper-100 dark:text-paper-100 dark:hover:bg-ink-800"
-                      >
-                        Użytkownicy
-                      </Link>
-                    </>
-                  )}
-                  <div className="border-t border-ink-800/10 px-4 py-2 dark:border-paper-100/10">
-                    <ThemeToggle className="rounded-md py-2 text-sm text-ink-600 dark:text-paper-300" />
-                  </div>
-                  <button
-                    role="menuitem"
-                    type="button"
-                    onClick={() => {
-                      setMobileMenuOpen(false);
-                      logout();
-                    }}
-                    className="block w-full px-4 py-3 text-left text-sm text-ink-600 hover:bg-paper-100 dark:text-paper-300 dark:hover:bg-ink-800"
-                  >
-                    Wyloguj
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      </header>
 
       <div className="flex min-h-0 min-w-0 flex-1 overflow-x-hidden">
         {!historyCollapsed && (
@@ -1328,6 +1159,20 @@ export default function AssistantPage() {
         )}
 
         <section className="flex min-w-0 flex-1 flex-col overflow-x-hidden bg-paper-50 dark:bg-ink-950">
+          {historyCollapsed && (
+            <div className="flex shrink-0 items-center border-b border-ink-800/10 px-2 py-1.5 dark:border-paper-100/10">
+              <button
+                type="button"
+                onClick={() => setHistoryCollapsed(false)}
+                className="inline-flex items-center gap-0.5 rounded-md px-1.5 py-1 text-xs text-ink-600 hover:bg-paper-100 dark:text-paper-400 dark:hover:bg-ink-800"
+                aria-expanded="false"
+                title="Pokaż listę rozmów"
+              >
+                <IconChevronRight className="size-4" />
+                <span>Rozmowy</span>
+              </button>
+            </div>
+          )}
           <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-y-contain p-3 sm:space-y-3 sm:p-4">
             {loadingThread && (
               <p className="text-xs text-ink-500 sm:text-sm">Wczytywanie rozmowy…</p>

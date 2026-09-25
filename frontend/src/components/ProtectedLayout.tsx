@@ -103,7 +103,10 @@ export function ProtectedLayout() {
     <AssistantActivityProvider>
       {chatLayout ? (
         <div className="chat-app-shell flex min-h-0 flex-col overflow-hidden bg-paper-50 dark:bg-ink-950">
-          <Outlet />
+          <Nav />
+          <div className="flex min-h-0 flex-1 flex-col">
+            <Outlet />
+          </div>
         </div>
       ) : (
         <>

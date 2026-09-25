@@ -1,9 +1,10 @@
 import { useCallback, useState } from "react";
 import { applyTheme, getStoredTheme, setStoredTheme, type ThemeChoice } from "@/lib/theme";
 
-type Props = { className?: string };
+type Props = { className?: string; alwaysShowLabel?: boolean };
 
-export function ThemeToggle({ className }: Props) {
+export function ThemeToggle({ className, alwaysShowLabel = false }: Props) {
+  const labelClass = alwaysShowLabel ? "inline" : "hidden sm:inline";
   const [choice, setChoice] = useState<ThemeChoice>(() => getStoredTheme());
 
   const toggle = useCallback(() => {
@@ -30,12 +31,12 @@ export function ThemeToggle({ className }: Props) {
       {isDark ? (
         <span className="inline-flex items-center gap-1.5" aria-hidden>
           <IconSun className="size-4 shrink-0" />
-          <span className="hidden sm:inline">Jasny</span>
+          <span className={labelClass}>Jasny</span>
         </span>
       ) : (
         <span className="inline-flex items-center gap-1.5" aria-hidden>
           <IconMoon className="size-4 shrink-0" />
-          <span className="hidden sm:inline">Ciemny</span>
+          <span className={labelClass}>Ciemny</span>
         </span>
       )}
     </button>
