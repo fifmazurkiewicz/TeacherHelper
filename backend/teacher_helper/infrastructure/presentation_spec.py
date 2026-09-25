@@ -32,6 +32,9 @@ _MAX_PPTX_COMPRESSION_RATIO = 200
 _MAX_PPTX_SLIDES = 200
 _MAX_PICTURE_BYTES = 20 * 1024 * 1024
 _MAX_PICTURE_PIXELS = 50_000_000
+# 16:9 wg ECMA-376 / PowerPoint (13.333" × 7.5")
+SLIDE_WIDTH_EMU = 12_192_000
+SLIDE_HEIGHT_EMU = 6_858_000
 
 
 def _parse_hex_rgb(s: str) -> tuple[int, int, int] | None:
@@ -293,14 +296,11 @@ def _apply_colorful_theme_to_slide(slide: Any, colors: dict[str, Any]) -> None:
                 color = BODY
             for run in p.runs:
                 run.font.color.rgb = color
+                if is_title:
+                    run.font.bold = True
+                    run.font.size = Pt(32)
             if not p.runs:
                 p.font.color.rgb = color
-            if is_title:
-                p.font.bold = True
-                try:
-                    p.font.size = Pt(32)
-                except Exception:
-                    pass
         try:
             tf.word_wrap = True
         except Exception:
@@ -344,13 +344,17 @@ def _content_body_font_pt(num_nonempty_lines: int, max_line_len: int) -> int:
 
 
 def _set_textframe_font_pt(tf: Any, pt: int) -> None:
+    s =max(11, min(int(pt), 24))
+    for p in tf.paragraphs:
+        set_paragraph_font_size(p, s)
+
+
+def set_paragraph_font_size(paragraph: Any, pt: float) -> None:
+    """Rozmiar na poziomie runów (``a:rPr``) — ``a:pPr/a:defRPr`` nie formatuje istniejących runów."""
     from pptx.util import Pt
 
-    s = max(11, min(int(pt), 24))
-    for p in tf.paragraphs:
-        p.font.size = Pt(s)
-        for r in p.runs:
-            r.font.size = Pt(s)
+    for run in paragraph.runs:
+        run.font.size = Pt(pt)
 
 
 def _add_picture_contained(slide: Any, image_data: bytes, left: Any, top: Any, width: Any, height: Any) -> None:
@@ -378,6 +382,58 @@ def _set_speaker_notes(slide: Any, notes: str) -> None:
             tf.text = notes
     except Exception:
         pass
+
+
+def new_widescreen_presentation() -> Any:
+    from pptx import Presentation
+    from pptx.util import Emu
+
+    prs = Presentation()
+    prs.slide_width = Emu(SLIDE_WIDTH_EMU)
+    prs.slide_height = Emu(SLIDE_HEIGHT_EMU)
+    return prs
+
+
+def finalize_presentation_xml(prs: Any) -> None:
+    """Naprawia ``ppt/presentation.xml`` przed zapisem, żeby plik przeszedł ścisłe czytniki (Keynote).
+
+    python-pptx dodaje relację do wzorca notatek przy ``slide.notes_slide``, ale nie rejestruje go
+    w ``p:notesMasterIdLst``. Szablon domyślny zostawia też ``type="screen4x3"`` w ``p:sldSz``.
+    """
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+    from pptx.oxml.ns import qn
+
+    root = prs.part._element
+    sld_sz = root.find(qn("p:sldSz"))
+    if sld_sz is not None:
+        sld_sz.attrib.pop("type", None)
+
+    notes_rid = next(
+        (rId for rId, rel in prs.part.rels.items() if rel.reltype == RT.NOTES_MASTER),
+        None,
+    )
+    existing = root.find(qn("p:notesMasterIdLst"))
+    if notes_rid is None:
+        if existing is not None:
+            root.remove(existing)
+        return
+    if existing is not None:
+        root.remove(existing)
+    lst = root.makeelement(qn("p:notesMasterIdLst"), {})
+    entry = lst.makeelement(qn("p:notesMasterId"), {qn("r:id"): notes_rid})
+    lst.append(entry)
+    master_lst = root.find(qn("p:sldMasterIdLst"))
+    if master_lst is not None:
+        master_lst.addnext(lst)
+    else:
+        root.insert(0, lst)
+
+
+def save_presentation(prs: Any) -> bytes:
+    finalize_presentation_xml(prs)
+    buf = io.BytesIO()
+    prs.save(buf)
+    return buf.getvalue()
 
 
 def _load_pptx(data: bytes) -> Any:
@@ -492,12 +548,9 @@ def spec_to_pptx_bytes(
     `slide_images`: indeks (0 = pierwszy slajd merytoryczny) → bajty PNG/JPEG
     do osadzenia po prawej; brak wpisu = pełny układ tekstowy bez technicznych opisów grafiki.
     """
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
+    from pptx.util import Inches
 
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
+    prs = new_widescreen_presentation()
     title = (spec.get("title") or "Prezentacja")[:200]
     desc = (spec.get("description") or "")[:2200]
     # Slajd 1 — tytuł + opis
@@ -542,19 +595,18 @@ def spec_to_pptx_bytes(
         if not body_lines:
             p0 = tf.paragraphs[0]
             p0.text = " "
-            p0.font.size = Pt(base_pt)
+            set_paragraph_font_size(p0, base_pt)
         for i, line in enumerate(body_lines):
             small = line.startswith("[") or line.startswith("(")
             fs = max(11, base_pt - 1) if small else base_pt
             if i == 0:
                 p = tf.paragraphs[0]
                 p.text = line
-                p.font.size = Pt(fs)
             else:
                 p = tf.add_paragraph()
                 p.text = line
-                p.font.size = Pt(fs)
                 p.level = 0
+            set_paragraph_font_size(p, fs)
         if layout_name == "comparison" and len(slide.placeholders) > 2:
             midpoint = max(1, (len(body_lines) + 1) // 2)
             left_lines, right_lines = body_lines[:midpoint], body_lines[midpoint:]
@@ -564,7 +616,9 @@ def spec_to_pptx_bytes(
                 for line_idx, line in enumerate(lines or [" "]):
                     paragraph = ptf.paragraphs[0] if line_idx == 0 else ptf.add_paragraph()
                     paragraph.text = line
-                    paragraph.font.size = Pt(_content_body_font_pt(len(lines), max((len(x) for x in lines), default=0)))
+                    set_paragraph_font_size(
+                        paragraph, _content_body_font_pt(len(lines), max((len(x) for x in lines), default=0))
+                    )
         if embed_bytes:
             try:
                 if layout_name == "image_full":
@@ -587,9 +641,7 @@ def spec_to_pptx_bytes(
     th = spec.get("theme")
     spec_theme = th if isinstance(th, dict) else None
     apply_colorful_theme_to_presentation(prs, spec_theme)
-    buf = io.BytesIO()
-    prs.save(buf)
-    return buf.getvalue()
+    return save_presentation(prs)
 
 
 def _shape_text(sh) -> str:

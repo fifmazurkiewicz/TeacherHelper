@@ -202,12 +202,14 @@ def text_to_docx(text: str, title: str = "") -> bytes:
 
 def text_to_pptx(text: str, title: str = "") -> bytes:
     """Generuje prezentację PPTX z tekstu markdown-like (nagłówki = slajdy)."""
-    from pptx import Presentation
-    from pptx.util import Inches, Pt
+    from teacher_helper.infrastructure.presentation_spec import (
+        apply_colorful_theme_to_presentation,
+        new_widescreen_presentation,
+        save_presentation,
+        set_paragraph_font_size,
+    )
 
-    prs = Presentation()
-    prs.slide_width = Inches(13.333)
-    prs.slide_height = Inches(7.5)
+    prs = new_widescreen_presentation()
 
     slides_data = _parse_slides(text, title)
 
@@ -222,13 +224,9 @@ def text_to_pptx(text: str, title: str = "") -> bytes:
         tf.clear()
 
         for i, bullet in enumerate(bullets):
-            if i == 0:
-                tf.paragraphs[0].text = bullet
-                tf.paragraphs[0].font.size = Pt(18)
-            else:
-                p = tf.add_paragraph()
-                p.text = bullet
-                p.font.size = Pt(18)
+            p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+            p.text = bullet
+            set_paragraph_font_size(p, 18)
 
     if not slides_data:
         layout = prs.slide_layouts[0]  # Title Slide
@@ -237,12 +235,8 @@ def text_to_pptx(text: str, title: str = "") -> bytes:
         if slide.placeholders[1]:
             slide.placeholders[1].text = text[:500]
 
-    from teacher_helper.infrastructure.presentation_spec import apply_colorful_theme_to_presentation
-
     apply_colorful_theme_to_presentation(prs)
-    buf = io.BytesIO()
-    prs.save(buf)
-    return buf.getvalue()
+    return save_presentation(prs)
 
 
 def _parse_slides(text: str, fallback_title: str) -> list[tuple[str, list[str]]]:
