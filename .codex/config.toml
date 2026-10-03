@@ -1,3 +1,5 @@
+# agent-toolkit:graft start
 [mcp_servers.graft]
 command = "npx"
 args = ["-y", "@nanonets/graft", "mcp"]
+# agent-toolkit:graft end

@@ -1,0 +1,32 @@
+profile: web
+clients:
+- cursor
+- codex
+- claude
+skills:
+- using-superpowers
+- brainstorming
+- idea-validation
+- project-context-lifecycle
+- problem-framing
+- technical-research
+- production-product-requirements
+- writing-plans
+- plan-review
+- implementation
+- tdd
+- implementation-review
+- goal-implement
+- writing-skills
+- ponytail
+- ponytail-review
+- ux-ui-challenger
+- design-taste-frontend
+- accessibility
+- best-practices
+- web-quality-audit
+- core-web-vitals
+- performance
+- seo
+- diagram-design
+- archify
