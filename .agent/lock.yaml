@@ -60,6 +60,8 @@ skills:
     SKILL.md: 1316a2f3f95741d2300b116fe0c2d81ce4a9568656ed0a62643f54aaf09957f2
   ponytail-review:
     SKILL.md: 40df33b58fc6ef889b93585733feb9566b76e9586efa7f376785c1e995197ac0
+  python-service-architecture:
+    SKILL.md: f8814625d8f0fdeaeb2bd0561da66e3f701989cd0dae0ff2abf0ca1b74adc9fe
   ux-ui-challenger:
     SKILL.md: 5b80256662840456d7c565b3309323fac61f8de04e18532dbcc8b291c7ebd083
     agents/openai.yaml: 52e512140b5b9f0b647c69bdef35a2de560e543bd07710ad993b72e14bcc99df

@@ -12,6 +12,14 @@
 | Auth | **Supabase Auth** (e-mail + Google OAuth) |
 | Storage | **Supabase Storage** (signed URLs) |
 
+## Python service boundaries
+
+`backend/teacher_helper/` is the Python package root. Keep FastAPI delivery
+and provider/storage clients at the edge; application orchestration and
+teaching rules must not depend on FastAPI, SQLAlchemy, or provider SDKs. Wire
+concrete integrations in the service entrypoint and keep existing layout
+unless a touched area needs a real new boundary.
+
 ## Domains
 
 | Service | URL |
