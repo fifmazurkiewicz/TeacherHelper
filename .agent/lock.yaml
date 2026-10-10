@@ -28,7 +28,9 @@ skills:
   idea-validation:
     SKILL.md: ee52be7d325d254e3db4cdefbb7c186cb82875ea54383c241db9cc343e9d6b6e
   project-context-lifecycle:
-    SKILL.md: 17dda3c597725ad4c06eb20108d9e152ba3ff482b3c5d60aa053a3dca83af82d
+    SKILL.md: c533f23a4f836ed2d2dd1dec7079826f8af95ef2ee1605dbc13afb187ba87302
+  planning-boards:
+    SKILL.md: e1d6dbbe41afd7f865152f3fffc5489b7b83499270f04385e7cfc5a4354bb17e
   problem-framing:
     SKILL.md: 0931611c5524722f12d51347945693088e2810a5e67a874702540e849f184037
   technical-research:
@@ -36,16 +38,18 @@ skills:
   production-product-requirements:
     SKILL.md: 5a1c8a2be4658c79028178e8459b22bf838b8c464669aa27fd0e7905ff398b88
   writing-plans:
-    SKILL.md: 0bc3d36590f7b2c323ed3ec18ff77e9f8ed57af42f5680a02b11a2d20de265cf
+    SKILL.md: 465bc05e8ad6c6d1bb12856ea99db25026b1c4ff8545030ae57647ce69141265
     plan-document-reviewer-prompt.md: aa728b96aad603c8be28875a4305637f6c984aa81ffcadcb13e743202fa2a0c7
   plan-review:
-    SKILL.md: 15a154b5155410843ac8980adbfc671b1029fb86ed15da4d4344a96e066347ba
+    SKILL.md: 8c03ec9cb89ce0b4666cdb4e4afea7f366f380d4f7237d42afa0bfb8e519af7a
   implementation:
-    SKILL.md: 3f621edb4989ca6d7e6bb2cc3b1525b350d6c98553182fe7c96fc526333dfdf9
+    SKILL.md: 8e63e10dc7728b921bca3c74d38e0801212f694f236abff3afec72a0c3f4304f
   tdd:
     SKILL.md: cafd0f5e0db486900ca2e4071ddf61cd5c6d607bbdf42dc2f7137ce44d22754b
   implementation-review:
-    SKILL.md: 16213e2059acbc72a7df7837f3e7ba3c437215ffea017e29fb61d091687b2c56
+    SKILL.md: 91b02fddaf73ff24f378d1f86c190853093f45d740b407793408a1446e2e6bc8
+  review-decisions:
+    SKILL.md: bd1975bcefb0d7a9742446a57a6e14cb6b74bbef3cd3cdc14754f9f3eac2786a
   goal-implement:
     SKILL.md: 7f5d4b81d0d0c9e354f165ee866efd75564d25ed3b119cfd9342e87dd41a5e54
   writing-skills:

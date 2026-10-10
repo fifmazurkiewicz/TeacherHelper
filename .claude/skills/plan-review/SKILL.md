@@ -13,3 +13,7 @@ contract impact, unsafe assumptions, and an approve/revise outcome.
 Do not implement the plan while reviewing it. A material gap returns the plan
 to its author. An approved plan must identify manual versus automated work,
 verification commands, and evidence expected from implementation.
+
+If a prior review finding requests Fix differently, verify that its canonical
+review-decision record links to the amended plan and that the material change
+is reviewed before implementation resumes.
