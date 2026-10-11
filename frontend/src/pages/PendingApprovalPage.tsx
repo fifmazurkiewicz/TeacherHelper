@@ -28,6 +28,7 @@ export default function PendingApprovalPage({ checking = false, error = null, on
           <p className="text-sm leading-relaxed text-ink-600 dark:text-paper-400">
             {error ?? "Administrator musi zaakceptować to konto, zanim będzie można korzystać z asystenta."}
           </p>
+          <a className="text-sm text-accent underline" href="mailto:fifmazurkiewicz@gmail.com?subject=TeacherHelper%20-%20pro%C5%9Bba%20o%20akceptacj%C4%99%20konta">Napisz do administratora</a>
           <div className="flex flex-col gap-2 sm:flex-row">
             <button
               type="button"

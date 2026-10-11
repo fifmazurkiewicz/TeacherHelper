@@ -47,6 +47,9 @@ class UserORM(Base):
     # NULL = domyślny limit USD/miesiąc z konfiguracji; 0 = brak limitu per konto; >0 = własny sufit (USD, UTC).
     llm_monthly_cost_limit_usd: Mapped[Decimal | None] = mapped_column(Numeric(10, 2), nullable=True)
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    approval_notification_status: Mapped[str] = mapped_column(String(16), nullable=False, default="sent", server_default="sent")
+    approval_notification_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    approval_notification_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     ai_disclosure_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     ai_disclosure_acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

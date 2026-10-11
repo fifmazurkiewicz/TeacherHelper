@@ -156,6 +156,9 @@ class Settings(BaseSettings):
     admin_api_key: str | None = None
     # Gdy ustawione — tylko te e-maile mają rolę admin (reszta zdegradowana do teacher przy logowaniu).
     admin_emails: str = ""
+    resend_api_key: str | None = None
+    resend_mail: str = "fifmazurkiewicz@gmail.com"
+    resend_from: str = "Powiadomienia <powiadomienia@fmazurkiewicz.dev>"
     default_rate_limit_rpm: int = 100
 
     # --- Limity kosztu LLM (USD, miesiąc kalendarzowy UTC) — wszystkie modele per użytkownik ---
