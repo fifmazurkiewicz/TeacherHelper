@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
+from datetime import datetime, timezone
 from typing import Annotated
 from uuid import UUID
 
@@ -12,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from teacher_helper.config import get_settings, parse_admin_emails
 from teacher_helper.infrastructure.db.models import UserORM, UserRole
 from teacher_helper.infrastructure.db.session import async_session_factory
+from teacher_helper.infrastructure.resend_mail import notify_pending_account
 from teacher_helper.security import decode_user_id
 from teacher_helper.security.supabase_jwt import extract_user_id_from_payload, verify_supabase_access_token
 
@@ -62,12 +64,12 @@ def _apply_admin_email_policy(user: UserORM, email: str) -> None:
         user.role = UserRole.teacher
 
 
-async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str | None) -> UserORM:
+async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str | None) -> tuple[UserORM, bool]:
     user = await session.get(UserORM, user_id)
     if user is not None:
         if email:
             _apply_admin_email_policy(user, email)
-        return user
+        return user, False
     if not email:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Brak e-mail w tokenie — nie można utworzyć profilu")
     user = UserORM(
@@ -76,6 +78,7 @@ async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str 
         hashed_password=None,
         role=_resolve_role_for_email(email),
         is_approved=initial_is_approved_for_email(email),
+        approval_notification_status="sent" if initial_is_approved_for_email(email) else "pending",
     )
     session.add(user)
     try:
@@ -87,8 +90,22 @@ async def _ensure_user_profile(session: AsyncSession, user_id: UUID, email: str 
             raise
         if email:
             _apply_admin_email_policy(user, email)
-        return user
-    return user
+        return user, False
+    return user, True
+
+
+async def _notify_new_pending_account(session: AsyncSession, user: UserORM) -> None:
+    if user.is_approved:
+        return
+    try:
+        await notify_pending_account(user.email)
+        user.approval_notification_status = "sent"
+        user.approval_notification_sent_at = datetime.now(timezone.utc)
+        user.approval_notification_error = None
+    except Exception as exc:
+        user.approval_notification_status = "failed"
+        user.approval_notification_error = str(exc)[:500]
+    await session.commit()
 
 
 async def get_current_user(
@@ -108,12 +125,14 @@ async def get_current_user(
         uid = extract_user_id_from_payload(payload)
         email = payload.get("email")
         if isinstance(email, str):
-            user = await _ensure_user_profile(session, uid, email)
+            user, created = await _ensure_user_profile(session, uid, email)
         else:
             user = await session.get(UserORM, uid)
             if user is None:
                 raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="Profil użytkownika nie istnieje")
         await session.commit()
+        if email and created:
+            await _notify_new_pending_account(session, user)
         return user
 
     uid = decode_user_id(token)
