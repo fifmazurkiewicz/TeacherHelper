@@ -1,14 +1,14 @@
 """add approval notification state
 
 Revision ID: 017_user_approval_notification
-Revises: 016_privacy_controls
+Revises: 016
 """
 
 from alembic import op
 import sqlalchemy as sa
 
 revision = "017_user_approval_notification"
-down_revision = "016_privacy_controls"
+down_revision = "016"
 branch_labels = None
 depends_on = None
 

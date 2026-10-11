@@ -48,5 +48,7 @@ def test_alembic_revision_ids_are_unique() -> None:
 
 
 def test_alembic_has_single_head() -> None:
-    heads = _script_directory().get_heads()
+    scripts = _script_directory()
+    heads = scripts.get_heads()
     assert len(heads) == 1, f"multiple Alembic heads (Render upgrade head fails): {heads}"
+    assert list(scripts.walk_revisions())
