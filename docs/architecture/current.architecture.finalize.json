@@ -1,0 +1,381 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "skipped",
+  "type": "architecture",
+  "quality": "showcase",
+  "startedAt": "2026-10-10T20:21:12.344Z",
+  "specification": {
+    "path": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.json",
+    "sha256": "5547863d9dde13b8359c0fd2b640c7354594d20b5f6c8bb86dac8909b09e4c5b",
+    "bytes": 2335
+  },
+  "artifact": {
+    "path": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+    "sha256": "6ae21dfd611871f01faf2999d6bb566085dee134e4648909a2874ac3d59fd19c",
+    "bytes": 753222
+  },
+  "stages": {
+    "validate": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": null,
+      "execution": "embedded-in-deliver",
+      "command": [
+        "/opt/homebrew/Cellar/node@22/22.23.2_2/bin/node",
+        "/Users/Filip/Documents/Codex/2026-10-03/referenced-chatgpt-conversation-this-is-an/outputs/agent-toolkit/src/agent_toolkit/data/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.json",
+        "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "/Users/Filip/dev/TeacherHelper",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": true,
+        "command": "validate",
+        "specification": {
+          "sha256": "5547863d9dde13b8359c0fd2b640c7354594d20b5f6c8bb86dac8909b09e4c5b",
+          "bytes": 2335
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        }
+      }
+    },
+    "deliver": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 264,
+      "command": [
+        "/opt/homebrew/Cellar/node@22/22.23.2_2/bin/node",
+        "/Users/Filip/Documents/Codex/2026-10-03/referenced-chatgpt-conversation-this-is-an/outputs/agent-toolkit/src/agent_toolkit/data/skills/archify/bin/archify.mjs",
+        "deliver",
+        "architecture",
+        "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.json",
+        "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+        "--quality",
+        "showcase",
+        "--repo-root",
+        "/Users/Filip/dev/TeacherHelper",
+        "--json"
+      ],
+      "receipt": {
+        "schemaVersion": 1,
+        "receiptId": "93e13361-d6cc-42c9-a65c-989f2ed1357c",
+        "ok": true,
+        "command": "deliver",
+        "type": "architecture",
+        "input": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.json",
+        "output": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+        "specification": {
+          "sha256": "5547863d9dde13b8359c0fd2b640c7354594d20b5f6c8bb86dac8909b09e4c5b",
+          "bytes": 2335
+        },
+        "artifact": {
+          "sha256": "6ae21dfd611871f01faf2999d6bb566085dee134e4648909a2874ac3d59fd19c",
+          "bytes": 753222
+        },
+        "validation": {
+          "checksPassed": 9,
+          "checkCount": 9,
+          "compositionProfile": "showcase",
+          "compositionStatus": "pass",
+          "errors": 0,
+          "warnings": 0
+        },
+        "evidence": {
+          "verified": true,
+          "repository": "https://github.com/fifmazurkiewicz/TeacherHelper",
+          "revision": "57a70bfac03ced2709a7cb4f8203937d820ef038",
+          "references": 7,
+          "linkMode": "local-only"
+        },
+        "update": {
+          "status": "unavailable",
+          "installedVersion": null,
+          "availableVersion": null,
+          "releaseNotes": null,
+          "checkedAt": null,
+          "source": null,
+          "noticeRequired": false,
+          "noticeText": null,
+          "reason": "disabled"
+        }
+      }
+    },
+    "check": {
+      "status": "pass",
+      "exitCode": 0,
+      "durationMs": 108,
+      "command": [
+        "/opt/homebrew/Cellar/node@22/22.23.2_2/bin/node",
+        "/Users/Filip/Documents/Codex/2026-10-03/referenced-chatgpt-conversation-this-is-an/outputs/agent-toolkit/src/agent_toolkit/data/skills/archify/bin/archify.mjs",
+        "check",
+        "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+        "--require-provenance"
+      ],
+      "receipt": {
+        "ok": true,
+        "file": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+        "artifact": {
+          "sha256": "6ae21dfd611871f01faf2999d6bb566085dee134e4648909a2874ac3d59fd19c",
+          "bytes": 753222
+        },
+        "checks": [
+          {
+            "name": "single_svg",
+            "ok": true,
+            "details": [
+              "found 1 <svg> block(s)"
+            ]
+          },
+          {
+            "name": "finite_svg",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "orthogonal_arrows",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "label_route_clearance",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_crossings",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "relationship_corridors",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "container_border_runs",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "route_rhythm",
+            "ok": true,
+            "details": []
+          },
+          {
+            "name": "legend_clearance",
+            "ok": true,
+            "details": []
+          }
+        ],
+        "composition": {
+          "schemaVersion": 1,
+          "profile": "showcase",
+          "status": "pass",
+          "summary": {
+            "errors": 0,
+            "warnings": 0
+          },
+          "metrics": {
+            "properCrossings": 0,
+            "resolvedCrossovers": 0,
+            "ambiguousCorridors": 0,
+            "arrowheadCollisions": 0,
+            "containerBorderRuns": 0,
+            "labelRouteClearanceIssues": 0,
+            "labelCanvasOverflowIssues": 0,
+            "minLabelRouteClearance": 20,
+            "desktopReadabilityIssues": 0,
+            "viewportHeightIssues": 0,
+            "minProjectedNodeTextPx": 7.5,
+            "maxBends": 2,
+            "routesOverSuggestedBends": 0,
+            "maxStretch": 1,
+            "routesOverSuggestedStretch": 0,
+            "minSegmentPx": 55,
+            "minInteriorSegmentPx": 323,
+            "shortSegmentCount": 0,
+            "shortEndpointSegmentCount": 0,
+            "shortInteriorSegmentCount": 0,
+            "microSegmentCount": 0
+          },
+          "suggestedLimits": {
+            "bendsPerRelationship": 2,
+            "stretch": 1.35,
+            "segmentPx": 16,
+            "microSegmentPx": 8
+          },
+          "routeReview": {
+            "crossings": [],
+            "detours": []
+          },
+          "leadingSpace": {
+            "measured": true,
+            "emptyTopPx": 130,
+            "emptyTopRatio": 0.304,
+            "occupiedTop": 130,
+            "viewBoxTop": 0,
+            "canvasHeight": 428,
+            "typicalNodeHeight": 60,
+            "reviewSuggested": true
+          },
+          "desktopReadability": {
+            "budgetBasis": "recognized-declared-wide",
+            "readerContract": "declared-wide-v1",
+            "availableDiagramWidth": 1026.5625,
+            "actualBudgetPx": 1026.5625,
+            "actualReaderWidth": 1056.5625,
+            "desiredReaderWidth": 1056.5625,
+            "viewportCap": 1376,
+            "limit": "source-size",
+            "requestedTargetPx": 7.5,
+            "requestedTargetMet": true,
+            "hardFloorPx": 6,
+            "hardFloorMet": true,
+            "minimumOwner": {
+              "kind": "edge",
+              "id": null,
+              "from": "teacher",
+              "to": "frontend"
+            },
+            "minimumSourceTextPx": 8,
+            "minimumProjectedTextPx": 7.5,
+            "semanticTextCount": 17
+          },
+          "issues": []
+        },
+        "provenance": "current",
+        "deliveryReceiptId": "93e13361-d6cc-42c9-a65c-989f2ed1357c"
+      }
+    },
+    "browser-check": {
+      "status": "skipped",
+      "exitCode": 2,
+      "durationMs": 7,
+      "command": [
+        "/opt/homebrew/Cellar/node@22/22.23.2_2/bin/node",
+        "/Users/Filip/Documents/Codex/2026-10-03/referenced-chatgpt-conversation-this-is-an/outputs/agent-toolkit/src/agent_toolkit/data/skills/archify/bin/archify.mjs",
+        "browser-check",
+        "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+        "--json",
+        "--require-provenance"
+      ],
+      "execution": "in-process",
+      "receipt": {
+        "schemaVersion": 1,
+        "ok": false,
+        "command": "browser-check",
+        "evidenceKind": "automated-browser",
+        "status": "skipped",
+        "visualReview": "not-requested",
+        "provenance": "current",
+        "deliveryReceiptId": "93e13361-d6cc-42c9-a65c-989f2ed1357c",
+        "artifact": {
+          "path": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+          "sha256": "6ae21dfd611871f01faf2999d6bb566085dee134e4648909a2874ac3d59fd19c",
+          "bytes": 753222
+        },
+        "state": {
+          "detail": "read",
+          "motion": "still"
+        },
+        "chrome": {
+          "status": "unavailable",
+          "executable": null
+        },
+        "diagnostics": [
+          {
+            "code": "viewer/chrome-unavailable",
+            "severity": "warning",
+            "message": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path.",
+            "subject": {
+              "artifact": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html"
+            },
+            "evidence": {
+              "executable": null
+            },
+            "supportedFixes": [
+              "set ARCHIFY_CHROME to a Chrome or Chromium executable and rerun browser-check"
+            ]
+          }
+        ],
+        "containment": {
+          "status": "skipped",
+          "policy": "fit-or-reader-declared-readable-vertical-scroll",
+          "viewports": []
+        },
+        "themeStates": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "readability": {
+          "status": "skipped",
+          "minimumProjectedNodeTextPx": 6,
+          "viewports": []
+        },
+        "viewerChrome": {
+          "status": "skipped",
+          "viewports": []
+        },
+        "captures": {
+          "status": "not-requested",
+          "screenshots": [],
+          "contactSheet": null
+        },
+        "sidecars": {
+          "receipt": "current.architecture.browser-check.json",
+          "files": []
+        },
+        "error": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path."
+      }
+    }
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/chrome-unavailable",
+      "severity": "warning",
+      "message": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path.",
+      "subject": {
+        "artifact": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html"
+      },
+      "evidence": {
+        "executable": null
+      },
+      "supportedFixes": [
+        "set ARCHIFY_CHROME to a Chrome or Chromium executable and rerun browser-check"
+      ]
+    }
+  ],
+  "evidence": {
+    "receipt": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.finalize.json",
+    "summaryReceipt": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.finalize-summary.json",
+    "browserCheckReceipt": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "failedStage": "browser-check",
+  "finishedAt": "2026-10-10T20:21:12.803Z",
+  "durationMs": 459,
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-10T20:19:28.790Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  }
+}

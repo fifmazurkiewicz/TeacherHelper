@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {"title": "TeacherHelper — Current System Architecture", "output": "docs/architecture/current.architecture.html", "quality_profile": "showcase", "repository": {"url": "https://github.com/fifmazurkiewicz/TeacherHelper.git", "revision": "57a70bfac03ced2709a7cb4f8203937d820ef038", "link_mode": "local-only"}},
+  "components": [
+    {"id": "teacher", "type": "external", "label": "Teacher", "sublabel": "browser", "pos": [40, 300], "size": [130, 60], "sources": [{"path": "README.md", "line": 1, "end_line": 5, "label": "product"}]},
+    {"id": "frontend", "type": "cloud", "label": "React Frontend", "sublabel": "Vite on Vercel", "pos": [240, 300], "size": [155, 60], "sources": [{"path": "README.md", "line": 30, "end_line": 35, "label": "deploy"}]},
+    {"id": "api", "type": "backend", "label": "TeacherHelper API", "sublabel": "FastAPI modular monolith", "pos": [550, 300], "size": [175, 60], "sources": [{"path": "backend/teacher_helper/main.py", "line": 1, "end_line": 28, "label": "entry"}, {"path": "backend/teacher_helper/adapters/http/app.py", "line": 70, "end_line": 133, "label": "routes"}]},
+    {"id": "supabase", "type": "database", "label": "Supabase", "sublabel": "Postgres, Auth, Storage", "pos": [880, 300], "size": [155, 60], "sources": [{"path": "README.md", "line": 30, "end_line": 35, "label": "persistence"}]},
+    {"id": "rag", "type": "database", "label": "Knowledge Retrieval", "sublabel": "pgvector and file context", "pos": [880, 130], "size": [175, 60], "sources": [{"path": "README.md", "line": 19, "end_line": 27, "label": "RAG"}]},
+    {"id": "providers", "type": "cloud", "label": "AI and Media Providers", "sublabel": "OpenRouter, KIE, ElevenLabs", "pos": [550, 130], "size": [190, 60], "sources": [{"path": "README.md", "line": 12, "end_line": 28, "label": "integrations"}]}
+  ],
+  "connections": [
+    {"from": "teacher", "to": "frontend", "label": "HTTPS", "variant": "emphasis"}, {"from": "frontend", "to": "api", "label": "authenticated API"}, {"from": "api", "to": "supabase", "label": "account, projects, assets"}, {"from": "api", "to": "rag", "label": "retrieve context", "fromSide": "top", "toSide": "bottom"}, {"from": "api", "to": "providers", "label": "orchestrated tools", "fromSide": "top", "toSide": "bottom"}
+  ]
+}

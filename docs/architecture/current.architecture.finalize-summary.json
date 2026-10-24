@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "skipped",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.json",
+    "sha256": "5547863d9dde13b8359c0fd2b640c7354594d20b5f6c8bb86dac8909b09e4c5b",
+    "bytes": 2335
+  },
+  "artifact": {
+    "path": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html",
+    "sha256": "6ae21dfd611871f01faf2999d6bb566085dee134e4648909a2874ac3d59fd19c",
+    "bytes": 753222
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "skipped"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/chrome-unavailable",
+      "severity": "warning",
+      "message": "Chrome or Chromium is unavailable. Set ARCHIFY_CHROME to its executable path.",
+      "subject": {
+        "artifact": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.html"
+      },
+      "evidence": {
+        "executable": null
+      },
+      "supportedFixes": [
+        "set ARCHIFY_CHROME to a Chrome or Chromium executable and rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.finalize.json",
+    "summaryReceipt": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.finalize-summary.json",
+    "browserCheckReceipt": "/Users/Filip/dev/TeacherHelper/docs/architecture/current.architecture.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.0.1",
+    "availableVersion": "3.0.1",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-10T20:19:28.790Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 459
+}
