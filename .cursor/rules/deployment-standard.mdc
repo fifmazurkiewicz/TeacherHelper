@@ -1,8 +1,0 @@
----
-description: Shared deployment and local-development baseline
-alwaysApply: true
----
-
-# Deployment standard
-
-Follow the production stack documented in `AGENTS.md`; for web products the default is Vercel frontend, Render backend, and Supabase database/auth. Keep local development usable without production deployment or mandatory Docker. Add new variables to `.env.example` and setup docs; keep durable state out of ephemeral runtime disks. Any stack exception must be documented in the project.

@@ -45,7 +45,7 @@ cd frontend && npm run lint && npm run build
 
 ## Graft
 
-Graft CLI is broken on Windows (missing native build / `@nanonets/graft/dist/cli.js`). Manual wiring (`.cursor/rules/graft.mdc`, `.cursorignore`, `/graft/` in gitignore) is OK. Retry `npx @nanonets/graft init` after VS C++ build tools are installed.
+Run `npx -y @nanonets/graft check` at the start of work and `npx -y @nanonets/graft build` when it reports no graph or drift. `/graft/` stays git-ignored; `.cursorignore` keeps it out of Cursor indexing. Wiring: `.cursor/mcp.json`, `.codex/config.toml`, `.mcp.json` (agent-toolkit).
 
 ## Docs
 
@@ -81,13 +81,23 @@ Graft CLI is broken on Windows (missing native build / `@nanonets/graft/dist/cli
 - Czat: `ask_clarification` / potwierdzenie wideo / prepare projektu w tej samej turze blokuje płatne `generate_*`; jedna aktywna job na rozmowę (409 + reaper 15 min).
 - Domyślne: limit LLM **$10/miesiąc UTC** (`DEFAULT_USER_LLM_MONTHLY_COST_LIMIT_USD`; Accept nie nadpisuje NULL); modele OpenRouter `google/gemini-3.1-flash-lite-preview` (orchestrator), `google/gemini-3-flash-preview` (moduły).
 
+## Shared defaults
+
+These defaults come from the shared project template. Sections above override them where they document a project-specific choice.
+
+- **Deployment:** web products use Vercel for the frontend, Render for the backend, and Supabase for database and auth. Keep local development usable without a production deployment or mandatory Docker. Add new variables to `.env.example` and the setup docs, and keep durable state off ephemeral runtime disks.
+- **Secrets:** never read, edit, create, display, or commit real `.env*` files, credentials, tokens, keys, or passwords. Use `.env.example` for variable names only. If a secret is needed, ask the user to set it locally; never request it in chat. If one is exposed, do not repeat it and recommend rotation.
+- **Personal data:** collect, store, log, and expose only what the feature requires. Follow GDPR purpose limitation, retention and deletion, export, and access control.
+- **UI:** use 44px touch targets where relevant and a calm product baseline of VARIANCE 3, MOTION 2, DENSITY 6 with `design-taste-frontend`; reserve landing-page visual language for marketing surfaces. Do not replace the styling stack or introduce a competing design system without approval.
+- **Graft:** keep `graft/` git-ignored and never deep-index secrets. Run `graft build --deep` only with explicit approval.
+
 <!-- agent-toolkit:standard v1 start -->
 # Agent standard v2
 
 - Read `AGENTS.md`, applicable nested instructions, and relevant project documentation before changing code. More specific project instructions win, but never waive safety or required verification.
 - Use a skill when its `description` matches the task. Select only relevant skills, read the selected `SKILL.md` first, and state when a required skill is unavailable.
 - Scale planning to risk. For meaningful features, behavior, API, deployment, or architecture changes, record the decision, trade-offs, and durable documentation. Small fixes do not need a new plan, but must not leave known documentation drift.
-- Graft is the shared code-map MCP. Before broad source exploration, use it for orientation or impact analysis. If its runtime is unavailable, use focused `rg` queries and report that limitation; never install tools or assume a particular runtime.
+- Graft is the shared code-map MCP. At the start of work in a project, run `npx -y @nanonets/graft check`; when it reports no graph or drift, run `npx -y @nanonets/graft build`, a local structural index with no LLM or key, which keeps `graft/` git-ignored. Run `graft build --deep` only with explicit approval, because it calls a paid LLM. Before broad source exploration, use Graft for orientation or impact analysis. If its runtime is unavailable, use focused `rg` queries and report that limitation; never install tools or assume a particular runtime.
 - For a meaningful change using the project-context lifecycle, keep change-local state under `.agent/context/changes/<change-id>/`, use its `progress.md` as the canonical execution record, and use Graft for durable knowledge. Do not create a parallel `lessons.md` store.
 - For every non-informational review finding, keep a canonical disposition in `reviews/review-decisions.md` and update its derived Kanban view only afterward. A `Skip` requires explicit human-owner acceptance, rationale, and a re-evaluation trigger; reusable evidence-backed lessons go to Graft after archive.
 - After code changes, use `implementation-review` before archive or merge. Use a fresh reviewer agent when available; otherwise perform an explicit second pass and disclose that it was not independent. Review with the current AI session and existing repository tools, without requiring another service, account, or installation; report verification gaps honestly.

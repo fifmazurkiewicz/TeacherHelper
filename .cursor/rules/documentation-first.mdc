@@ -1,8 +1,0 @@
----
-description: Documentation and planning workflow
-alwaysApply: true
----
-
-# Documentation first
-
-For meaningful features, behavior changes, APIs, deployment changes, or architecture decisions: read the relevant docs and current plan; define a testable outcome; update the plan and durable documentation with decisions and trade-offs. Small fixes and explicit code-only requests do not need a new plan, but must not leave known documentation drift.

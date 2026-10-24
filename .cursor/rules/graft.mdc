@@ -1,8 +1,0 @@
----
-description: Graft code-map workflow
-alwaysApply: true
----
-
-# Graft
-
-Before broad source exploration, use `graft map` or `graft ask "<question>" --source`; use `graft callers` for impact analysis. Run `graft check`, then `graft build` only after a large refactor, merge, or detected drift. Keep `graft/` ignored and never inspect secrets with deep indexing. If Graft is unavailable, use focused `rg` queries.

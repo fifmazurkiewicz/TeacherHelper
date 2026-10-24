@@ -1,8 +1,0 @@
----
-description: Skill-first operating rule
-alwaysApply: true
----
-
-# Superpowers
-
-Before meaningful work, inspect the skills available in the current environment. If one clearly applies, read its `SKILL.md`, use it, and state its purpose. User instructions override skills; never claim an unavailable skill was used.
