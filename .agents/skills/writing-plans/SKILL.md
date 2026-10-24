@@ -89,7 +89,8 @@ include this section.]
 
 ## Review Focus
 
-[The five input classes or failure modes the spec implies but no task's
+[Start from the risk map in `docs/testing-strategy.md` and the change's own
+scenarios, then list the five input classes or failure modes the spec implies but no task's
 tests exercise that are most likely to bite a person using this software
 — one line each, naming the input or condition and the behavior a
 reasonable person would expect, most likely first. The spec is a vision
@@ -171,7 +172,7 @@ After writing the complete plan, look at the spec with fresh eyes and check the 
 
 **3. Type consistency:** Do the types, method signatures, and property names you used in later tasks match what you defined in earlier tasks? A function called `clearLayers()` in Task 3 but `clearFullLayers()` in Task 7 is a bug.
 
-**4. Review Focus:** For each input class or failure mode the spec implies, is there a task whose tests exercise it? The five uncovered ones most likely to bite a person go in the Review Focus section, and each line there gets its test added to the owning task. An empty section means you checked and found none, not that you skipped the check.
+**4. Review Focus:** For each risk-map scenario the change touches and each input class or failure mode the spec implies, is there a task whose tests exercise it? The five uncovered ones most likely to bite a person go in the Review Focus section, and each line there gets its test added to the owning task. An empty section means you checked and found none, not that you skipped the check.
 
 If you find issues, fix them inline. No need to re-review — just fix and move on. If you find a spec requirement with no task, add the task.
 

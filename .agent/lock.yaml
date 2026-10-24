@@ -1,4 +1,4 @@
-toolkit_version: 1.4.0
+toolkit_version: 1.5.0
 profile: web
 clients:
 - cursor
@@ -37,17 +37,19 @@ skills:
     SKILL.md: 7e5112263ad88b2b771e85409c53fb7ba60d1b4c214ba951a5a263675e613594
   production-product-requirements:
     SKILL.md: 5a1c8a2be4658c79028178e8459b22bf838b8c464669aa27fd0e7905ff398b88
+  test-strategy:
+    SKILL.md: ac373b22653d253bacf2b28c4450c74c5a25d61cb8961bf7f5f6e1ae0ab8d87a
   writing-plans:
-    SKILL.md: 465bc05e8ad6c6d1bb12856ea99db25026b1c4ff8545030ae57647ce69141265
+    SKILL.md: 67796f54c76f030cc3b3bf387d164c775f0485b5e36658c4697a9e63efbecd64
     plan-document-reviewer-prompt.md: aa728b96aad603c8be28875a4305637f6c984aa81ffcadcb13e743202fa2a0c7
   plan-review:
     SKILL.md: 8c03ec9cb89ce0b4666cdb4e4afea7f366f380d4f7237d42afa0bfb8e519af7a
   implementation:
     SKILL.md: 8e63e10dc7728b921bca3c74d38e0801212f694f236abff3afec72a0c3f4304f
   tdd:
-    SKILL.md: cafd0f5e0db486900ca2e4071ddf61cd5c6d607bbdf42dc2f7137ce44d22754b
+    SKILL.md: 816cd05d13fc8e71d2674bec905fdf1114a01594a4db6539c680270db7861e7e
   implementation-review:
-    SKILL.md: 187bc33c0c4c90b35ac3e2e1a945f86dafa919351010fc03d3bb4142ae389f6b
+    SKILL.md: 35f50f42a2fccf95e686598e2713d96750fec224db1851d207928d5eeee543a8
   review-decisions:
     SKILL.md: bd1975bcefb0d7a9742446a57a6e14cb6b74bbef3cd3cdc14754f9f3eac2786a
   goal-implement:

@@ -6,7 +6,8 @@ description: Use when a testable behavior is added or changed to establish a fai
 # Test-Driven Development
 
 Read the approved plan, frame, research, and Graft knowledge; use focused `rg`
-if Graft is unavailable. Derive expected behavior from requirements, not the
+if Graft is unavailable. When `docs/testing-strategy.md` exists, follow its
+cookbook and the required test depth from its risk map. Derive expected behavior from requirements, not the
 existing implementation. Write a focused failing test before altering
 testable behavior, make the smallest implementation pass, then refactor only
 with the test green.
