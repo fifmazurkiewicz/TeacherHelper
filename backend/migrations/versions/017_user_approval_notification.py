@@ -4,8 +4,8 @@ Revision ID: 017_user_approval_notification
 Revises: 016
 """
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 
 revision = "017_user_approval_notification"
 down_revision = "016"

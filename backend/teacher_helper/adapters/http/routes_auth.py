@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, status
 
-from teacher_helper.adapters.http.deps import CurrentUser, DbSession, _notify_new_pending_account, initial_is_approved_for_email
+from teacher_helper.adapters.http.deps import (
+    CurrentUser,
+    DbSession,
+    _notify_new_pending_account,
+    initial_is_approved_for_email,
+)
 from teacher_helper.adapters.http.schemas import MonthlyLlmUsageResponse, UserResponse
 from teacher_helper.config import get_settings
 from teacher_helper.infrastructure.usage_limits import (
