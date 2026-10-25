@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+# agent-toolkit:gitleaks start
+[[allowlists]]
+description = "agent-toolkit lock: SHA-256 hashes of vendored skill files, not secrets"
+paths = ['''^\.agent/lock\.yaml$''']
+# agent-toolkit:gitleaks end

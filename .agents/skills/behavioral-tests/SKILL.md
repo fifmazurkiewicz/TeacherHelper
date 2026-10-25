@@ -45,7 +45,8 @@ characterization test.
 - Keep the number optimal: each test catches a different regression. Merge
   near-identical tests, or parametrize one rule's cases.
 - Run the tests. For high-risk behaviors, deliberately break the code once to
-  prove the test turns red.
+  prove the test turns red. You may also offer automated mutation testing with
+  the `mutation-testing` skill; run it only after the user approves.
 
 ## 3. Summarize the regressions
 

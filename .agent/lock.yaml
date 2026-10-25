@@ -1,4 +1,4 @@
-toolkit_version: 1.8.0
+toolkit_version: 1.10.1
 profile: web
 clients:
 - cursor
@@ -49,7 +49,9 @@ skills:
   tdd:
     SKILL.md: f95ad6df36dc63503b71ac1b2eb068d94d0209cd22371b96bb4bbee2eaedf91d
   behavioral-tests:
-    SKILL.md: 0418cb0fda16b35e7955248fdc5bef6ce0593bd927b6a4c694e83940e3d032d5
+    SKILL.md: 246958a9a83e0a41a243dbc8ec0a986bf8e5447997477caa5a6678dd79f6e080
+  mutation-testing:
+    SKILL.md: b17040a027c752db048580f215228f06728080556bdf5fadb5e51d2b5d99f4d0
   implementation-review:
     SKILL.md: 3b7beb58f3165f72339fd1c6c2a988fb32f68c23fa38fcf0761acb26e56a0094
   review-decisions:

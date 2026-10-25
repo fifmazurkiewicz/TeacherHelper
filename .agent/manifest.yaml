@@ -18,6 +18,7 @@ skills:
 - implementation
 - tdd
 - behavioral-tests
+- mutation-testing
 - implementation-review
 - review-decisions
 - goal-implement
