@@ -8,7 +8,8 @@ description: Use when a testable behavior is added or changed to establish a fai
 Read the approved plan, frame, research, and Graft knowledge; use focused `rg`
 if Graft is unavailable. When `docs/testing-strategy.md` exists, follow its
 cookbook and the required test depth from its risk map. Derive expected behavior from requirements, not the
-existing implementation. Write a focused failing test before altering
+existing implementation. List the expected behaviors and write assertions, edge cases, and the
+regression summary as the `behavioral-tests` skill describes. Write a focused failing test before altering
 testable behavior, make the smallest implementation pass, then refactor only
 with the test green.
 

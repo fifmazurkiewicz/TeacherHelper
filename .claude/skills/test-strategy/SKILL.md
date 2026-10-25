@@ -70,6 +70,6 @@ label the map a draft and never use it to lower required test depth.
 
 ## Use
 
-`writing-plans` takes its Review Focus from the map, `tdd` follows the
-cookbook and required depth, and `implementation-review` checks that the
-required depth was met.
+`writing-plans` takes its Review Focus from the map, `tdd` and
+`behavioral-tests` follow the cookbook and required depth, and
+`implementation-review` checks that the required depth was met.

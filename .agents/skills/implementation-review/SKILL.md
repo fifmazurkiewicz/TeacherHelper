@@ -30,7 +30,9 @@ This skill requires no additional service, account, CLI, or installation.
 3. Trace changed behavior through callers, contracts, failure paths, and tests.
    Check correctness, regressions, security/privacy, error handling, repository
    conventions, and missing coverage, including the required test depth for
-   touched risks when `docs/testing-strategy.md` exists. Separate evidence-backed defects from
+   touched risks when `docs/testing-strategy.md` exists, and tests that assert
+   implementation details, recompute expected values with the code's own logic,
+   or duplicate one another. Separate evidence-backed defects from
    optional preferences; report actionable findings with severity, file/line,
    impact, and a concrete fix or verification step.
 4. Run the smallest relevant checks already available within the authorized
