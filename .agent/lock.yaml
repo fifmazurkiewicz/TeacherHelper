@@ -1,4 +1,4 @@
-toolkit_version: 1.11.0
+toolkit_version: 1.11.1
 profile: web
 clients:
 - cursor
@@ -43,7 +43,7 @@ skills:
     SKILL.md: 67796f54c76f030cc3b3bf387d164c775f0485b5e36658c4697a9e63efbecd64
     plan-document-reviewer-prompt.md: aa728b96aad603c8be28875a4305637f6c984aa81ffcadcb13e743202fa2a0c7
   plan-review:
-    SKILL.md: 8c03ec9cb89ce0b4666cdb4e4afea7f366f380d4f7237d42afa0bfb8e519af7a
+    SKILL.md: b6da105a4afc76f5122a62a79cbe41a3d905c6d9354b52cffe8e5c1c3b8737a7
   implementation:
     SKILL.md: 8e63e10dc7728b921bca3c74d38e0801212f694f236abff3afec72a0c3f4304f
   tdd:
