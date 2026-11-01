@@ -1,0 +1,7 @@
+# Reviewed historical false positives only. New occurrences remain scanned.
+# A curl command containing only --fail-with-body --request POST and a line continuation.
+0dfd849c1f19a6584a670cb37f3a319b32af70ad:.cursor/plans/2026-09-06-personal-agent-control-room.md:curl-auth-user:258
+# Polish JWT_SECRET placeholders instructing the reader to generate a random value.
+dbbcd7dec3d9f335f6879b144e4727d66093f806:.env.example:generic-api-key:22
+3fa901a61e481c5758e7abdd13d8b3b2638202d6:README.md:generic-api-key:104
+3fa901a61e481c5758e7abdd13d8b3b2638202d6:backend/.env.example:generic-api-key:19
