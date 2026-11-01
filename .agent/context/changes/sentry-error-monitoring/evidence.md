@@ -18,4 +18,11 @@ Independent source reviewers: `/root/sdk_backend_final_review` and `/root/sdk_fr
 
 Graft runtime was unavailable (`npx --offline @nanonets/graft check`: package not cached), so focused rg/source inspection was used. No paid provider, production user data, hosted ingestion, authenticated source-map upload/resolution, browser-to-Sentry network delivery, APK/device behavior or native-payload acceptance was tested. Aide native crash telemetry stays off. No Render/Vercel variables or production flags were changed. Build upload paths are tested locally without a real token; upload authentication remains an activation gate.
 
-GitHub publication/CI result will be added after the authorized push. ModelFabric stays local and has no remote CI gate.
+## Publication and CI
+
+Source published to `main`: [212c144](https://github.com/fifmazurkiewicz/TeacherHelper/commit/212c144c5032349a1d8dca4ccd256525cc4c1a35). Checks for that exact runtime-source commit:
+
+- [Secrets](https://github.com/fifmazurkiewicz/TeacherHelper/actions/runs/41356909724): success.
+- [CI](https://github.com/fifmazurkiewicz/TeacherHelper/actions/runs/41356909755): success.
+
+This evidence update changes documentation only. Subsequent automatically triggered documentation-run status is recorded in the final handoff; it is not substituted for the completed source checks.

@@ -1,7 +1,7 @@
 # Progress
 
-2026-11-01 — SENTRY-01–04 implemented and locally verified. Official SDKs are wired into the real entrypoints, technical-only filtering is tested using actual SDK envelopes, and per-runtime configuration examples/runbooks are present.
+2026-11-01 — SENTRY-01–05 complete: SDK entrypoints, terminal failure reporting, technical-only event filtering, configuration/runbooks, local checks, independent review and source publication to main. GitHub Actions for source commit `212c144c5032349a1d8dca4ccd256525cc4c1a35` passed. The final documentation update does not change runtime code.
 
-SENTRY-05: local checks and independent source review complete; publication and resulting GitHub Actions are pending. ModelFabric is local-only and has no publication step. SENTRY-06 remains open: owner supplies hosting/build variables, redeploys and accepts synthetic events per runtime. Native crash collection remains disabled in Aide. No production activation is claimed.
+SENTRY-06 remains open: Filip supplies hosting/build variables, redeploys and accepts a synthetic event in each runtime. No production ingestion is claimed. Aide native crash collection remains disabled; device validation and private authenticated map resolution remain separate gates.
 
-Canonical task descriptions: [Sentry contract](../../../../docs/technical/sentry.md). [Evidence](evidence.md). [Review decisions](reviews/review-decisions.md).
+[Task contract](../../../../docs/technical/sentry.md) · [Evidence](evidence.md) · [Review decisions](reviews/review-decisions.md).
