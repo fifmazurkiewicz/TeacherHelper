@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/microsoft/playwright-cli",
+  "tag": "v0.1.23",
+  "revision": "0a808078d96496cf2a8fa725143c870354f63cda",
+  "license": "Apache-2.0",
+  "source_path": "skills/playwright-cli",
+  "files": {
+    "SKILL.md": "aa8dea4bba35a00b362fa925b25b8058b9a28fa6",
+    "references/element-attributes.md": "4e9fa6b99103bbe4e1262c37a9c4a664dfe1dbd5",
+    "references/playwright-tests.md": "bec2ec90e4adbc6ed56f06ab19c34916ce7f736b",
+    "references/pr-attachments.md": "91663b58bccf34b1cd2790ef8ae335d45b3d99df",
+    "references/request-mocking.md": "9005fda67dfc4af13848fd9ebedee08420aeec97",
+    "references/running-code.md": "5bf7e8cfb52112da2ecd9600631fa8365fbb90f1",
+    "references/session-management.md": "eb1bde35d9ce619d5cd939384d656e5c91310ebd",
+    "references/storage-state.md": "e2390da8da25ce03d559d2a199bc4bb69f880cce",
+    "references/test-generation.md": "49c76d2991f9165f77e9b9755dbdd4996ab8e586",
+    "references/tracing.md": "88d7eab6216c72645b198482813fe94cbb5b6ec1",
+    "references/video-recording.md": "f0b528ab1a70f2e8d5a828862a3dd89b8644239b",
+    "LICENSE": "cefe596afef12e19a8e5e923f1a04c7da3188760"
+  }
+}
