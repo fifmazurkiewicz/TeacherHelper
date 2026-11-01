@@ -17,6 +17,7 @@ from teacher_helper.infrastructure.db.session import async_session_factory
 from teacher_helper.infrastructure.jobs import claim_job_running, get_job, mark_job_done, mark_job_error
 from teacher_helper.infrastructure.system_incidents import record_system_incident
 from teacher_helper.use_cases.conversation_context import build_history_with_rolling_summary, cap_orchestrator_history
+from teacher_helper.use_cases.error_reporting import report_error
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,7 @@ async def run_chat_job(job_id: UUID, user_id: UUID, body: ChatRequest) -> None:
             await mark_job_done(session, job_id, payload)
             await session.commit()
         except Exception as exc:
+            report_error(exc)
             logger.error("Chat job %s failed: %s\n%s", job_id, exc, traceback.format_exc())
             async with async_session_factory() as err_sess:
                 await mark_job_error(err_sess, job_id, str(exc))

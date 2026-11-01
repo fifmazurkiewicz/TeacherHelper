@@ -16,7 +16,11 @@ logging.basicConfig(
 )
 
 from teacher_helper.adapters.http import create_app
+from teacher_helper.monitoring import capture_error, init_sentry
+from teacher_helper.use_cases.error_reporting import set_error_reporter
 
+init_sentry("teacherhelper-api", api=True)
+set_error_reporter(capture_error)
 app = create_app()
 
 

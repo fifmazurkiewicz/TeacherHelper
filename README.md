@@ -286,3 +286,7 @@ W **backend** i **frontend** nie ma na razie wydzielonej, opisanej w README suit
 - `POST /v1/intent/analyze` — analiza intencji (diagnostyka)
 - `GET /v1/admin/stats` — statystyki
 - `GET /v1/admin/monitoring` — monitoring LLM
+
+## Error monitoring
+
+[Sentry tasks, privacy contract and deployment variables](docs/technical/sentry.md). SDK source verification and production activation are tracked separately.
