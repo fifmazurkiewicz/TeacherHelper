@@ -71,10 +71,12 @@ Szczegóły wdrożenia: `.cursor/plans/2026-08-28-standard-deploy.md`.
 
 ## Langfuse (opcjonalnie)
 
+Backend używa SDK Python `4.15.5`, zgodnego z Langfuse Cloud v4 (wymagane minimum `4.7.0`). Poetry i `requirements.txt` używany przez Docker muszą wskazywać tę samą wersję. Migracja nie wymaga nowych zmiennych ani migracji bazy. Po wdrożeniu użyj testu administratora i sprawdź obserwację `teacherhelper-admin-test` oraz panel **Action required** w projekcie Langfuse; ustawienia evaluatorów, eksportów i integracji w chmurze nie są zarządzane przez repozytorium.
+
 | Zmienna | Opis |
 |---|---|
 | `LANGFUSE_PUBLIC_KEY` | Klucz publiczny projektu Langfuse |
 | `LANGFUSE_SECRET_KEY` | Klucz secret (tylko backend) |
-| `LANGFUSE_HOST` | Domyślnie `https://cloud.langfuse.com` (SDK v3: `base_url`; region US: `https://us.cloud.langfuse.com`) |
+| `LANGFUSE_HOST` | Domyślnie `https://cloud.langfuse.com` (SDK v4: `base_url`; region US: `https://us.cloud.langfuse.com`) |
 
 Obserwacje z backendu mają `environment=production` — w UI Langfuse ustaw filtr Environment na **production** (lub „All”). Test: `POST /v1/admin/alerts/test-langfuse`.
