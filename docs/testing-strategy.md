@@ -25,3 +25,7 @@ Inspect actual envelopes, use sentinel strings in nested input, and ask a fresh 
 ## Cookbook
 
 Backend: `tests/test_sentry_monitoring.py`, run `python -m pytest tests/test_sentry_monitoring.py -q` from backend. Use synthetic data and an in-memory Sentry Transport. Frontend uses existing Vitest transport tests plus lint/types/build. Record regressions and actual results in the Sentry task evidence; hosted activation stays open until a real synthetic event is verified.
+
+## Langfuse v4 compatibility
+
+Change-specific risk map and requirements: `.agent/context/changes/langfuse-v4/plan.md`. Use a real Langfuse client and in-memory OpenTelemetry exporter with synthetic UUIDs/content; never send test traffic to production or load real credentials. Verify generation emission, per-observation session/user propagation, token counts, isolation between conversations and calls without context, and optional disabled behavior. Dependency upgrades must agree across Poetry and Docker requirements.
