@@ -55,7 +55,7 @@ def _merge_langfuse_metadata(
 
 
 def _langfuse_client() -> Any | None:
-    """Singleton Langfuse SDK v3 (OpenTelemetry)."""
+    """Singleton Langfuse SDK v4 (OpenTelemetry)."""
     global _langfuse_singleton
     s = get_settings()
     if not s.langfuse_public_key or not s.langfuse_secret_key:
@@ -68,6 +68,7 @@ def _langfuse_client() -> Any | None:
             secret_key=s.langfuse_secret_key,
             base_url=s.langfuse_host.rstrip("/"),
             environment="production",
+            additional_headers={"x-langfuse-ingestion-version": "4"},
         )
     return _langfuse_singleton
 
